@@ -79,6 +79,9 @@ def _field_columns(parts: list[Part]) -> tuple[dict[str, Any], Any]:
     """`implicit_patches` (a row per patch) and `implicit_solution` (λ then c of every row) of the solved fields: the
     rows go by (group, wing), a group of several fields (the thresholds of a shell) numbers its patches `j` on."""
     rows: dict[str, list[Any]] = {k: [] for k in bl.PATCH_COLUMNS}
+    structural = any(p.record.matrices is not None for p in parts)  # the columns of A_j: all the rows or none
+    if structural:
+        rows.update({k: [] for k in bl.MATRIX_COLUMNS})
     solution: list[np.ndarray] = []
     offset = 0
     next_j: dict[tuple[int, int], int] = {}
@@ -101,10 +104,15 @@ def _field_columns(parts: list[Part]) -> tuple[dict[str, Any], Any]:
             rows["hash"].append(rec.hashes[j])
             rows["eta"].append(sol.eta)
             rows["cond"].append(sol.cond1)
+            if structural:  # a patch without A_j (never in one model) is NaN, not an identity
+                a = np.full(9, np.nan) if rec.matrices is None else np.asarray(rec.matrices[j]).reshape(9)
+                for name, v in zip(bl.MATRIX_COLUMNS, a, strict=True):
+                    rows[name].append(v)
             solution.append(np.asarray(sol.lam, dtype=np.float64))
             solution.append(np.asarray(sol.poly, dtype=np.float64))
             offset += n + 4
-    cols: dict[str, Any] = {k: np.asarray(v, dtype=bl.PATCH_COLUMNS[k]) for k, v in rows.items() if k != "hash"}
+    kinds = {**bl.PATCH_COLUMNS, **bl.MATRIX_COLUMNS}
+    cols: dict[str, Any] = {k: np.asarray(v, dtype=kinds[k]) for k, v in rows.items() if k != "hash"}
     cols["hash"] = np.frombuffer(b"".join(rows["hash"]), dtype=f"S{bl.HASH_SIZE}")  # the bytes as they are
     return cols, (np.concatenate(solution) if solution else np.zeros(0))
 

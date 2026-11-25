@@ -43,7 +43,7 @@ from numpy.typing import NDArray
 
 from bf_core.api.errors import ApiError
 
-from .bodies_parts import EtaOf, Fit, Solver, Tile, Tiling, fit_group
+from .bodies_parts import EtaOf, Fit, MatricesOf, Solver, Tile, Tiling, fit_group
 from .spec_parts import refuse
 
 if TYPE_CHECKING:
@@ -226,6 +226,7 @@ def build_bodies(
     *,
     clip: Any = None,
     matrix: F8 | None = None,
+    matrices_of: MatricesOf | None = None,
     eta_of: EtaOf | None = None,
     solver: Solver | None = None,
     brick_cache: Callable[[Group], BrickCache | None] | None = None,
@@ -235,10 +236,10 @@ def build_bodies(
     """The surfaces and bodies of the domains of `spec` (see the module text). `points` — the data of all groups
     (`data.load`); `boundary` — the closed solid of the model (a box: `bodies_parts.box_solid`; a wireframe; a wireframe
     ∩ the body under the DTM, вопрос № 100); `spec.h` is the step (None — by the extent, 8.9.4); `matrix` — the global
-    anisotropy A (19.9, None — identity); `eta_of` — η of the automatic smoothing (19.10); `solver` — the solver of the
-    patches (`solve.solve_patches` by default; 19.12 puts the cache of patches there); `brick_cache(group)` — the
-    store of the nodes of the bricks of a group. The result is the same bits for any `threads` and any order of the
-    holes that gave the points."""
+    anisotropy A (19.9, None — identity), `matrices_of` — A_j of the patches of a structural trend (`fit_group`);
+    `eta_of` — η of the automatic smoothing (19.10); `solver` — the solver of the patches (`solve.solve_patches` by
+    default; 19.12 puts the cache of patches there); `brick_cache(group)` — the store of the nodes of the bricks of a
+    group. The result is the same bits for any `threads` and any order of the holes that gave the points."""
     from bf_core.geo import solids
 
     lo, hi, bv, bt = _boundary(boundary)
@@ -283,8 +284,8 @@ def build_bodies(
         keep = mask(group, data, solved)
         if not bool(keep.all()):
             data = data.take(keep)
-        fit = fit_group(spec, group, data, extent=(lo, hi), matrix=matrix, eta_of=eta_of, solver=solver,
-                        threads=threads, tick=tick, span=(a, a + 0.3 * span))  # fmt: skip
+        fit = fit_group(spec, group, data, extent=(lo, hi), matrix=matrix, matrices_of=matrices_of, eta_of=eta_of,
+                        solver=solver, threads=threads, tick=tick, span=(a, a + 0.3 * span))  # fmt: skip
         for key, value in fit.stats["time"].items():
             timing[key] = timing.get(key, 0.0) + value
         result.fits[int(group.id)] = fit

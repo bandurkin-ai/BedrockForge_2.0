@@ -8,10 +8,11 @@
 The patch. Its hash is `octree.hash_patches(points, patches, values=f, salt=…)`: the centre, R, the number of points,
 the points of the patch in the space of the patches (A applied) in the canonical order and their values, and the
 salt — the kernel, the radius of the finite kernel, the smoothing (mode, η₀, the target of the condition number),
-A. The patch is a function of those alone (η is a function of the points of the patch and η₀), so a patch whose hash
-is in the cache takes its λ, c, η and cond₁ from the last build: bit for bit what its LU would give; only the patches
-whose hash is new are solved (`solve.solve_patches` of the subset — each patch is solved by its own, so the bytes do
-not depend on the others).
+A; of a structural trend (19.9) the hash of the patch takes its A_j too (`anisotropy.patch_hashes`: a changed trend
+changes the solution of a patch whose points stayed). The patch is a function of those alone (η is a function of the
+points of the patch and η₀), so a patch whose hash is in the cache takes its λ, c, η and cond₁ from the last build:
+bit for bit what its LU would give; only the patches whose hash is new are solved (`solve.solve_patches` of the
+subset — each patch is solved by its own, so the bytes do not depend on the others).
 
 The brick. Its file is `cache\\implicit\\<model>\\<hash>.npy` (float64 n × n × n, the values of the nodes): the hash is
 `Grid.token()`, the index of the brick and the hashes of the patches whose ball reaches the box of the brick, in the
@@ -81,6 +82,7 @@ class Record:
     group: int | None = None
     wing: int = -1
     reused: int = 0  # the patches taken from the cache
+    matrices: list[F8] | None = None  # A_j of a structural trend, one per patch (None — global A or none)
 
 
 class PatchCache:
@@ -177,20 +179,27 @@ class CachingSolver:
 
     # -- the hashes ------------------------------------------------------------------------------------------------
 
-    def _hashes(self, points: Any, values: Any, patches: PatchSet, eta0: float) -> list[bytes]:
-        salt = salt_of(self.spec, eta0, patches.matrix)
-        return [bytes.fromhex(h) for h in hash_patches(points, patches, values=values, salt=salt)]
+    def _hashes(self, points: Any, values: Any, patches: PatchSet, eta0: float,
+                matrices: Sequence[Any] | None = None) -> list[bytes]:  # fmt: skip
+        from .anisotropy import patch_hashes
 
-    def eta_of(self, group: Group, patches: PatchSet, xyz: Any, f: Any, hb: float) -> list[float]:
+        salt = salt_of(self.spec, eta0, patches.matrix)
+        hexes = hash_patches(points, patches, values=values, salt=salt)
+        if matrices is not None:
+            hexes = list(patch_hashes(hexes, matrices))
+        return [bytes.fromhex(h) for h in hexes]
+
+    def eta_of(self, group: Group, patches: PatchSet, xyz: Any, f: Any, hb: float, *,
+               matrices: Sequence[Any] | None = None) -> list[float]:  # fmt: skip
         """η of the patches in the mode «Авто» (Д-25): measured for the patches that are not in the cache, taken from
         it for the others. Called by `fit_group` right before the solver: the hashes are kept for it."""
         from . import smoothing
 
         eta0 = eta_of_s(self.spec.kernel, self.spec.s_of(group), hb)
-        hashes = self._hashes(xyz, f, patches, eta0)
+        hashes = self._hashes(xyz, f, patches, eta0, matrices)
         miss = [j for j, h in enumerate(hashes) if self.cache.get(h) is None]
         got = smoothing.eta_for_patches(xyz, f, patches, self.spec, group=group, h_bar=hb, only=miss,
-                                        threads=self.threads)  # fmt: skip
+                                        matrices=matrices, threads=self.threads)  # fmt: skip
         out = [float(v) for v in got]
         for j, h in enumerate(hashes):
             hit = self.cache.get(h)
@@ -204,8 +213,9 @@ class CachingSolver:
     def __call__(
         self, points: Any, values: Any, patches: PatchSet, *, kind: str | int = "linear",
         radius: float | Sequence[float] | None = None, eta: float | Sequence[float] = 0.0, threads: int = 1,
-        tick: Tick | None = None, sources: Any = None, **rest: Any,
+        tick: Tick | None = None, sources: Any = None, matrices: Sequence[Any] | None = None, **rest: Any,
     ) -> list[PatchSolution]:  # fmt: skip
+        from .anisotropy import stretch_of
         from .solve import solve_patches
         from .system import PatchSolution, RbfSingular
 
@@ -215,7 +225,7 @@ class CachingSolver:
         else:
             if not isinstance(eta, (int, float, np.floating, np.integer)):
                 raise ValueError("the patches of a per-patch η must be prepared by `eta_of`")
-            hashes = self._hashes(points, values, patches, float(eta))
+            hashes = self._hashes(points, values, patches, float(eta), matrices)
         self._stash = None
         etas, radii = _per_patch(eta, m), _per_patch(radius, m)
         pts = np.asarray(points, dtype=np.float64)
@@ -228,10 +238,16 @@ class CachingSolver:
                 miss.append(j)
                 continue
             lam, c, eta_j, cond = hit
-            out[j] = PatchSolution(points=np.array(space[patches.patch(j)], dtype=np.float64, order="C", copy=True),
-                                   lam=lam.copy(), poly=c.copy(), centre=np.array(patches.centers[j], dtype=np.float64),
-                                   scale=float(patches.radii[j]), kind=str(kind), radius=radii[j], eta=eta_j,
-                                   cond1=cond)  # fmt: skip
+            x = space[patches.patch(j)]
+            centre, scale = patches.centers[j], float(patches.radii[j])
+            a = None if matrices is None else matrices[j]
+            if a is not None:  # the frame of `solve_patches`: the points and the centre turned, the ball's radius
+                x = transform_points(x, a)
+                centre = transform_points(np.asarray(centre, dtype=np.float64).reshape(1, 3), a)[0]
+                scale *= stretch_of(a)
+            out[j] = PatchSolution(points=np.array(x, dtype=np.float64, order="C", copy=True), lam=lam.copy(),
+                                   poly=c.copy(), centre=np.array(centre, dtype=np.float64), scale=scale,
+                                   kind=str(kind), radius=radii[j], eta=eta_j, cond1=cond)  # fmt: skip
             if tick is not None:
                 tick()
         if miss:
@@ -239,15 +255,16 @@ class CachingSolver:
             try:
                 got = solve_patches(points, values, sub, kind=kind,
                                     radius=None if radius is None else [float(radii[j] or 0.0) for j in miss],
-                                    eta=[etas[j] or 0.0 for j in miss], threads=threads, tick=tick, sources=sources)
+                                    eta=[etas[j] or 0.0 for j in miss], threads=threads, tick=tick, sources=sources,
+                                    matrices=None if matrices is None else [matrices[j] for j in miss])
             except RbfSingular as err:
                 raise _renumbered(err, miss) from None
             for j, s in zip(miss, got, strict=True):
                 out[j] = s
         done = [s for s in out if s is not None]
         assert len(done) == m
-        self.records.append(Record(patches, hashes, done, int(pts.shape[0]), None, -1,
-                                   m - len(miss)))  # fmt: skip
+        mats = None if matrices is None else [np.array(a, dtype=np.float64) for a in matrices]
+        self.records.append(Record(patches, hashes, done, int(pts.shape[0]), None, -1, m - len(miss), mats))
         return done
 
     def last(self) -> Record | None:

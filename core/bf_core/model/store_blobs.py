@@ -48,6 +48,10 @@ POINT_COLUMNS: dict[str, str] = {"x": "<f8", "y": "<f8", "z": "<f8", "f": "<f8",
 PATCH_COLUMNS: dict[str, str] = {"group": "<i4", "wing": "i1", "j": "<i4", "cx": "<f8", "cy": "<f8", "cz": "<f8",
                                  "r": "<f8", "n": "<i4", "offset": "<i8", "hash": "S32", "eta": "<f8",
                                  "cond": "<f8"}  # fmt: skip
+#: the optional columns of `implicit_patches` of a model with a structural trend (19.12б, 19.9): A_j of the patch,
+#: row-major (`a<i><k>` = A_j[i, k], float64). A model with a global A or none does not have them (the file is as it
+#: was); `read_patches` takes the file with them or without; `load_fields` gives `GroupData.matrices` (None — none).
+MATRIX_COLUMNS: dict[str, str] = {f"a{i}{k}": "<f8" for i in range(3) for k in range(3)}
 
 
 def _broken(what: str) -> Any:
@@ -106,8 +110,10 @@ def stage_points(store: BlobStore, cols: Mapping[str, Any], *, groups: Sequence[
 
 def stage_patches(store: BlobStore, cols: Mapping[str, Any]) -> Staged:
     """`implicit_patches`: a row per patch — the centre and the radius in the space of the octree, the number of
-    points, the offset of its λ in the solution, the hash (32 bytes), η and the condition number."""
-    return _stage_parquet(store, _table(_arrays(cols, PATCH_COLUMNS, "implicit_patches"), None))
+    points, the offset of its λ in the solution, the hash (32 bytes), η and the condition number. A structural trend
+    adds `MATRIX_COLUMNS` (A_j of every patch): all nine or none."""
+    spec = {**PATCH_COLUMNS, **MATRIX_COLUMNS} if any(k in cols for k in MATRIX_COLUMNS) else PATCH_COLUMNS
+    return _stage_parquet(store, _table(_arrays(cols, spec, "implicit_patches"), None))
 
 
 def stage_solution(store: BlobStore, solution: Any) -> Staged:
@@ -183,9 +189,11 @@ def read_points(store: BlobStore, sha: str) -> tuple[dict[str, Any], dict[str, A
 
 def read_patches(store: BlobStore, sha: str) -> dict[str, Any]:
     cols, _meta = _read_parquet(store, sha)
-    if set(cols) != set(PATCH_COLUMNS):
+    wide = set(PATCH_COLUMNS) | set(MATRIX_COLUMNS)
+    if set(cols) not in (set(PATCH_COLUMNS), wide):
         raise _broken("участки")
-    return {k: cols[k].astype(PATCH_COLUMNS[k], copy=False) for k in PATCH_COLUMNS}
+    kinds = {**PATCH_COLUMNS, **MATRIX_COLUMNS}
+    return {k: cols[k].astype(kinds[k], copy=False) for k in kinds if k in cols}
 
 
 def read_solution(store: BlobStore, sha: str) -> Any:
@@ -210,6 +218,7 @@ class GroupData:
     patches: dict[str, np.ndarray]  # the columns of `implicit_patches`, by `j`
     lam: list[np.ndarray]  # λ of each patch (views of the solution)
     c: np.ndarray  # f8[patches, 4]: c0, cx, cy, cz of each patch
+    matrices: np.ndarray | None = None  # f8[patches, 3, 3]: A_j of a structural trend by `j` (None — no per-patch A)
 
 
 def load_fields(conn: sa.Connection, store: BlobStore, model_id: int) -> dict[tuple[int, int | None], GroupData]:
@@ -237,7 +246,10 @@ def load_fields(conn: sa.Connection, store: BlobStore, model_id: int) -> dict[tu
         lam = [solution[int(off[i]) : int(off[i] + n[i])] for i in rows]
         tails = [solution[int(off[i] + n[i]) : int(off[i] + n[i]) + 4] for i in rows]
         c = np.array(tails, dtype="<f8").reshape(-1, 4)
+        mats = None
+        if all(k in patches for k in MATRIX_COLUMNS):
+            mats = np.stack([patches[k][rows] for k in MATRIX_COLUMNS], axis=1).reshape(-1, 3, 3)
         out[(g, None if w < 0 else w)] = GroupData(
             g, None if w < 0 else w, {k: v[pm] for k, v in points.items()},
-            {k: v[rows] for k, v in patches.items()}, lam, c)  # fmt: skip
+            {k: v[rows] for k, v in patches.items()}, lam, c, mats)  # fmt: skip
     return out

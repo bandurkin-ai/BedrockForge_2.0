@@ -62,7 +62,7 @@ def _trend(conn: sa.Connection, trend_id: int) -> None:
     from bf_core.geostat import trend_store as ts
 
     try:
-        ts.get(conn, trend_id)
+        ts.meta_of(conn, trend_id)  # a trend of any kind: a structural one is a trend of the model since 19.12б
     except ApiError as e:
         raise refuse("trend_not_found", param="trend_id") from e
 
@@ -205,6 +205,28 @@ def _is_dtm(conn: sa.Connection, wf_id: Any) -> bool:
     return conn.execute(sa.select(wireframes.c.dtm).where(wireframes.c.object_id == wf_id)).scalar() is not None
 
 
+def _trend_sources(conn: sa.Connection, trend_id: int | None) -> list[tuple[str, Any]]:
+    """What a structural trend reads (19.12б: its axes are those of the model, the model is stale when they change):
+    the set and the table of the measurements, or the supporting wireframe. A global trend and a source that is gone
+    read nothing here (the trend itself is an input: `prepare` and `freshness` name what is lost)."""
+    if trend_id is None:
+        return []
+    from bf_core.geostat import trend_store as ts
+    from bf_core.stats import source
+
+    try:
+        _name, meta = ts.meta_of(conn, int(trend_id))
+        src = meta.get("source") if meta.get("kind") == "structural" else None
+        if not isinstance(src, Mapping):
+            return []
+        if src.get("type") == "mesh":
+            return [(WIREFRAME, src.get("wireframe_id"))]
+        set_id = int(src["set_id"])
+        return [(SET, set_id), (TABLE, source.find_table(conn, set_id, src.get("table")).id)]
+    except (ApiError, KeyError, TypeError, ValueError):
+        return []
+
+
 def inputs_of(conn: sa.Connection, spec: ModelSpec) -> list[dict[str, Any]]:
     """`meta.inputs` of a model (e19-api §2.3), in the order of its table: the set (trajectories), the table of the
     codes and the tables of the shells, the composites of the shells, the layers of the manual data, the trend, the
@@ -239,6 +261,8 @@ def inputs_of(conn: sa.Connection, spec: ModelSpec) -> list[dict[str, Any]]:
     for m in spec.manual:
         add(LAYER, m.layer_id)
     add(TREND, spec.trend_id)
+    for kind, ident in _trend_sources(conn, spec.trend_id):
+        add(kind, ident)
     add(WIREFRAME, spec.boundary.wireframe_id)
     for g in spec.groups:
         if g.type == "expand":

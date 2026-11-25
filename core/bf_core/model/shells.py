@@ -50,7 +50,7 @@ from numpy.typing import NDArray
 from bf_core.api.errors import ApiError
 
 from .bodies import BodiesResult, Output, _boundary, _clip_solid, _n, _solids_error, _sub
-from .bodies_parts import EtaOf, Fit, Solver, Tile, fit_group
+from .bodies_parts import EtaOf, Fit, MatricesOf, Solver, Tile, fit_group
 from .data import indicator
 from .shells_parts import Nesting, ThresholdField, shell_levels, shell_surface, unit_of, with_values
 from .spec_parts import refuse
@@ -92,6 +92,7 @@ def build_shells(
     *,
     clip: Any = None,
     matrix: F8 | None = None,
+    matrices_of: MatricesOf | None = None,
     eta_of: EtaOf | None = None,
     solver: Solver | None = None,
     brick_cache: Callable[[Group, int], BrickCache | None] | None = None,
@@ -100,8 +101,9 @@ def build_shells(
     surfaces: bool = False,
 ) -> ShellsResult:
     """The bodies of the shells of `group` (see the module text); `matrix` — the global anisotropy A (19.9, None —
-    identity), `eta_of` — η of the automatic smoothing (19.10), `solver` — the solver of the patches (19.12 puts the
-    cache of patches there), `clip` — the wireframe or the DTM of `post.clip`."""
+    identity), `matrices_of` — A_j of a structural trend (`fit_group`), `eta_of` — η of the automatic smoothing (19.10),
+    `solver` — the solver of the patches (19.12 puts the cache of patches there), `clip` — the wireframe or the DTM
+    of `post.clip`."""
     from bf_core.geo import solids
 
     if group.type != "shell":
@@ -172,14 +174,14 @@ def build_shells(
         if is_indicator:
             values = indicator(data.f, level)
             fresh = fit = fit_group(spec, group, with_values(data, values), extent=(lo, hi), matrix=matrix,
-                                    eta_of=eta_of, solver=solver, threads=threads, tick=tick, span=fit_span,
-                                    need_contacts=False)  # fmt: skip
+                                    matrices_of=matrices_of, eta_of=eta_of, solver=solver, threads=threads,
+                                    tick=tick, span=fit_span, need_contacts=False)  # fmt: skip
             unit, shift = unit_of(values), p_level
         else:
             if numeric_fit is None:
-                fresh = numeric_fit = fit_group(spec, group, data, extent=(lo, hi), matrix=matrix, eta_of=eta_of,
-                                                solver=solver, threads=threads, tick=tick, span=fit_span,
-                                                need_contacts=False)  # fmt: skip
+                fresh = numeric_fit = fit_group(
+                    spec, group, data, extent=(lo, hi), matrix=matrix, matrices_of=matrices_of, eta_of=eta_of,
+                    solver=solver, threads=threads, tick=tick, span=fit_span, need_contacts=False)  # fmt: skip
                 numeric_unit = unit_of(data.f)
             fit, unit, shift = numeric_fit, numeric_unit, level
         result.fits_by_threshold[(gid, k)] = fit

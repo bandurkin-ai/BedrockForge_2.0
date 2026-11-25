@@ -49,8 +49,11 @@ F8 = NDArray[np.float64]
 Tick = Callable[[float, str], None]
 #: the solver of the patches (default: `solve.solve_patches`; the seam of the cache of 19.12)
 Solver = Callable[..., "list[PatchSolution]"]
-#: η of auto smoothing (Д-25, 19.10): (group, patches, xyz, f, h_bar) -> one η or one per patch
+#: η of auto smoothing (Д-25, 19.10): (group, patches, xyz, f, h_bar[, matrices=A_j]) -> one η or one per patch
 EtaOf = Callable[..., "float | Sequence[float]"]
+#: A_j of the patches of a structural trend (19.9, Д-15): (centres of the patches, label of the group for the journal,
+#: tick(fraction) | None) -> f8[m, 3, 3]; `job_stages.Structural`
+MatricesOf = Callable[..., Any]
 
 RESIDUAL_SAMPLE = 200_000  # the data points the residual of the fit is measured at (a regular sample above this)
 SOURCES_SHOWN = 20  # the names of data sources in a `rbf_singular` (контракт §7)
@@ -116,6 +119,7 @@ def fit_group(
     *,
     extent: tuple[F8, F8],
     matrix: F8 | None = None,
+    matrices_of: MatricesOf | None = None,
     eta_of: EtaOf | None = None,
     solver: Solver | None = None,
     threads: int = 1,
@@ -124,7 +128,10 @@ def fit_group(
     need_contacts: bool = True,
 ) -> Fit:
     """The points of the group → patches → η → the solution of every patch → the field. `extent` is the box of the
-    model (the octree covers it +10 %); `matrix` is the global anisotropy A (None — identity). 422 `no_contacts`
+    model (the octree covers it +10 %); `matrix` is the global anisotropy A (None — identity); `matrices_of` — the
+    structural one (19.9: the octree and W stay in the project coordinates, every patch has its A_j at its centre; the
+    same list goes to the solver, to η, to the field and to the hashes of the cache; h̄ is that of the project
+    coordinates), not together with `matrix`. 422 `bad_anisotropy` {patches}, `no_contacts`
     (a domain needs a change of sign among its values; a shell, `need_contacts=False`, only some data),
     `rbf_singular` {group, patch, sources, points} and the errors of `octree`; `tick(fraction, text)` inside `span`."""
     from .evaluate import PatchField
@@ -138,6 +145,9 @@ def fit_group(
     if n == 0 or (need_contacts and not (bool((pts.f < 0.0).any()) and bool((pts.f > 0.0).any()))):
         raise refuse("no_contacts", f"В данных группы «{group.name}» нет контактов: поверхность не определена.",
                      group=group.id)  # fmt: skip
+    if matrix is not None and matrices_of is not None:
+        raise ApiError(422, "bad_anisotropy", "Задана и общая, и структурная анизотропия.",
+                       "Это ошибка вызова: выберите одну из них.", {"param": "anisotropy"})  # fmt: skip
     beat(0.0, f"Участки: «{group.name}», октодерево")
     started = time.perf_counter()
     pou = spec.pou
@@ -145,6 +155,12 @@ def fit_group(
         pts.xyz, n_patch=pou.n_patch, n_min=pou.n_min, delta=pou.delta, extent=extent, matrix=matrix,
         tick=lambda: beat(0.0, f"Участки: «{group.name}»"),
     )  # fmt: skip
+    mats: list[F8] | None = None
+    if matrices_of is not None:
+        axes = f"Участки: «{group.name}», оси структурного тренда"
+        beat(0.02, axes)
+        mats = list(matrices_of(patches.centers, f"Группа «{group.name}»", lambda s: beat(0.02 + 0.02 * s, axes)))
+    extra: dict[str, Any] = {} if mats is None else {"matrices": mats}
     t_patches = time.perf_counter() - started
     y = pts.xyz if matrix is None else transform_points(pts.xyz, matrix)
     hb = h_bar(y)
@@ -152,7 +168,7 @@ def fit_group(
         if eta_of is None:
             raise ApiError(422, "bad_param", "Автоматическое сглаживание (Д-25) здесь не подключено.",
                            "Выберите ручное сглаживание.", {"param": "smoothing.mode"})  # fmt: skip
-        eta_value: float | Sequence[float] = eta_of(group, patches, pts.xyz, pts.f, hb)
+        eta_value: float | Sequence[float] = eta_of(group, patches, pts.xyz, pts.f, hb, **extra)
     else:
         eta_value = eta_of_s(spec.kernel, spec.s_of(group), hb)
     radius: float | list[float] | None = None
@@ -169,11 +185,11 @@ def fit_group(
     try:
         solutions = (solver or solve_patches)(pts.xyz, pts.f, patches, kind=spec.kernel, radius=radius,
                                               eta=eta_value, threads=threads, tick=solved_one,
-                                              sources=np.arange(n))  # fmt: skip
+                                              sources=np.arange(n), **extra)  # fmt: skip
     except RbfSingular as err:
         raise _singular(err, group, pts, n) from None
     t_solve = time.perf_counter() - started
-    pf = PatchField(patches, solutions, threads=threads)
+    pf = PatchField(patches, solutions, matrices=mats, threads=threads)
     sample = np.arange(n) if n <= RESIDUAL_SAMPLE else np.linspace(0, n - 1, RESIDUAL_SAMPLE).astype(np.int64)
     residual = float(np.nanmax(np.abs(pf(pts.xyz[sample], threads=threads) - pts.f[sample]))) if n else 0.0
     etas = [float(s.eta) for s in solutions]

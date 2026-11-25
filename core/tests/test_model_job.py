@@ -410,17 +410,17 @@ def test_an_expansion_and_a_vein_are_built_in_their_order(world: World) -> None:
     assert any("Жила" in line or "жила" in line for line in outv["journal"])
 
 
-def test_a_structural_trend_is_refused_until_the_fit_takes_the_matrices(
-    world: World, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from bf_core.model import anisotropy, job_stages
+def test_a_structural_trend_has_no_global_matrix_and_is_not_refused(world: World) -> None:
+    """19.12б: the matrices of the patches go to the solver and to the field (`test_model_job_structural.py`); the
+    model has no global A for such a trend and says which trend it is."""
+    from bf_core.model import job_stages
 
     w = world
     m = make(w, "Тренд", groups_of("SS"))
-    monkeypatch.setattr(anisotropy, "kind_of", lambda *_a, **_k: anisotropy.STRUCTURAL)
-    with dialect.read_tx(w.engine) as conn, pytest.raises(ApiError) as e:
-        job_stages.global_matrix(conn, sb.load_spec(meta_of(w, m["id"])))
-    assert e.value.status == 422 and e.value.code == "not_implemented" and e.value.hint
+    spec = sb.load_spec(meta_of(w, m["id"]))
+    with dialect.read_tx(w.engine) as conn:
+        assert job_stages.anisotropy_of(conn, spec) == (None, None)  # no trend, no anisotropy: nothing to turn
+        assert job_stages.global_matrix(conn, spec) is None
 
 
 # --- the grid the bricks are keyed by, the files for .bfggis, the handlers ------------------------------------------
