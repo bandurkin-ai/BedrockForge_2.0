@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import math
 import threading
-from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any
 
@@ -47,6 +46,7 @@ from bf_core.storage.blobs import BlobStore
 
 from . import inspect_spot as isp
 from . import kernel as kn
+from . import memory as mem
 from . import samples as sm
 from . import store_base as sb
 from .inspect_spot import Spot, domain_of, locate
@@ -70,8 +70,7 @@ REASON_LABELS = {
     "merged": "совпадающая точка (усреднена)",
 }
 CACHE_KEEP = 4  # compiled rows kept per process (the samples of a row are the heavy part)
-_CACHE: OrderedDict[tuple[Any, ...], Entry] = OrderedDict()
-_LOCK = threading.Lock()  # the cache
+_CACHE = mem.ByteLru("inspect", CACHE_KEEP)  # also within the budget of all the caches of the estimation (`memory`)
 _BUILD = threading.Lock()  # the builds of the rows (one at a time: a miss is the slow path)
 
 
@@ -137,8 +136,7 @@ class Entry:
 
 def forget() -> None:
     """Empties the cache of the compiled rows (tests; a project that is closed)."""
-    with _LOCK:
-        _CACHE.clear()
+    _CACHE.clear()
     isp.forget()
 
 
@@ -160,21 +158,15 @@ def _entry(project: Any, store: BlobStore, model: Model, row: Any, fps: tuple[An
     org = _origin(meta)
     key = (project.uid, int(row.id), int(row.version), model.id, model.version,
            None if org is None else tuple(float(v) for v in org), fps)  # fmt: skip
-    with _LOCK:
-        got = _CACHE.get(key)
-        if got is not None:
-            _CACHE.move_to_end(key)
-            return got
+    got = _CACHE.get(key)
+    if got is not None:
+        return got  # type: ignore[no-any-return]
     with _BUILD:  # one build at a time: the samples of a row are the heavy part; a hit does not wait for it
-        with _LOCK:
-            got = _CACHE.get(key)
+        got = _CACHE.get(key)
         if got is None:
             got = _build(project, store, model, meta)
-            with _LOCK:
-                _CACHE[key] = got
-                while len(_CACHE) > CACHE_KEEP:
-                    _CACHE.popitem(last=False)
-        return got
+            _CACHE.put(key, got, mem.row_bytes(got.rk))
+        return got  # type: ignore[no-any-return]
 
 
 def _build(project: Any, store: BlobStore, model: Model, meta: dict[str, Any]) -> Entry:
@@ -326,13 +318,23 @@ def one_row(model: Model, spot: Spot, row: Any, entry: Entry, fresh: dict[str, A
 # --- the rows of the plan the block can belong to ----------------------------------------------------------------
 
 
-def _wrote(model_fields: dict[str, dict[str, Any]], row: Any, meta: dict[str, Any]) -> bool:
-    """The row's fields (`<prefix>STATUS`) are in the model and were written by this row (`source.params.
-    estimation_ids`, when the field has a source)."""
+def _wrote(conn: sa.Connection, model: Model, model_fields: dict[str, dict[str, Any]], row: Any,
+           meta: dict[str, Any]) -> bool:  # fmt: skip
+    """The row's fields (`<prefix>STATUS`) are in the model and were written by this row: the owner of the field in the
+    graph (it follows the ids of a `.bfggis` import, `source.params.estimation_ids` do not — the same function the
+    rebuild uses); a field the graph knows no owner of is judged by `source.params`, when it has them."""
+    from bf_core.lineage import Node
+
+    from .store import field_owner
+
     prefix = str((meta.get("outputs") or {}).get("prefix") or "")
-    f = model_fields.get((prefix + "STATUS").casefold())
+    name = (prefix + "STATUS").casefold()
+    f = model_fields.get(name)
     if f is None:
         return False
+    owner = field_owner(conn, Node("bm_field", int(model.id), name))
+    if owner is not None:
+        return int(owner.id) == int(row.id)
     ids = ((f.get("source") or {}).get("params") or {}).get("estimation_ids")
     return not isinstance(ids, list) or int(row.id) in [int(i) for i in ids]
 
@@ -347,7 +349,8 @@ def _rows(conn: sa.Connection, model: Model, params_id: int | None) -> list[Any]
     have = _fields_of(model)
     rows = conn.execute(sa.select(objects).where(objects.c.kind == sb.KIND)
                         .order_by(objects.c.name_key, objects.c.id)).all()  # fmt: skip
-    got = [r for r in rows if (r.meta or {}).get("model_id") == model.id and _wrote(have, r, dict(r.meta or {}))]
+    got = [r for r in rows
+           if (r.meta or {}).get("model_id") == model.id and _wrote(conn, model, have, r, dict(r.meta or {}))]
     if not got:
         raise ApiError(409, "not_estimated", f"В блочной модели «{model.name}» нет полей оценки.",
                        "Запустите оценку по параметрам оценки этой модели.", {"param": "model_id"})  # fmt: skip
