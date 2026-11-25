@@ -21,6 +21,15 @@ export function resultLine(r: BuildResult): string {
   return `${parts.join(", ")}${resid}${reused}`;
 }
 
+/** What the graph says of a model that is not current (`stale_reason` — «изменена таблица «Литология»», «изменён тренд «Складка»»); null — current. */
+export function staleLine(x: { stale: boolean; stale_reason: string | null; source_lost: boolean } | null | undefined): string | null {
+  if (!x) return null;
+  const why = x.stale_reason ? `: ${x.stale_reason}` : "";
+  if (x.source_lost) return `Источник данных модели удалён${why === ": источник удалён" ? "" : why}. Выберите другие данные в мастере (шаг «Домены литологии») и обновите модель.`;
+  if (x.stale) return `Модель устарела${why}. «Обновить» пересчитает только изменённые участки.`;
+  return null;
+}
+
 /** «поверхностей 3, тел 4» of the outputs. */
 export function outputsLine(r: BuildResult): string {
   const surfaces = r.outputs.filter((o) => o.kind === "surface").length;
@@ -46,6 +55,7 @@ export async function runBuild(modelId: number, mode?: "build" | "update"): Prom
   if (info?.state === "building") throw refusal("model_building", "Модель сейчас строится.", "Дождитесь окончания задания или отмените его во вкладке «Задания».");
   const name = info?.name ?? row?.name ?? `№${modelId}`;
   const built = mode ? mode === "update" : !!row?.stats;
+  const was = info?.stale ? `Модель была устаревшей${info.stale_reason ? ` (${info.stale_reason})` : ""}. ` : "";
   const uid = projectStore.get().current?.uid ?? null;
   let started;
   try {
@@ -76,5 +86,5 @@ export async function runBuild(modelId: number, mode?: "build" | "update"): Prom
     const e = r.error;
     throw refusal(e?.code ?? "iso_check", e?.message ?? "Поверхность не прошла проверки.", e?.hint ?? "Уменьшите шаг h или проверьте данные группы.");
   }
-  return `Модель «${name}» ${built ? "обновлена" : "построена"} (версия ${r.version}): ${outputsLine(r)}; ${resultLine(r)}.`;
+  return `${was}Модель «${name}» ${built ? "обновлена" : "построена"} (версия ${r.version}): ${outputsLine(r)}; ${resultLine(r)}.`;
 }

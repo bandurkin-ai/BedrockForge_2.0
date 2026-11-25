@@ -6,7 +6,7 @@
  * - `implicit.save` — the form of the wizard is written (the buttons of the wizard run this command: the registry, the log, the assistant);
  * - `implicit.update` — «Построить» / «Обновить» (`run.ts`).
  * The list of the models follows the project: read when it opens and on `implicit.changed`; another project — a clean wizard. The
- * rest of the commands says «появится на этапе» until its window (19.24–19.26). One app at a time (the tests create several).
+ * groups, «В каркас» and «Удалить» (19.24, `groupCommands.ts`) are bound here too; the rest says «появится на этапе» until its window (19.25–19.26). One app at a time (the tests create several).
  */
 import { createElement, type ReactNode } from "react";
 import type { App } from "../../shell/app";
@@ -17,9 +17,15 @@ import { focusWindow, openWindow, updateWindow, windowStore, type FloatWin } fro
 import { onCoreEvent } from "../jobs/state";
 import { projectStore } from "../projects/state";
 import { addGroup, createModel, refusalOf } from "./api";
+import { bindGroupCommands } from "./groupCommands";
+import { forgetGroups, forgetMissing, isGroupWindow } from "./groupKinds";
 import { bodyOf, boundaryGiven, EMPTY_FORM, formOfArgs, formOfMeta, freeName } from "./form";
 import { runBuild } from "./run";
 import { clearImplicit, implicitStore, isImplicitEvent, loadDetails, loadRows, modelById, pickModel } from "./state";
+import { ExpandForm } from "./ExpandForm";
+import { ShellsForm } from "./ShellsForm";
+import { ToWireframe } from "./ToWireframe";
+import { VeinForm } from "./VeinForm";
 import { Wizard } from "./Wizard";
 import { editTitle, ensureDefaults, forgetDefaults, resetWizard, saveWizard, startEditModel, startNew, TITLE, WIZARD_WINDOW, wizardStore } from "./wizardState";
 import { isIssue } from "../estimation/formBase";
@@ -165,6 +171,7 @@ export function bindImplicit(app: App): void {
   app.registry.bind("implicit.domains", noted(app, (a, s) => runDomains(app, a, s)), needWritable(app));
   app.registry.bind("implicit.save", noted(app, (a) => runSave(a)), needWritable(app));
   app.registry.bind("implicit.update", noted(app, (a) => runUpdate(app, a)), needWritable(app));
+  bindGroupCommands(app); // the groups (19.24): shells, vein, expand; «В каркас»; «Удалить»
   let uid: string | null = projectStore.get().current?.uid ?? null;
   if (uid) void loadRows();
   unbind.push(
@@ -174,6 +181,7 @@ export function bindImplicit(app: App): void {
       if (cur === uid) return;
       uid = cur;
       clearImplicit();
+      forgetGroups();
       resetWizard();
       forgetDefaults();
       if (cur) void loadRows();
@@ -183,6 +191,7 @@ export function bindImplicit(app: App): void {
     }),
     // a model that is gone leaves the wizard (its form stays as a new one: nothing to overwrite)
     implicitStore.subscribe(() => {
+      forgetMissing();
       const e = wizardStore.get().editing;
       if (implicitStore.get().loaded && e && !modelById(e.id)) wizardStore.set({ editing: null, saved: null, dirty: true });
     }),
@@ -191,6 +200,17 @@ export function bindImplicit(app: App): void {
 
 /** The windows for the shell's window layer (`shell/Shell.tsx`); null — not a window of the implicit modelling. */
 export function renderImplicitWindow(w: FloatWin): ReactNode | null {
-  return w.kind === WIZARD_WINDOW ? createElement(Wizard, { winId: w.id }) : null;
+  if (w.kind === WIZARD_WINDOW) return createElement(Wizard, { winId: w.id });
+  if (!isGroupWindow(w)) return null;
+  switch (w.kind) {
+    case "implicit-shells":
+      return createElement(ShellsForm, { winId: w.id });
+    case "implicit-vein":
+      return createElement(VeinForm, { winId: w.id });
+    case "implicit-expand":
+      return createElement(ExpandForm, { winId: w.id });
+    default:
+      return createElement(ToWireframe, { winId: w.id });
+  }
 }
 
