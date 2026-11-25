@@ -43,9 +43,9 @@ describe("rows and menus of «Блочные модели»", () => {
     expect(blockKey(7)).toBe("bm:7");
   });
 
-  it("the menu: Свойства, Показать в 3D, Скрыть в 3D, Экспорт OMF…, Экспорт…, Переименовать…, Удалить…", () => {
+  it("the menu: Свойства, Показать в 3D, Скрыть в 3D, Настройки…, Экспорт OMF…, Экспорт…, Переименовать…, Удалить…", () => {
     const menu = blockMenu({ id: 7 });
-    expect(labels(menu)).toEqual(["Свойства", "Показать в 3D", "Скрыть в 3D", "Экспорт OMF…", "Экспорт…", "Переименовать…", "Удалить…"]);
+    expect(labels(menu)).toEqual(["Свойства", "Показать в 3D", "Скрыть в 3D", "Настройки…", "Экспорт OMF…", "Экспорт…", "Переименовать…", "Удалить…"]);
     expect(menu.find((a) => a.label === "Показать в 3D")).toMatchObject({ command: "blocks.show", args: { model_id: 7 } });
     expect(menu.find((a) => a.label === "Скрыть в 3D")).toMatchObject({ command: "blocks.show", args: { model_id: 7, visible: false } });
     expect(menu.find((a) => a.label === "Экспорт OMF…")).toMatchObject({ command: "omf.export", args: { dataset_ids: "7" } });

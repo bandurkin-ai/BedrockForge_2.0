@@ -76,7 +76,7 @@ beforeEach(() => {
   viewStore.set({ [BLOCK_STYLES_KEY]: undefined });
   app = createApp({ persist: false });
   app.store.set({ projectName: "Проект", projectReadOnly: false, selected: null });
-  app.registry.register(commands);
+  if (!app.registry.get("blocks.settings")) app.registry.register(commands); // the catalog names modules/blocks/window now
   bindModelWindow(app);
   blocksStore.set({ list: [TURNED, PLAIN], loaded: true, error: null, details: { [IDS.turned]: T, [IDS.plain]: P }, detailErrors: {} });
   filtersStore.set({ rows: [], loaded: true, selected: null, edit: null });

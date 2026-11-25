@@ -28,6 +28,7 @@ import { bindFilters } from "../modules/blocks/filters/bind";
 import { bindReport } from "../modules/blocks/report/bind";
 import { bindBuild } from "../modules/blocks/build/bind";
 import { bindExport } from "../modules/blocks/export/bind";
+import { bindModelWindow } from "../modules/blocks/window/bind";
 import { bindOmf } from "../modules/omf/bind";
 import { bindRasters } from "../modules/rasters/bind";
 import { bindStripLog } from "../charts/striplog/bind";
@@ -170,6 +171,7 @@ export function createApp(opts: { persist?: boolean } = {}): App {
   bindReport(app);
   bindBuild(app);
   bindExport(app);
+  bindModelWindow(app);
   bindOmf(app);
   bindLines(app);
   bindRasters(app);
