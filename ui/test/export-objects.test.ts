@@ -39,7 +39,8 @@ const FORMATS = {
     { kind: "drillhole_set", count: 1, default: "csv", formats: [{ id: "csv", title: "CSV", ext: ".csv" }, { id: "xlsx", title: "XLSX", ext: ".xlsx" }, { id: "dat", title: "DAT", ext: ".dat" }] },
     { kind: "wireframe", count: 2, default: "dxf", formats: [{ id: "dxf", title: "DXF", ext: ".dxf" }, { id: "dwg", title: "DWG", ext: ".dwg", reason: "Не найден ODA File Converter" }, { format: "tridb", title: "Micromine TRIDB", ext: ".tridb" }] },
     { kind: "dtm", count: 0, default: "dxf", formats: [{ id: "dxf", title: "DXF", ext: ".dxf" }] },
-    { kind: "block_model", count: 1, default: "omf", formats: [{ id: "omf", title: "OMF", why: "Писатель OMF — подшаг 11.4" }, { id: "dat", title: "DAT", reason: "Экспорт блочных моделей в DAT — этап Э17" }] },
+    // Э17 17.16: the whole model in OMF, DAT, CSV and Parquet (the shape of `exporting/registry.py::formats`)
+    { kind: "block_model", count: 1, default: "omf", formats: [{ format: "omf", title: "OMF", available: true }, { format: "dat", title: "Micromine DAT", available: true }, { format: "csv", title: "CSV", available: true }, { format: "parquet", title: "Parquet", available: true }] },
     { kind: "raster", count: 1, default_format: "geotiff", formats: [{ id: "source", title: "Исходный файл" }, { id: "geotiff", title: "GeoTIFF", ext: ".tif" }] },
     { kind: "raster", count: 9, formats: [] }, // a repeated type is ignored
     { count: 4 }, // no kind
@@ -73,22 +74,27 @@ describe("the table «тип → формат» of the core", () => {
   it("a type without objects or without a format the core writes is off with its reason", () => {
     const by = (k: string) => info.types.find((t) => t.kind === k)!;
     expect(typeReason(by("dtm"))).toBe("В проекте нет объектов этого типа");
-    expect(typeReason(by("block_model"))).toBe("Писатель OMF — подшаг 11.4");
+    expect(typeReason(by("block_model"))).toBeNull(); // DAT, CSV, Parquet and OMF are written since Э17
+    expect(by("block_model").formats.map((f) => [f.id, f.reason])).toEqual([["omf", null], ["dat", null], ["csv", null], ["parquet", null]]);
     expect(typeReason(by("wireframe"))).toBeNull();
     expect(fitFormat(by("wireframe"), "dwg")).toBe("dxf"); // DWG without ODA: the default
     expect(fitFormat(by("wireframe"), "tridb")).toBe("tridb");
-    expect(fitFormat(by("block_model"), "omf")).toBeNull();
+    expect(fitFormat(by("block_model"), "omf")).toBe("omf");
+    expect(fitFormat(by("block_model"), "parquet")).toBe("parquet");
+    expect(fitFormat(by("block_model"), "gpx")).toBe("omf"); // not a format of the type: the default
   });
 
   it("every exportable type is checked in its default format; the given choice is kept where it can be", () => {
     const c = initialChoice(info);
-    expect(c.types).toEqual(["drillhole_set", "wireframe", "line_file", "raster"]);
-    expect(c.formats).toEqual({ drillhole_set: "csv", wireframe: "dxf", dtm: "dxf", line_file: "str", raster: "geotiff" });
+    expect(c.types).toEqual(["drillhole_set", "wireframe", "line_file", "raster", "block_model"]);
+    expect(c.formats).toEqual({ drillhole_set: "csv", wireframe: "dxf", dtm: "dxf", line_file: "str", raster: "geotiff", block_model: "omf" });
     const given = initialChoice(info, { formats: { line_file: "dxf", wireframe: "dwg" }, types: ["line_file", "dtm"] });
     expect(given.types).toEqual(["line_file"]); // dtm has no objects
     expect(given.formats.line_file).toBe("dxf");
     expect(given.formats.wireframe).toBe("dxf");
-    expect(chosenObjects(info, c)).toBe(7);
+    expect(chosenObjects(info, c)).toBe(8);
+    const dat = initialChoice(info, { formats: { block_model: "dat" } });
+    expect(dat.formats.block_model).toBe("dat");
   });
 
   it("tells before the request why «Экспортировать» is off", () => {
@@ -96,7 +102,7 @@ describe("the table «тип → формат» of the core", () => {
     expect(choiceReason(info, c, null)).toBe("Выберите папку: «Выбрать папку…».");
     expect(choiceReason(info, c, "D:\\Выгрузка")).toBeNull();
     expect(choiceReason(info, { ...c, types: [] }, "D:\\")).toBe("Отметьте хотя бы один тип объектов.");
-    expect(choiceReason(info, toggleType(c, "block_model", true), "D:\\")).toBe("Блочные модели: Писатель OMF — подшаг 11.4.");
+    expect(choiceReason(info, toggleType(c, "block_model", true), "D:\\")).toBeNull(); // a block model is a type like the others
     expect(choiceReason(info, setFormat(c, "line_file", "omf"), "D:\\")).toBe("Линии, OMF: Писатель OMF — подшаг 11.4.");
     expect(choiceReason(parseFormats({ ...FORMATS, read_only: true }), c, "D:\\")).toContain("только для чтения");
     expect(toggleType(toggleType(c, "wireframe", false), "wireframe", true).types).toContain("wireframe");
@@ -104,7 +110,9 @@ describe("the table «тип → формат» of the core", () => {
 
   it("the body of `POST /export/objects`: formats of the checked types only, the folder, the types, ids", () => {
     const c = toggleType(setFormat(initialChoice(info), "drillhole_set", "xlsx"), "raster", false);
-    expect(exportBody(info, c, "D:\\Выгрузка")).toEqual({ formats: { drillhole_set: "xlsx", wireframe: "dxf", line_file: "str" }, folder: "D:\\Выгрузка", types: ["drillhole_set", "wireframe", "line_file"] });
+    expect(exportBody(info, c, "D:\\Выгрузка")).toEqual({ formats: { drillhole_set: "xlsx", wireframe: "dxf", line_file: "str", block_model: "omf" }, folder: "D:\\Выгрузка", types: ["drillhole_set", "wireframe", "line_file", "block_model"] });
+    const dat = setFormat(c, "block_model", "dat"); // a block model in Micromine DAT (Э17 17.16)
+    expect(exportBody(info, dat, "D:\\").formats.block_model).toBe("dat");
     expect(exportBody(info, c, "D:\\", [5, 7]).ids).toEqual([5, 7]);
     expect(exportBody(info, c, "D:\\", []).ids).toBeUndefined();
   });
@@ -197,7 +205,7 @@ describe("the report of `export.objects`", () => {
     expect(reportSummary(reportOf(null))).toBe("Файлы не записаны");
     expect(reportOf({ path: "D:\\a" }).folder).toBe("D:\\a"); // the field the «Задания» tab reads
     // the shape of exporting/job.py: a skipped object with its reason and hint
-    expect(reportOf({ folder: null, files: [], skipped: [{ object: "Модель", object_id: 4, kind: "block_model", reason: "Писатель OMF — подшаг 11.4.", hint: "Выберите другой формат." }] }).skipped).toEqual([{ object: "Модель", reason: "Писатель OMF — подшаг 11.4. Выберите другой формат." }]);
+    expect(reportOf({ folder: null, files: [], skipped: [{ object: "Модель", object_id: 4, kind: "block_model", reason: "Модель с субблоками: в OMF — только после регуляризации.", hint: "Выберите другой формат." }] }).skipped).toEqual([{ object: "Модель", reason: "Модель с субблоками: в OMF — только после регуляризации. Выберите другой формат." }]);
   });
 
   it("sizes in Russian and paths inside the folder", () => {
@@ -280,7 +288,7 @@ describe("the command `project.export`", () => {
     expect(r.result).toContain("объекты в файлы");
     const w = windowStore.get().windows[0];
     expect(w.kind).toBe("project-export");
-    expect(w.props).toEqual({ mode: "objects", formats: { drillhole_set: "csv", wireframe: "tridb", dtm: "dxf", line_file: "str", raster: "geotiff" }, types: ["wireframe", "line_file"] });
+    expect(w.props).toEqual({ mode: "objects", formats: { drillhole_set: "csv", wireframe: "tridb", dtm: "dxf", line_file: "str", raster: "geotiff", block_model: "omf" }, types: ["wireframe", "line_file"] });
     expect(sent.map((s) => s.path)).toEqual(["/export/formats"]);
   });
 

@@ -163,11 +163,17 @@ def write_volumes(
 
 
 def entry(label: str, fmt: str, blocks: Blocks) -> dict[str, Any]:
-    """The entry of the result of the job for the block models of a file."""
-    return {
+    """The entry of the result of the job for the block models of a file. A block file (one model) adds `rows`,
+    `parents`, `sub` and `checks` {duplicates, overlaps} — what its import found (`object_blockfile`)."""
+    out = {
         "file": label, "format": fmt, "kind": BLOCK_MODELS, "object_id": blocks.ids[0], "object_ids": list(blocks.ids),
         "block_models": len(blocks.ids), "cells": blocks.cells, "skipped": len(blocks.skipped),
     }  # fmt: skip
+    first = blocks.counts[0] if blocks.counts else {}
+    if "parents" in first:
+        checks = {k: int(first.get(k, 0)) for k in ("duplicates", "overlaps")}
+        out.update(rows=int(first["cells"]), parents=int(first["parents"]), sub=bool(first.get("sub")), checks=checks)
+    return out
 
 
 def log_blocks(

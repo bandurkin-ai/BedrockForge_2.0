@@ -1,0 +1,6054 @@
+{
+ "grid": {
+  "corner": [
+   466167.5,
+   4584527.5,
+   202.5
+  ],
+  "rotation": 30.0,
+  "size": [
+   8.0,
+   8.0,
+   4.0
+  ]
+ },
+ "inspect": {
+  "all": {
+   "answer": {
+    "body": {
+     "files": [
+      {
+       "block_models": [
+        {
+         "cells": 103,
+         "counts": [
+          6,
+          5,
+          4
+         ],
+         "fields": [
+          "AU",
+          "ROCK"
+         ],
+         "name": "model"
+        }
+       ],
+       "blocks": {
+        "check3": {
+         "dist": 0.0,
+         "ok": true,
+         "rows": [
+          0,
+          51,
+          102
+         ]
+        },
+        "columns": [
+         {
+          "name": "EAST",
+          "role": "x",
+          "type": "number"
+         },
+         {
+          "name": "NORTH",
+          "role": "y",
+          "type": "number"
+         },
+         {
+          "name": "RL",
+          "role": "z",
+          "type": "number"
+         },
+         {
+          "name": "_EAST",
+          "role": "dx",
+          "type": "number"
+         },
+         {
+          "name": "_NORTH",
+          "role": "dy",
+          "type": "number"
+         },
+         {
+          "name": "_RL",
+          "role": "dz",
+          "type": "number"
+         },
+         {
+          "name": "AU",
+          "role": null,
+          "type": "number"
+         },
+         {
+          "name": "ROCK",
+          "role": null,
+          "type": "text"
+         }
+        ],
+        "empty_candidates": [
+         -99.0
+        ],
+        "encoding": "cp1251",
+        "error": null,
+        "fields": [
+         {
+          "column": "AU",
+          "constant": false,
+          "empty": [
+           -99.0
+          ],
+          "kind": "number",
+          "name": "AU",
+          "role": "grade",
+          "unit": "г/т"
+         },
+         {
+          "column": "ROCK",
+          "constant": false,
+          "empty": [],
+          "kind": "category",
+          "name": "ROCK",
+          "role": "code",
+          "unit": null
+         }
+        ],
+        "format": "dat",
+        "grid": {
+         "corner": [
+          1000.5,
+          2000.25,
+          -50.0
+         ],
+         "counts": [
+          6,
+          5,
+          4
+         ],
+         "div": [
+          1,
+          1,
+          1
+         ],
+         "order": "F",
+         "rotation": 0.0,
+         "size": [
+          10.0,
+          20.0,
+          5.0
+         ]
+        },
+        "label": "Micromine DAT",
+        "parents": 103,
+        "roles": {
+         "dx": "_EAST",
+         "dy": "_NORTH",
+         "dz": "_RL",
+         "x": "EAST",
+         "y": "NORTH",
+         "z": "RL"
+        },
+        "rows": 103,
+        "rows_exact": true,
+        "sub": false,
+        "units": {
+         "AU": "г/т"
+        },
+        "warnings": []
+       },
+       "choices": {},
+       "crs": null,
+       "encoding": "cp1251",
+       "file": "model.dat",
+       "format": "dat",
+       "kind": "block_model",
+       "label": "Micromine DAT",
+       "layers": [],
+       "left_out": [],
+       "ok": true,
+       "path": "/данные/model.dat",
+       "preliminary": false,
+       "rasters": [],
+       "sidecars": [],
+       "totals": {
+        "block_models": 1,
+        "cells": 103,
+        "layers": 0,
+        "lines": 0,
+        "points": 0,
+        "rasters": 0,
+        "triangles": 0,
+        "vertices": 0,
+        "wireframes": 0
+       },
+       "unread": 0,
+       "warnings": [],
+       "wireframes": []
+      },
+      {
+       "block_models": [
+        {
+         "cells": 170,
+         "counts": [
+          4,
+          3,
+          2
+         ],
+         "fields": [
+          "AU"
+         ],
+         "name": "sub"
+        }
+       ],
+       "blocks": {
+        "check3": {
+         "dist": 0.0,
+         "ok": true,
+         "rows": [
+          0,
+          85,
+          169
+         ]
+        },
+        "columns": [
+         {
+          "name": "XC",
+          "role": "x",
+          "type": "number"
+         },
+         {
+          "name": "YC",
+          "role": "y",
+          "type": "number"
+         },
+         {
+          "name": "ZC",
+          "role": "z",
+          "type": "number"
+         },
+         {
+          "name": "XINC",
+          "role": "dx",
+          "type": "number"
+         },
+         {
+          "name": "YINC",
+          "role": "dy",
+          "type": "number"
+         },
+         {
+          "name": "ZINC",
+          "role": "dz",
+          "type": "number"
+         },
+         {
+          "name": "AU",
+          "role": null,
+          "type": "number"
+         }
+        ],
+        "empty_candidates": [],
+        "encoding": "cp1251",
+        "error": null,
+        "fields": [
+         {
+          "column": "AU",
+          "constant": false,
+          "empty": [],
+          "kind": "number",
+          "name": "AU",
+          "role": "grade",
+          "unit": "г/т"
+         }
+        ],
+        "format": "dm",
+        "grid": {
+         "corner": [
+          466167.5,
+          4584527.5,
+          202.5
+         ],
+         "counts": [
+          4,
+          3,
+          2
+         ],
+         "div": [
+          8,
+          4,
+          4
+         ],
+         "order": "F",
+         "rotation": 0.0,
+         "size": [
+          8.0,
+          8.0,
+          4.0
+         ]
+        },
+        "label": "Datamine DM",
+        "parents": 19,
+        "roles": {
+         "dx": "XINC",
+         "dy": "YINC",
+         "dz": "ZINC",
+         "x": "XC",
+         "y": "YC",
+         "z": "ZC"
+        },
+        "rows": 170,
+        "rows_exact": true,
+        "sub": true,
+        "units": {
+         "AU": "г/т"
+        },
+        "warnings": [
+         "Размер родительского блока взят по самому большому блоку: 8 × 8 × 4."
+        ]
+       },
+       "choices": {},
+       "crs": null,
+       "encoding": "cp1251",
+       "file": "sub.dm",
+       "format": "dm",
+       "kind": "block_model",
+       "label": "Datamine DM",
+       "layers": [],
+       "left_out": [],
+       "ok": true,
+       "path": "/данные/sub.dm",
+       "preliminary": false,
+       "rasters": [],
+       "sidecars": [],
+       "totals": {
+        "block_models": 1,
+        "cells": 170,
+        "layers": 0,
+        "lines": 0,
+        "points": 0,
+        "rasters": 0,
+        "triangles": 0,
+        "vertices": 0,
+        "wireframes": 0
+       },
+       "unread": 0,
+       "warnings": [
+        "Размер родительского блока взят по самому большому блоку: 8 × 8 × 4."
+       ],
+       "wireframes": []
+      },
+      {
+       "block_models": [],
+       "choices": {},
+       "crs": null,
+       "encoding": "utf-8",
+       "file": "points.csv",
+       "format": "points",
+       "kind": "points",
+       "label": "Точки XYZ (CSV, TXT, DAT)",
+       "layers": [
+        {
+         "attributes": [
+          {
+           "kind": "number",
+           "name": "AU",
+           "scope": "feature",
+           "unit": null
+          }
+         ],
+         "closed": 0,
+         "color": null,
+         "extent": [
+          1.0,
+          2.0,
+          3.0,
+          7.0,
+          8.0,
+          9.0
+         ],
+         "flat": false,
+         "length": 0.0,
+         "lines": 0,
+         "name": "points",
+         "points": 3,
+         "points_only": true,
+         "vertices": 0
+        }
+       ],
+       "left_out": [],
+       "ok": true,
+       "path": "/данные/points.csv",
+       "preliminary": false,
+       "rasters": [],
+       "sidecars": [],
+       "totals": {
+        "block_models": 0,
+        "cells": 0,
+        "layers": 1,
+        "lines": 0,
+        "points": 3,
+        "rasters": 0,
+        "triangles": 0,
+        "vertices": 0,
+        "wireframes": 0
+       },
+       "unread": 0,
+       "warnings": [],
+       "wireframes": []
+      },
+      {
+       "error": {
+        "code": "pair_missing",
+        "hint": "Каркас Datamine — это два файла: треугольники (…tr.dm) и точки (…pt.dm). Выберите оба.",
+        "message": "Для каркаса «tri.dm» не найдена таблица точек."
+       },
+       "file": "tri.dm",
+       "ok": false,
+       "path": "/данные/tri.dm"
+      },
+      {
+       "error": {
+        "code": "no_coordinates",
+        "hint": "Колонки файла: A, B, C, D. Назовите колонки X, Y, Z или укажите их при импорте.",
+        "message": "В файле не найдены колонки координат X и Y."
+       },
+       "file": "noroles.csv",
+       "ok": false,
+       "path": "/данные/noroles.csv"
+      }
+     ],
+     "raster_z": {
+      "applies": false,
+      "elevation": null,
+      "shift": 0.0
+     },
+     "rest": [],
+     "section": null,
+     "totals": {
+      "block_models": 2,
+      "cells": 273,
+      "failed": 2,
+      "files": 3,
+      "layers": 1,
+      "lines": 0,
+      "points": 3,
+      "rasters": 0,
+      "triangles": 0,
+      "vertices": 0,
+      "wireframes": 0
+     }
+    },
+    "status": 200
+   },
+   "request": {
+    "files": [
+     "/данные/model.dat",
+     "/данные/sub.dm",
+     "/данные/points.csv",
+     "/данные/tri.dm",
+     "/данные/noroles.csv"
+    ],
+    "options": {},
+    "section": true
+   }
+  },
+  "bad_option": {
+   "answer": {
+    "body": {
+     "code": "blocks_options",
+     "hint": "Выберите оси проекта или модели.",
+     "message": "Оси центров «world» не подходят."
+    },
+    "status": 422
+   },
+   "request": {
+    "files": [
+     "/данные/model.dat"
+    ],
+    "options": {
+     "/данные/model.dat": {
+      "blocks": {
+       "centres": "world"
+      }
+     }
+    },
+    "section": true
+   }
+  },
+  "csv": {
+   "answer": {
+    "body": {
+     "files": [
+      {
+       "block_models": [
+        {
+         "cells": 103,
+         "counts": [
+          6,
+          5,
+          4
+         ],
+         "fields": [
+          "AU",
+          "ROCK"
+         ],
+         "name": "model"
+        }
+       ],
+       "blocks": {
+        "check3": {
+         "dist": 0.0,
+         "ok": true,
+         "rows": [
+          0,
+          51,
+          102
+         ]
+        },
+        "columns": [
+         {
+          "name": "EAST",
+          "role": "x",
+          "type": "number"
+         },
+         {
+          "name": "NORTH",
+          "role": "y",
+          "type": "number"
+         },
+         {
+          "name": "RL",
+          "role": "z",
+          "type": "number"
+         },
+         {
+          "name": "_EAST",
+          "role": "dx",
+          "type": "number"
+         },
+         {
+          "name": "_NORTH",
+          "role": "dy",
+          "type": "number"
+         },
+         {
+          "name": "_RL",
+          "role": "dz",
+          "type": "number"
+         },
+         {
+          "name": "AU",
+          "role": null,
+          "type": "number"
+         },
+         {
+          "name": "ROCK",
+          "role": null,
+          "type": "text"
+         }
+        ],
+        "empty_candidates": [
+         -99.0
+        ],
+        "encoding": "utf-8",
+        "error": null,
+        "fields": [
+         {
+          "column": "AU",
+          "constant": false,
+          "empty": [
+           -99.0
+          ],
+          "kind": "number",
+          "name": "AU",
+          "role": "grade",
+          "unit": "г/т"
+         },
+         {
+          "column": "ROCK",
+          "constant": false,
+          "empty": [],
+          "kind": "category",
+          "name": "ROCK",
+          "role": "code",
+          "unit": null
+         }
+        ],
+        "format": "csv",
+        "grid": {
+         "corner": [
+          1000.5,
+          2000.25,
+          -50.0
+         ],
+         "counts": [
+          6,
+          5,
+          4
+         ],
+         "div": [
+          1,
+          1,
+          1
+         ],
+         "order": "F",
+         "rotation": 0.0,
+         "size": [
+          10.0,
+          20.0,
+          5.0
+         ]
+        },
+        "label": "CSV / TXT",
+        "parents": 103,
+        "roles": {
+         "dx": "_EAST",
+         "dy": "_NORTH",
+         "dz": "_RL",
+         "x": "EAST",
+         "y": "NORTH",
+         "z": "RL"
+        },
+        "rows": 103,
+        "rows_exact": true,
+        "sub": false,
+        "units": {
+         "AU": "г/т"
+        },
+        "warnings": []
+       },
+       "choices": {},
+       "crs": null,
+       "encoding": "utf-8",
+       "file": "model.csv",
+       "format": "csv",
+       "kind": "block_model",
+       "label": "CSV / TXT",
+       "layers": [],
+       "left_out": [],
+       "ok": true,
+       "path": "/данные/model.csv",
+       "preliminary": false,
+       "rasters": [],
+       "sidecars": [],
+       "totals": {
+        "block_models": 1,
+        "cells": 103,
+        "layers": 0,
+        "lines": 0,
+        "points": 0,
+        "rasters": 0,
+        "triangles": 0,
+        "vertices": 0,
+        "wireframes": 0
+       },
+       "unread": 0,
+       "warnings": [],
+       "wireframes": []
+      }
+     ],
+     "raster_z": {
+      "applies": false,
+      "elevation": null,
+      "shift": 0.0
+     },
+     "rest": [],
+     "section": null,
+     "totals": {
+      "block_models": 1,
+      "cells": 103,
+      "failed": 0,
+      "files": 1,
+      "layers": 0,
+      "lines": 0,
+      "points": 0,
+      "rasters": 0,
+      "triangles": 0,
+      "vertices": 0,
+      "wireframes": 0
+     }
+    },
+    "status": 200
+   },
+   "request": {
+    "files": [
+     "/данные/model.csv"
+    ],
+    "options": {},
+    "section": true
+   }
+  },
+  "csv_micromine": {
+   "answer": {
+    "body": {
+     "files": [
+      {
+       "block_models": [
+        {
+         "cells": 103,
+         "counts": [
+          6,
+          5,
+          4
+         ],
+         "fields": [
+          "AU",
+          "ROCK"
+         ],
+         "name": "micromine"
+        }
+       ],
+       "blocks": {
+        "check3": {
+         "dist": 0.0,
+         "ok": true,
+         "rows": [
+          0,
+          51,
+          102
+         ]
+        },
+        "columns": [
+         {
+          "name": "EAST",
+          "role": "x",
+          "type": "number"
+         },
+         {
+          "name": "NORTH",
+          "role": "y",
+          "type": "number"
+         },
+         {
+          "name": "RL",
+          "role": "z",
+          "type": "number"
+         },
+         {
+          "name": "_EAST",
+          "role": "dx",
+          "type": "number"
+         },
+         {
+          "name": "_NORTH",
+          "role": "dy",
+          "type": "number"
+         },
+         {
+          "name": "_RL",
+          "role": "dz",
+          "type": "number"
+         },
+         {
+          "name": "AU",
+          "role": null,
+          "type": "number"
+         },
+         {
+          "name": "ROCK",
+          "role": null,
+          "type": "text"
+         }
+        ],
+        "empty_candidates": [
+         -99.0
+        ],
+        "encoding": "utf-8",
+        "error": null,
+        "fields": [
+         {
+          "column": "AU",
+          "constant": false,
+          "empty": [
+           -99.0
+          ],
+          "kind": "number",
+          "name": "AU",
+          "role": "grade",
+          "unit": "г/т"
+         },
+         {
+          "column": "ROCK",
+          "constant": false,
+          "empty": [],
+          "kind": "category",
+          "name": "ROCK",
+          "role": "code",
+          "unit": null
+         }
+        ],
+        "format": "csv_micromine",
+        "grid": {
+         "corner": [
+          1000.5,
+          2000.25,
+          -50.0
+         ],
+         "counts": [
+          6,
+          5,
+          4
+         ],
+         "div": [
+          1,
+          1,
+          1
+         ],
+         "order": "F",
+         "rotation": 0.0,
+         "size": [
+          10.0,
+          20.0,
+          5.0
+         ]
+        },
+        "label": "CSV Micromine",
+        "parents": 103,
+        "roles": {
+         "dx": "_EAST",
+         "dy": "_NORTH",
+         "dz": "_RL",
+         "x": "EAST",
+         "y": "NORTH",
+         "z": "RL"
+        },
+        "rows": 103,
+        "rows_exact": true,
+        "sub": false,
+        "units": {
+         "AU": "г/т"
+        },
+        "warnings": []
+       },
+       "choices": {},
+       "crs": null,
+       "encoding": "utf-8",
+       "file": "micromine.csv",
+       "format": "csv_micromine",
+       "kind": "block_model",
+       "label": "CSV Micromine",
+       "layers": [],
+       "left_out": [],
+       "ok": true,
+       "path": "/данные/micromine.csv",
+       "preliminary": false,
+       "rasters": [],
+       "sidecars": [],
+       "totals": {
+        "block_models": 1,
+        "cells": 103,
+        "layers": 0,
+        "lines": 0,
+        "points": 0,
+        "rasters": 0,
+        "triangles": 0,
+        "vertices": 0,
+        "wireframes": 0
+       },
+       "unread": 0,
+       "warnings": [],
+       "wireframes": []
+      }
+     ],
+     "raster_z": {
+      "applies": false,
+      "elevation": null,
+      "shift": 0.0
+     },
+     "rest": [],
+     "section": null,
+     "totals": {
+      "block_models": 1,
+      "cells": 103,
+      "failed": 0,
+      "files": 1,
+      "layers": 0,
+      "lines": 0,
+      "points": 0,
+      "rasters": 0,
+      "triangles": 0,
+      "vertices": 0,
+      "wireframes": 0
+     }
+    },
+    "status": 200
+   },
+   "request": {
+    "files": [
+     "/данные/micromine.csv"
+    ],
+    "options": {},
+    "section": true
+   }
+  },
+  "dat": {
+   "answer": {
+    "body": {
+     "files": [
+      {
+       "block_models": [
+        {
+         "cells": 103,
+         "counts": [
+          6,
+          5,
+          4
+         ],
+         "fields": [
+          "AU",
+          "ROCK"
+         ],
+         "name": "model"
+        }
+       ],
+       "blocks": {
+        "check3": {
+         "dist": 0.0,
+         "ok": true,
+         "rows": [
+          0,
+          51,
+          102
+         ]
+        },
+        "columns": [
+         {
+          "name": "EAST",
+          "role": "x",
+          "type": "number"
+         },
+         {
+          "name": "NORTH",
+          "role": "y",
+          "type": "number"
+         },
+         {
+          "name": "RL",
+          "role": "z",
+          "type": "number"
+         },
+         {
+          "name": "_EAST",
+          "role": "dx",
+          "type": "number"
+         },
+         {
+          "name": "_NORTH",
+          "role": "dy",
+          "type": "number"
+         },
+         {
+          "name": "_RL",
+          "role": "dz",
+          "type": "number"
+         },
+         {
+          "name": "AU",
+          "role": null,
+          "type": "number"
+         },
+         {
+          "name": "ROCK",
+          "role": null,
+          "type": "text"
+         }
+        ],
+        "empty_candidates": [
+         -99.0
+        ],
+        "encoding": "cp1251",
+        "error": null,
+        "fields": [
+         {
+          "column": "AU",
+          "constant": false,
+          "empty": [
+           -99.0
+          ],
+          "kind": "number",
+          "name": "AU",
+          "role": "grade",
+          "unit": "г/т"
+         },
+         {
+          "column": "ROCK",
+          "constant": false,
+          "empty": [],
+          "kind": "category",
+          "name": "ROCK",
+          "role": "code",
+          "unit": null
+         }
+        ],
+        "format": "dat",
+        "grid": {
+         "corner": [
+          1000.5,
+          2000.25,
+          -50.0
+         ],
+         "counts": [
+          6,
+          5,
+          4
+         ],
+         "div": [
+          1,
+          1,
+          1
+         ],
+         "order": "F",
+         "rotation": 0.0,
+         "size": [
+          10.0,
+          20.0,
+          5.0
+         ]
+        },
+        "label": "Micromine DAT",
+        "parents": 103,
+        "roles": {
+         "dx": "_EAST",
+         "dy": "_NORTH",
+         "dz": "_RL",
+         "x": "EAST",
+         "y": "NORTH",
+         "z": "RL"
+        },
+        "rows": 103,
+        "rows_exact": true,
+        "sub": false,
+        "units": {
+         "AU": "г/т"
+        },
+        "warnings": []
+       },
+       "choices": {},
+       "crs": null,
+       "encoding": "cp1251",
+       "file": "model.dat",
+       "format": "dat",
+       "kind": "block_model",
+       "label": "Micromine DAT",
+       "layers": [],
+       "left_out": [],
+       "ok": true,
+       "path": "/данные/model.dat",
+       "preliminary": false,
+       "rasters": [],
+       "sidecars": [],
+       "totals": {
+        "block_models": 1,
+        "cells": 103,
+        "layers": 0,
+        "lines": 0,
+        "points": 0,
+        "rasters": 0,
+        "triangles": 0,
+        "vertices": 0,
+        "wireframes": 0
+       },
+       "unread": 0,
+       "warnings": [],
+       "wireframes": []
+      }
+     ],
+     "raster_z": {
+      "applies": false,
+      "elevation": null,
+      "shift": 0.0
+     },
+     "rest": [],
+     "section": null,
+     "totals": {
+      "block_models": 1,
+      "cells": 103,
+      "failed": 0,
+      "files": 1,
+      "layers": 0,
+      "lines": 0,
+      "points": 0,
+      "rasters": 0,
+      "triangles": 0,
+      "vertices": 0,
+      "wireframes": 0
+     }
+    },
+    "status": 200
+   },
+   "request": {
+    "files": [
+     "/данные/model.dat"
+    ],
+    "options": {},
+    "section": true
+   }
+  },
+  "dat_asked": {
+   "answer": {
+    "body": {
+     "files": [
+      {
+       "block_models": [
+        {
+         "cells": 103,
+         "counts": [
+          6,
+          5,
+          4
+         ],
+         "fields": [
+          "AU",
+          "ROCK"
+         ],
+         "name": "model"
+        }
+       ],
+       "blocks": {
+        "check3": {
+         "dist": 0.0,
+         "ok": true,
+         "rows": [
+          0,
+          51,
+          102
+         ]
+        },
+        "columns": [
+         {
+          "name": "EAST",
+          "role": "x",
+          "type": "number"
+         },
+         {
+          "name": "NORTH",
+          "role": "y",
+          "type": "number"
+         },
+         {
+          "name": "RL",
+          "role": "z",
+          "type": "number"
+         },
+         {
+          "name": "_EAST",
+          "role": "dx",
+          "type": "number"
+         },
+         {
+          "name": "_NORTH",
+          "role": "dy",
+          "type": "number"
+         },
+         {
+          "name": "_RL",
+          "role": "dz",
+          "type": "number"
+         },
+         {
+          "name": "AU",
+          "role": null,
+          "type": "number"
+         },
+         {
+          "name": "ROCK",
+          "role": null,
+          "type": "text"
+         }
+        ],
+        "empty_candidates": [
+         -99.0
+        ],
+        "encoding": "cp1251",
+        "error": null,
+        "fields": [
+         {
+          "column": "AU",
+          "constant": false,
+          "empty": [
+           -99.0
+          ],
+          "kind": "number",
+          "name": "AU",
+          "role": "grade",
+          "unit": "%"
+         },
+         {
+          "column": "ROCK",
+          "constant": false,
+          "empty": [],
+          "kind": "category",
+          "name": "ROCK",
+          "role": "class",
+          "unit": null
+         }
+        ],
+        "format": "dat",
+        "grid": {
+         "corner": [
+          1000.5,
+          2000.25,
+          -50.0
+         ],
+         "counts": [
+          6,
+          5,
+          4
+         ],
+         "div": [
+          1,
+          1,
+          1
+         ],
+         "order": "F",
+         "rotation": 0.0,
+         "size": [
+          10.0,
+          20.0,
+          5.0
+         ]
+        },
+        "label": "Micromine DAT",
+        "parents": 103,
+        "roles": {
+         "dx": "_EAST",
+         "dy": "_NORTH",
+         "dz": "_RL",
+         "x": "EAST",
+         "y": "NORTH",
+         "z": "RL"
+        },
+        "rows": 103,
+        "rows_exact": true,
+        "sub": false,
+        "units": {
+         "AU": "%"
+        },
+        "warnings": []
+       },
+       "choices": {},
+       "crs": null,
+       "encoding": "cp1251",
+       "file": "model.dat",
+       "format": "dat",
+       "kind": "block_model",
+       "label": "Micromine DAT",
+       "layers": [],
+       "left_out": [],
+       "ok": true,
+       "path": "/данные/model.dat",
+       "preliminary": false,
+       "rasters": [],
+       "sidecars": [],
+       "totals": {
+        "block_models": 1,
+        "cells": 103,
+        "layers": 0,
+        "lines": 0,
+        "points": 0,
+        "rasters": 0,
+        "triangles": 0,
+        "vertices": 0,
+        "wireframes": 0
+       },
+       "unread": 0,
+       "warnings": [],
+       "wireframes": []
+      }
+     ],
+     "raster_z": {
+      "applies": false,
+      "elevation": null,
+      "shift": 0.0
+     },
+     "rest": [],
+     "section": null,
+     "totals": {
+      "block_models": 1,
+      "cells": 103,
+      "failed": 0,
+      "files": 1,
+      "layers": 0,
+      "lines": 0,
+      "points": 0,
+      "rasters": 0,
+      "triangles": 0,
+      "vertices": 0,
+      "wireframes": 0
+     }
+    },
+    "status": 200
+   },
+   "request": {
+    "files": [
+     "/данные/model.dat"
+    ],
+    "options": {
+     "/данные/model.dat": {
+      "blocks": {
+       "empty": [
+        -99
+       ],
+       "fields": {
+        "AU": {
+         "role": "grade",
+         "unit": "%"
+        },
+        "ROCK": {
+         "role": "class"
+        }
+       }
+      },
+      "name": "Моя модель"
+     }
+    },
+    "section": true
+   }
+  },
+  "dat_skipped": {
+   "answer": {
+    "body": {
+     "files": [
+      {
+       "block_models": [
+        {
+         "cells": 103,
+         "counts": [
+          6,
+          5,
+          4
+         ],
+         "fields": [
+          "AU"
+         ],
+         "name": "model"
+        }
+       ],
+       "blocks": {
+        "check3": {
+         "dist": 0.0,
+         "ok": true,
+         "rows": [
+          0,
+          51,
+          102
+         ]
+        },
+        "columns": [
+         {
+          "name": "EAST",
+          "role": "x",
+          "type": "number"
+         },
+         {
+          "name": "NORTH",
+          "role": "y",
+          "type": "number"
+         },
+         {
+          "name": "RL",
+          "role": "z",
+          "type": "number"
+         },
+         {
+          "name": "_EAST",
+          "role": "dx",
+          "type": "number"
+         },
+         {
+          "name": "_NORTH",
+          "role": "dy",
+          "type": "number"
+         },
+         {
+          "name": "_RL",
+          "role": "dz",
+          "type": "number"
+         },
+         {
+          "name": "AU",
+          "role": null,
+          "type": "number"
+         },
+         {
+          "name": "ROCK",
+          "role": null,
+          "type": "text"
+         }
+        ],
+        "empty_candidates": [
+         -99.0
+        ],
+        "encoding": "cp1251",
+        "error": null,
+        "fields": [
+         {
+          "column": "AU",
+          "constant": false,
+          "empty": [
+           -99.0
+          ],
+          "kind": "number",
+          "name": "AU",
+          "role": "grade",
+          "unit": "г/т"
+         }
+        ],
+        "format": "dat",
+        "grid": {
+         "corner": [
+          1000.5,
+          2000.25,
+          -50.0
+         ],
+         "counts": [
+          6,
+          5,
+          4
+         ],
+         "div": [
+          1,
+          1,
+          1
+         ],
+         "order": "F",
+         "rotation": 0.0,
+         "size": [
+          10.0,
+          20.0,
+          5.0
+         ]
+        },
+        "label": "Micromine DAT",
+        "parents": 103,
+        "roles": {
+         "dx": "_EAST",
+         "dy": "_NORTH",
+         "dz": "_RL",
+         "x": "EAST",
+         "y": "NORTH",
+         "z": "RL"
+        },
+        "rows": 103,
+        "rows_exact": true,
+        "sub": false,
+        "units": {
+         "AU": "г/т"
+        },
+        "warnings": []
+       },
+       "choices": {},
+       "crs": null,
+       "encoding": "cp1251",
+       "file": "model.dat",
+       "format": "dat",
+       "kind": "block_model",
+       "label": "Micromine DAT",
+       "layers": [],
+       "left_out": [],
+       "ok": true,
+       "path": "/данные/model.dat",
+       "preliminary": false,
+       "rasters": [],
+       "sidecars": [],
+       "totals": {
+        "block_models": 1,
+        "cells": 103,
+        "layers": 0,
+        "lines": 0,
+        "points": 0,
+        "rasters": 0,
+        "triangles": 0,
+        "vertices": 0,
+        "wireframes": 0
+       },
+       "unread": 0,
+       "warnings": [],
+       "wireframes": []
+      }
+     ],
+     "raster_z": {
+      "applies": false,
+      "elevation": null,
+      "shift": 0.0
+     },
+     "rest": [],
+     "section": null,
+     "totals": {
+      "block_models": 1,
+      "cells": 103,
+      "failed": 0,
+      "files": 1,
+      "layers": 0,
+      "lines": 0,
+      "points": 0,
+      "rasters": 0,
+      "triangles": 0,
+      "vertices": 0,
+      "wireframes": 0
+     }
+    },
+    "status": 200
+   },
+   "request": {
+    "files": [
+     "/данные/model.dat"
+    ],
+    "options": {
+     "/данные/model.dat": {
+      "blocks": {
+       "fields": {
+        "ROCK": {
+         "skip": true
+        }
+       }
+      }
+     }
+    },
+    "section": true
+   }
+  },
+  "no_roles": {
+   "answer": {
+    "body": {
+     "files": [
+      {
+       "block_models": [
+        {
+         "cells": 3,
+         "counts": null,
+         "fields": [],
+         "name": "noroles"
+        }
+       ],
+       "blocks": {
+        "check3": null,
+        "columns": [
+         {
+          "name": "A",
+          "role": null,
+          "type": "number"
+         },
+         {
+          "name": "B",
+          "role": null,
+          "type": "number"
+         },
+         {
+          "name": "C",
+          "role": null,
+          "type": "number"
+         },
+         {
+          "name": "D",
+          "role": null,
+          "type": "number"
+         }
+        ],
+        "empty_candidates": [],
+        "encoding": "utf-8",
+        "error": {
+         "code": "blocks_columns",
+         "hint": "Укажите столбцы центров (X, Y, Z; XC, YC, ZC; EAST, NORTH, RL) в мастере импорта.",
+         "message": "Не найдены столбцы центра блока: X, Y, Z."
+        },
+        "fields": [],
+        "format": "csv",
+        "grid": null,
+        "label": "CSV / TXT",
+        "parents": 0,
+        "roles": {
+         "dx": null,
+         "dy": null,
+         "dz": null,
+         "x": null,
+         "y": null,
+         "z": null
+        },
+        "rows": 3,
+        "rows_exact": false,
+        "sub": false,
+        "units": {},
+        "warnings": []
+       },
+       "choices": {},
+       "crs": null,
+       "encoding": "utf-8",
+       "file": "noroles.csv",
+       "format": "csv",
+       "kind": "block_model",
+       "label": "CSV / TXT",
+       "layers": [],
+       "left_out": [],
+       "ok": true,
+       "path": "/данные/noroles.csv",
+       "preliminary": false,
+       "rasters": [],
+       "sidecars": [],
+       "totals": {
+        "block_models": 0,
+        "cells": 3,
+        "layers": 0,
+        "lines": 0,
+        "points": 0,
+        "rasters": 0,
+        "triangles": 0,
+        "vertices": 0,
+        "wireframes": 0
+       },
+       "unread": 0,
+       "warnings": [
+        "Не найдены столбцы центра блока: X, Y, Z. Укажите столбцы центров (X, Y, Z; XC, YC, ZC; EAST, NORTH, RL) в мастере импорта."
+       ],
+       "wireframes": []
+      }
+     ],
+     "raster_z": {
+      "applies": false,
+      "elevation": null,
+      "shift": 0.0
+     },
+     "rest": [],
+     "section": null,
+     "totals": {
+      "block_models": 0,
+      "cells": 3,
+      "failed": 0,
+      "files": 1,
+      "layers": 0,
+      "lines": 0,
+      "points": 0,
+      "rasters": 0,
+      "triangles": 0,
+      "vertices": 0,
+      "wireframes": 0
+     }
+    },
+    "status": 200
+   },
+   "request": {
+    "files": [
+     "/данные/noroles.csv"
+    ],
+    "options": {
+     "/данные/noroles.csv": {
+      "blocks": {}
+     }
+    },
+    "section": true
+   }
+  },
+  "not_detected": {
+   "answer": {
+    "body": {
+     "files": [
+      {
+       "error": {
+        "code": "no_coordinates",
+        "hint": "Колонки файла: A, B, C, D. Назовите колонки X, Y, Z или укажите их при импорте.",
+        "message": "В файле не найдены колонки координат X и Y."
+       },
+       "file": "noroles.csv",
+       "ok": false,
+       "path": "/данные/noroles.csv"
+      }
+     ],
+     "raster_z": {
+      "applies": false,
+      "elevation": null,
+      "shift": 0.0
+     },
+     "rest": [],
+     "section": null,
+     "totals": {
+      "block_models": 0,
+      "cells": 0,
+      "failed": 1,
+      "files": 0,
+      "layers": 0,
+      "lines": 0,
+      "points": 0,
+      "rasters": 0,
+      "triangles": 0,
+      "vertices": 0,
+      "wireframes": 0
+     }
+    },
+    "status": 200
+   },
+   "request": {
+    "files": [
+     "/данные/noroles.csv"
+    ],
+    "options": {},
+    "section": true
+   }
+  },
+  "off_grid": {
+   "answer": {
+    "body": {
+     "files": [
+      {
+       "block_models": [
+        {
+         "cells": 103,
+         "counts": null,
+         "fields": [],
+         "name": "off"
+        }
+       ],
+       "blocks": {
+        "check3": null,
+        "columns": [
+         {
+          "name": "EAST",
+          "role": "x",
+          "type": "number"
+         },
+         {
+          "name": "NORTH",
+          "role": "y",
+          "type": "number"
+         },
+         {
+          "name": "RL",
+          "role": "z",
+          "type": "number"
+         },
+         {
+          "name": "_EAST",
+          "role": "dx",
+          "type": "number"
+         },
+         {
+          "name": "_NORTH",
+          "role": "dy",
+          "type": "number"
+         },
+         {
+          "name": "_RL",
+          "role": "dz",
+          "type": "number"
+         },
+         {
+          "name": "AU",
+          "role": null,
+          "type": "number"
+         },
+         {
+          "name": "ROCK",
+          "role": null,
+          "type": "text"
+         }
+        ],
+        "empty_candidates": [],
+        "encoding": "utf-8",
+        "error": {
+         "code": "blocks_unaligned",
+         "count": 103,
+         "hint": "Строки данных (с 1): 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 и другие. Субблоки должны делить родителя по подъячейкам 2^L (L ≤ 7) и не выходить за его границы, а блоки — лежать в сетке от её начала. Проверьте начало и размер родителя в мастере или пересохраните модель в исходной программе (субблоки по октодереву).",
+         "message": "Блоков, которые нельзя уложить в сетку модели: 103 (за началом или за краем сетки — 34; не по подъячейкам 2^L — 69).",
+         "rows": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19
+         ]
+        },
+        "fields": [],
+        "format": "csv",
+        "grid": null,
+        "label": "CSV / TXT",
+        "parents": 0,
+        "roles": {
+         "dx": "_EAST",
+         "dy": "_NORTH",
+         "dz": "_RL",
+         "x": "EAST",
+         "y": "NORTH",
+         "z": "RL"
+        },
+        "rows": 103,
+        "rows_exact": true,
+        "sub": false,
+        "units": {},
+        "warnings": []
+       },
+       "choices": {},
+       "crs": null,
+       "encoding": "utf-8",
+       "file": "off.csv",
+       "format": "csv",
+       "kind": "block_model",
+       "label": "CSV / TXT",
+       "layers": [],
+       "left_out": [],
+       "ok": true,
+       "path": "/данные/off.csv",
+       "preliminary": false,
+       "rasters": [],
+       "sidecars": [],
+       "totals": {
+        "block_models": 0,
+        "cells": 103,
+        "layers": 0,
+        "lines": 0,
+        "points": 0,
+        "rasters": 0,
+        "triangles": 0,
+        "vertices": 0,
+        "wireframes": 0
+       },
+       "unread": 0,
+       "warnings": [
+        "Блоков, которые нельзя уложить в сетку модели: 103 (за началом или за краем сетки — 34; не по подъячейкам 2^L — 69). Строки данных (с 1): 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 и другие. Субблоки должны делить родителя по подъячейкам 2^L (L ≤ 7) и не выходить за его границы, а блоки — лежать в сетке от её начала. Проверьте начало и размер родителя в мастере или пересохраните модель в исходной программе (субблоки по октодереву)."
+       ],
+       "wireframes": []
+      }
+     ],
+     "raster_z": {
+      "applies": false,
+      "elevation": null,
+      "shift": 0.0
+     },
+     "rest": [],
+     "section": null,
+     "totals": {
+      "block_models": 0,
+      "cells": 103,
+      "failed": 0,
+      "files": 1,
+      "layers": 0,
+      "lines": 0,
+      "points": 0,
+      "rasters": 0,
+      "triangles": 0,
+      "vertices": 0,
+      "wireframes": 0
+     }
+    },
+    "status": 200
+   },
+   "request": {
+    "files": [
+     "/данные/off.csv"
+    ],
+    "options": {
+     "/данные/off.csv": {
+      "blocks": {
+       "grid": {
+        "corner": [
+         1025.5,
+         2000.25,
+         -50.0
+        ],
+        "size": [
+         10.0,
+         20.0,
+         5.0
+        ]
+       }
+      }
+     }
+    },
+    "section": true
+   }
+  },
+  "over": {
+   "answer": {
+    "body": {
+     "files": [
+      {
+       "block_models": [
+        {
+         "cells": 171,
+         "counts": [
+          4,
+          3,
+          2
+         ],
+         "fields": [
+          "AU"
+         ],
+         "name": "over"
+        }
+       ],
+       "blocks": {
+        "check3": {
+         "dist": 0.0,
+         "ok": true,
+         "rows": [
+          0,
+          85,
+          170
+         ]
+        },
+        "columns": [
+         {
+          "name": "X",
+          "role": "x",
+          "type": "number"
+         },
+         {
+          "name": "Y",
+          "role": "y",
+          "type": "number"
+         },
+         {
+          "name": "Z",
+          "role": "z",
+          "type": "number"
+         },
+         {
+          "name": "DX",
+          "role": "dx",
+          "type": "number"
+         },
+         {
+          "name": "DY",
+          "role": "dy",
+          "type": "number"
+         },
+         {
+          "name": "DZ",
+          "role": "dz",
+          "type": "number"
+         },
+         {
+          "name": "AU",
+          "role": null,
+          "type": "number"
+         }
+        ],
+        "empty_candidates": [],
+        "encoding": "utf-8",
+        "error": null,
+        "fields": [
+         {
+          "column": "AU",
+          "constant": false,
+          "empty": [],
+          "kind": "number",
+          "name": "AU",
+          "role": "grade",
+          "unit": "г/т"
+         }
+        ],
+        "format": "csv",
+        "grid": {
+         "corner": [
+          466167.5,
+          4584527.5,
+          202.5
+         ],
+         "counts": [
+          4,
+          3,
+          2
+         ],
+         "div": [
+          8,
+          4,
+          4
+         ],
+         "order": "F",
+         "rotation": 0.0,
+         "size": [
+          8.0,
+          8.0,
+          4.0
+         ]
+        },
+        "label": "CSV / TXT",
+        "parents": 19,
+        "roles": {
+         "dx": "DX",
+         "dy": "DY",
+         "dz": "DZ",
+         "x": "X",
+         "y": "Y",
+         "z": "Z"
+        },
+        "rows": 171,
+        "rows_exact": true,
+        "sub": true,
+        "units": {
+         "AU": "г/т"
+        },
+        "warnings": []
+       },
+       "choices": {},
+       "crs": null,
+       "encoding": "utf-8",
+       "file": "over.csv",
+       "format": "csv",
+       "kind": "block_model",
+       "label": "CSV / TXT",
+       "layers": [],
+       "left_out": [],
+       "ok": true,
+       "path": "/данные/over.csv",
+       "preliminary": false,
+       "rasters": [],
+       "sidecars": [],
+       "totals": {
+        "block_models": 1,
+        "cells": 171,
+        "layers": 0,
+        "lines": 0,
+        "points": 0,
+        "rasters": 0,
+        "triangles": 0,
+        "vertices": 0,
+        "wireframes": 0
+       },
+       "unread": 0,
+       "warnings": [],
+       "wireframes": []
+      }
+     ],
+     "raster_z": {
+      "applies": false,
+      "elevation": null,
+      "shift": 0.0
+     },
+     "rest": [],
+     "section": null,
+     "totals": {
+      "block_models": 1,
+      "cells": 171,
+      "failed": 0,
+      "files": 1,
+      "layers": 0,
+      "lines": 0,
+      "points": 0,
+      "rasters": 0,
+      "triangles": 0,
+      "vertices": 0,
+      "wireframes": 0
+     }
+    },
+    "status": 200
+   },
+   "request": {
+    "files": [
+     "/данные/over.csv"
+    ],
+    "options": {
+     "/данные/over.csv": {
+      "blocks": {
+       "grid": {
+        "corner": [
+         466167.5,
+         4584527.5,
+         202.5
+        ],
+        "size": [
+         8.0,
+         8.0,
+         4.0
+        ]
+       }
+      }
+     }
+    },
+    "section": true
+   }
+  },
+  "over_without_hint": {
+   "answer": {
+    "body": {
+     "files": [
+      {
+       "block_models": [
+        {
+         "cells": 171,
+         "counts": [
+          4,
+          3,
+          2
+         ],
+         "fields": [
+          "AU"
+         ],
+         "name": "over"
+        }
+       ],
+       "blocks": {
+        "check3": {
+         "dist": 0.0,
+         "ok": true,
+         "rows": [
+          0,
+          85,
+          170
+         ]
+        },
+        "columns": [
+         {
+          "name": "X",
+          "role": "x",
+          "type": "number"
+         },
+         {
+          "name": "Y",
+          "role": "y",
+          "type": "number"
+         },
+         {
+          "name": "Z",
+          "role": "z",
+          "type": "number"
+         },
+         {
+          "name": "DX",
+          "role": "dx",
+          "type": "number"
+         },
+         {
+          "name": "DY",
+          "role": "dy",
+          "type": "number"
+         },
+         {
+          "name": "DZ",
+          "role": "dz",
+          "type": "number"
+         },
+         {
+          "name": "AU",
+          "role": null,
+          "type": "number"
+         }
+        ],
+        "empty_candidates": [],
+        "encoding": "utf-8",
+        "error": null,
+        "fields": [
+         {
+          "column": "AU",
+          "constant": false,
+          "empty": [],
+          "kind": "number",
+          "name": "AU",
+          "role": "grade",
+          "unit": "г/т"
+         }
+        ],
+        "format": "csv",
+        "grid": {
+         "corner": [
+          466167.5,
+          4584527.5,
+          202.5
+         ],
+         "counts": [
+          4,
+          3,
+          2
+         ],
+         "div": [
+          8,
+          4,
+          4
+         ],
+         "order": "F",
+         "rotation": 0.0,
+         "size": [
+          8.0,
+          8.0,
+          4.0
+         ]
+        },
+        "label": "CSV / TXT",
+        "parents": 19,
+        "roles": {
+         "dx": "DX",
+         "dy": "DY",
+         "dz": "DZ",
+         "x": "X",
+         "y": "Y",
+         "z": "Z"
+        },
+        "rows": 171,
+        "rows_exact": true,
+        "sub": true,
+        "units": {
+         "AU": "г/т"
+        },
+        "warnings": [
+         "Размер родительского блока взят по самому большому блоку: 8 × 8 × 4."
+        ]
+       },
+       "choices": {},
+       "crs": null,
+       "encoding": "utf-8",
+       "file": "over.csv",
+       "format": "csv",
+       "kind": "block_model",
+       "label": "CSV / TXT",
+       "layers": [],
+       "left_out": [],
+       "ok": true,
+       "path": "/данные/over.csv",
+       "preliminary": false,
+       "rasters": [],
+       "sidecars": [],
+       "totals": {
+        "block_models": 1,
+        "cells": 171,
+        "layers": 0,
+        "lines": 0,
+        "points": 0,
+        "rasters": 0,
+        "triangles": 0,
+        "vertices": 0,
+        "wireframes": 0
+       },
+       "unread": 0,
+       "warnings": [
+        "Размер родительского блока взят по самому большому блоку: 8 × 8 × 4."
+       ],
+       "wireframes": []
+      }
+     ],
+     "raster_z": {
+      "applies": false,
+      "elevation": null,
+      "shift": 0.0
+     },
+     "rest": [],
+     "section": null,
+     "totals": {
+      "block_models": 1,
+      "cells": 171,
+      "failed": 0,
+      "files": 1,
+      "layers": 0,
+      "lines": 0,
+      "points": 0,
+      "rasters": 0,
+      "triangles": 0,
+      "vertices": 0,
+      "wireframes": 0
+     }
+    },
+    "status": 200
+   },
+   "request": {
+    "files": [
+     "/данные/over.csv"
+    ],
+    "options": {},
+    "section": true
+   }
+  },
+  "points": {
+   "answer": {
+    "body": {
+     "files": [
+      {
+       "block_models": [],
+       "choices": {},
+       "crs": null,
+       "encoding": "utf-8",
+       "file": "points.csv",
+       "format": "points",
+       "kind": "points",
+       "label": "Точки XYZ (CSV, TXT, DAT)",
+       "layers": [
+        {
+         "attributes": [
+          {
+           "kind": "number",
+           "name": "AU",
+           "scope": "feature",
+           "unit": null
+          }
+         ],
+         "closed": 0,
+         "color": null,
+         "extent": [
+          1.0,
+          2.0,
+          3.0,
+          7.0,
+          8.0,
+          9.0
+         ],
+         "flat": false,
+         "length": 0.0,
+         "lines": 0,
+         "name": "points",
+         "points": 3,
+         "points_only": true,
+         "vertices": 0
+        }
+       ],
+       "left_out": [],
+       "ok": true,
+       "path": "/данные/points.csv",
+       "preliminary": false,
+       "rasters": [],
+       "sidecars": [],
+       "totals": {
+        "block_models": 0,
+        "cells": 0,
+        "layers": 1,
+        "lines": 0,
+        "points": 3,
+        "rasters": 0,
+        "triangles": 0,
+        "vertices": 0,
+        "wireframes": 0
+       },
+       "unread": 0,
+       "warnings": [],
+       "wireframes": []
+      }
+     ],
+     "raster_z": {
+      "applies": false,
+      "elevation": null,
+      "shift": 0.0
+     },
+     "rest": [],
+     "section": null,
+     "totals": {
+      "block_models": 0,
+      "cells": 0,
+      "failed": 0,
+      "files": 1,
+      "layers": 1,
+      "lines": 0,
+      "points": 3,
+      "rasters": 0,
+      "triangles": 0,
+      "vertices": 0,
+      "wireframes": 0
+     }
+    },
+    "status": 200
+   },
+   "request": {
+    "files": [
+     "/данные/points.csv"
+    ],
+    "options": {},
+    "section": true
+   }
+  },
+  "real.dat": {
+   "answer": {
+    "body": {
+     "files": [
+      {
+       "block_models": [
+        {
+         "cells": 169070,
+         "counts": [
+          443,
+          558,
+          102
+         ],
+         "fields": [
+          "Fe_m_pc",
+          "Fe_o_pc",
+          "1 - Insi",
+          "1 Filter"
+         ],
+         "name": "real"
+        }
+       ],
+       "blocks": {
+        "check3": {
+         "dist": 0.0,
+         "ok": true,
+         "rows": [
+          0,
+          84535,
+          169069
+         ]
+        },
+        "columns": [
+         {
+          "name": "EAST",
+          "role": "x",
+          "type": "number"
+         },
+         {
+          "name": "NORTH",
+          "role": "y",
+          "type": "number"
+         },
+         {
+          "name": "RL",
+          "role": "z",
+          "type": "number"
+         },
+         {
+          "name": "_EAST",
+          "role": "dx",
+          "type": "number"
+         },
+         {
+          "name": "_NORTH",
+          "role": "dy",
+          "type": "number"
+         },
+         {
+          "name": "_RL",
+          "role": "dz",
+          "type": "number"
+         },
+         {
+          "name": "Fe_m_pc",
+          "role": null,
+          "type": "number"
+         },
+         {
+          "name": "Fe_o_pc",
+          "role": null,
+          "type": "number"
+         },
+         {
+          "name": "1 - Insi",
+          "role": null,
+          "type": "number"
+         },
+         {
+          "name": "1 Filter",
+          "role": null,
+          "type": "number"
+         }
+        ],
+        "empty_candidates": [
+         -99.0
+        ],
+        "encoding": "bocu-1",
+        "error": null,
+        "fields": [
+         {
+          "column": "Fe_m_pc",
+          "constant": false,
+          "empty": [
+           -99.0
+          ],
+          "kind": "number",
+          "name": "Fe_m_pc",
+          "role": "grade",
+          "unit": "%"
+         },
+         {
+          "column": "Fe_o_pc",
+          "constant": false,
+          "empty": [
+           -99.0
+          ],
+          "kind": "number",
+          "name": "Fe_o_pc",
+          "role": "grade",
+          "unit": "%"
+         },
+         {
+          "column": "1 - Insi",
+          "constant": false,
+          "empty": [],
+          "kind": "number",
+          "name": "1 - Insi",
+          "role": null,
+          "unit": null
+         },
+         {
+          "column": "1 Filter",
+          "constant": true,
+          "empty": [],
+          "kind": "number",
+          "name": "1 Filter",
+          "role": null,
+          "unit": null
+         }
+        ],
+        "format": "dat",
+        "grid": {
+         "corner": [
+          23436265.9,
+          5988122.53,
+          -157.14
+         ],
+         "counts": [
+          443,
+          558,
+          102
+         ],
+         "div": [
+          1,
+          1,
+          1
+         ],
+         "order": "F",
+         "rotation": 0.0,
+         "size": [
+          10.0,
+          10.0,
+          10.0
+         ]
+        },
+        "label": "Micromine DAT",
+        "parents": 169070,
+        "roles": {
+         "dx": "_EAST",
+         "dy": "_NORTH",
+         "dz": "_RL",
+         "x": "EAST",
+         "y": "NORTH",
+         "z": "RL"
+        },
+        "rows": 169070,
+        "rows_exact": true,
+        "sub": false,
+        "units": {
+         "Fe_m_pc": "%",
+         "Fe_o_pc": "%"
+        },
+        "warnings": []
+       },
+       "choices": {},
+       "crs": null,
+       "encoding": "bocu-1",
+       "file": "real.dat",
+       "format": "dat",
+       "kind": "block_model",
+       "label": "Micromine DAT",
+       "layers": [],
+       "left_out": [],
+       "ok": true,
+       "path": "/данные/real.dat",
+       "preliminary": false,
+       "rasters": [],
+       "sidecars": [],
+       "totals": {
+        "block_models": 1,
+        "cells": 169070,
+        "layers": 0,
+        "lines": 0,
+        "points": 0,
+        "rasters": 0,
+        "triangles": 0,
+        "vertices": 0,
+        "wireframes": 0
+       },
+       "unread": 0,
+       "warnings": [],
+       "wireframes": []
+      }
+     ],
+     "raster_z": {
+      "applies": false,
+      "elevation": null,
+      "shift": 0.0
+     },
+     "rest": [],
+     "section": null,
+     "totals": {
+      "block_models": 1,
+      "cells": 169070,
+      "failed": 0,
+      "files": 1,
+      "layers": 0,
+      "lines": 0,
+      "points": 0,
+      "rasters": 0,
+      "triangles": 0,
+      "vertices": 0,
+      "wireframes": 0
+     }
+    },
+    "status": 200
+   },
+   "request": {
+    "files": [
+     "/данные/real.dat"
+    ],
+    "options": {},
+    "section": true
+   }
+  },
+  "real.dm": {
+   "answer": {
+    "body": {
+     "files": [
+      {
+       "block_models": [
+        {
+         "cells": 169070,
+         "counts": [
+          443,
+          558,
+          102
+         ],
+         "fields": [
+          "Fe_m_pc",
+          "Fe_o_pc",
+          "1 - Insi",
+          "1 Filter"
+         ],
+         "name": "real"
+        }
+       ],
+       "blocks": {
+        "check3": {
+         "dist": 0.0,
+         "ok": true,
+         "rows": [
+          0,
+          84535,
+          169069
+         ]
+        },
+        "columns": [
+         {
+          "name": "XC",
+          "role": "x",
+          "type": "number"
+         },
+         {
+          "name": "YC",
+          "role": "y",
+          "type": "number"
+         },
+         {
+          "name": "ZC",
+          "role": "z",
+          "type": "number"
+         },
+         {
+          "name": "XINC",
+          "role": "dx",
+          "type": "number"
+         },
+         {
+          "name": "YINC",
+          "role": "dy",
+          "type": "number"
+         },
+         {
+          "name": "ZINC",
+          "role": "dz",
+          "type": "number"
+         },
+         {
+          "name": "Fe_m_pc",
+          "role": null,
+          "type": "number"
+         },
+         {
+          "name": "Fe_o_pc",
+          "role": null,
+          "type": "number"
+         },
+         {
+          "name": "1 - Insi",
+          "role": null,
+          "type": "number"
+         },
+         {
+          "name": "1 Filter",
+          "role": null,
+          "type": "number"
+         }
+        ],
+        "empty_candidates": [
+         -99.0
+        ],
+        "encoding": "cp1251",
+        "error": null,
+        "fields": [
+         {
+          "column": "Fe_m_pc",
+          "constant": false,
+          "empty": [
+           -99.0
+          ],
+          "kind": "number",
+          "name": "Fe_m_pc",
+          "role": "grade",
+          "unit": "%"
+         },
+         {
+          "column": "Fe_o_pc",
+          "constant": false,
+          "empty": [
+           -99.0
+          ],
+          "kind": "number",
+          "name": "Fe_o_pc",
+          "role": "grade",
+          "unit": "%"
+         },
+         {
+          "column": "1 - Insi",
+          "constant": false,
+          "empty": [],
+          "kind": "number",
+          "name": "1 - Insi",
+          "role": null,
+          "unit": null
+         },
+         {
+          "column": "1 Filter",
+          "constant": true,
+          "empty": [],
+          "kind": "number",
+          "name": "1 Filter",
+          "role": null,
+          "unit": null
+         }
+        ],
+        "format": "dm",
+        "grid": {
+         "corner": [
+          23436265.9,
+          5988122.53,
+          -157.14
+         ],
+         "counts": [
+          443,
+          558,
+          102
+         ],
+         "div": [
+          1,
+          1,
+          1
+         ],
+         "order": "F",
+         "rotation": 0.0,
+         "size": [
+          10.0,
+          10.0,
+          10.0
+         ]
+        },
+        "label": "Datamine DM",
+        "parents": 169070,
+        "roles": {
+         "dx": "XINC",
+         "dy": "YINC",
+         "dz": "ZINC",
+         "x": "XC",
+         "y": "YC",
+         "z": "ZC"
+        },
+        "rows": 169070,
+        "rows_exact": true,
+        "sub": false,
+        "units": {
+         "Fe_m_pc": "%",
+         "Fe_o_pc": "%"
+        },
+        "warnings": []
+       },
+       "choices": {},
+       "crs": null,
+       "encoding": "cp1251",
+       "file": "real.dm",
+       "format": "dm",
+       "kind": "block_model",
+       "label": "Datamine DM",
+       "layers": [],
+       "left_out": [],
+       "ok": true,
+       "path": "/данные/real.dm",
+       "preliminary": false,
+       "rasters": [],
+       "sidecars": [],
+       "totals": {
+        "block_models": 1,
+        "cells": 169070,
+        "layers": 0,
+        "lines": 0,
+        "points": 0,
+        "rasters": 0,
+        "triangles": 0,
+        "vertices": 0,
+        "wireframes": 0
+       },
+       "unread": 0,
+       "warnings": [],
+       "wireframes": []
+      }
+     ],
+     "raster_z": {
+      "applies": false,
+      "elevation": null,
+      "shift": 0.0
+     },
+     "rest": [],
+     "section": null,
+     "totals": {
+      "block_models": 1,
+      "cells": 169070,
+      "failed": 0,
+      "files": 1,
+      "layers": 0,
+      "lines": 0,
+      "points": 0,
+      "rasters": 0,
+      "triangles": 0,
+      "vertices": 0,
+      "wireframes": 0
+     }
+    },
+    "status": 200
+   },
+   "request": {
+    "files": [
+     "/данные/real.dm"
+    ],
+    "options": {},
+    "section": true
+   }
+  },
+  "real.fbm": {
+   "answer": {
+    "body": {
+     "files": [
+      {
+       "block_models": [
+        {
+         "cells": 169070,
+         "counts": [
+          445,
+          560,
+          104
+         ],
+         "fields": [
+          "Fe_m_pc",
+          "Fe_o_pc",
+          "1 - Insi",
+          "1 Filter"
+         ],
+         "name": "real"
+        }
+       ],
+       "blocks": {
+        "check3": {
+         "dist": 0.0,
+         "ok": true,
+         "rows": [
+          0,
+          84535,
+          169069
+         ]
+        },
+        "columns": [
+         {
+          "name": "XC",
+          "role": "x",
+          "type": "number"
+         },
+         {
+          "name": "YC",
+          "role": "y",
+          "type": "number"
+         },
+         {
+          "name": "ZC",
+          "role": "z",
+          "type": "number"
+         },
+         {
+          "name": "XINC",
+          "role": "dx",
+          "type": "number"
+         },
+         {
+          "name": "YINC",
+          "role": "dy",
+          "type": "number"
+         },
+         {
+          "name": "ZINC",
+          "role": "dz",
+          "type": "number"
+         },
+         {
+          "name": "Fe_m_pc",
+          "role": null,
+          "type": "number"
+         },
+         {
+          "name": "Fe_o_pc",
+          "role": null,
+          "type": "number"
+         },
+         {
+          "name": "1 - Insi",
+          "role": null,
+          "type": "number"
+         },
+         {
+          "name": "1 Filter",
+          "role": null,
+          "type": "number"
+         }
+        ],
+        "empty_candidates": [
+         -99.0
+        ],
+        "encoding": "cp1251",
+        "error": null,
+        "fields": [
+         {
+          "column": "Fe_m_pc",
+          "constant": false,
+          "empty": [
+           -99.0
+          ],
+          "kind": "number",
+          "name": "Fe_m_pc",
+          "role": "grade",
+          "unit": "%"
+         },
+         {
+          "column": "Fe_o_pc",
+          "constant": false,
+          "empty": [
+           -99.0
+          ],
+          "kind": "number",
+          "name": "Fe_o_pc",
+          "role": "grade",
+          "unit": "%"
+         },
+         {
+          "column": "1 - Insi",
+          "constant": false,
+          "empty": [],
+          "kind": "number",
+          "name": "1 - Insi",
+          "role": null,
+          "unit": null
+         },
+         {
+          "column": "1 Filter",
+          "constant": true,
+          "empty": [],
+          "kind": "number",
+          "name": "1 Filter",
+          "role": null,
+          "unit": null
+         }
+        ],
+        "format": "fbm",
+        "grid": {
+         "corner": [
+          23436265.9,
+          5988122.53,
+          -157.14
+         ],
+         "counts": [
+          445,
+          560,
+          104
+         ],
+         "div": [
+          1,
+          1,
+          1
+         ],
+         "order": "F",
+         "rotation": 0.0,
+         "size": [
+          10.0,
+          10.0,
+          10.0
+         ]
+        },
+        "label": "Datamine FBM",
+        "parents": 169070,
+        "roles": {
+         "dx": "XINC",
+         "dy": "YINC",
+         "dz": "ZINC",
+         "x": "XC",
+         "y": "YC",
+         "z": "ZC"
+        },
+        "rows": 169070,
+        "rows_exact": true,
+        "sub": false,
+        "units": {
+         "Fe_m_pc": "%",
+         "Fe_o_pc": "%"
+        },
+        "warnings": []
+       },
+       "choices": {},
+       "crs": null,
+       "encoding": "cp1251",
+       "file": "real.fbm",
+       "format": "fbm",
+       "kind": "block_model",
+       "label": "Datamine FBM",
+       "layers": [],
+       "left_out": [],
+       "ok": true,
+       "path": "/данные/real.fbm",
+       "preliminary": false,
+       "rasters": [],
+       "sidecars": [],
+       "totals": {
+        "block_models": 1,
+        "cells": 169070,
+        "layers": 0,
+        "lines": 0,
+        "points": 0,
+        "rasters": 0,
+        "triangles": 0,
+        "vertices": 0,
+        "wireframes": 0
+       },
+       "unread": 0,
+       "warnings": [],
+       "wireframes": []
+      }
+     ],
+     "raster_z": {
+      "applies": false,
+      "elevation": null,
+      "shift": 0.0
+     },
+     "rest": [],
+     "section": null,
+     "totals": {
+      "block_models": 1,
+      "cells": 169070,
+      "failed": 0,
+      "files": 1,
+      "layers": 0,
+      "lines": 0,
+      "points": 0,
+      "rasters": 0,
+      "triangles": 0,
+      "vertices": 0,
+      "wireframes": 0
+     }
+    },
+    "status": 200
+   },
+   "request": {
+    "files": [
+     "/данные/real.fbm"
+    ],
+    "options": {},
+    "section": true
+   }
+  },
+  "roles_chosen": {
+   "answer": {
+    "body": {
+     "files": [
+      {
+       "block_models": [
+        {
+         "cells": 2,
+         "counts": [
+          2,
+          2,
+          2
+         ],
+         "fields": [
+          "D"
+         ],
+         "name": "noroles"
+        }
+       ],
+       "blocks": {
+        "check3": {
+         "dist": 0.0,
+         "ok": true,
+         "rows": [
+          0,
+          1
+         ]
+        },
+        "columns": [
+         {
+          "name": "A",
+          "role": "x",
+          "type": "number"
+         },
+         {
+          "name": "B",
+          "role": "y",
+          "type": "number"
+         },
+         {
+          "name": "C",
+          "role": "z",
+          "type": "number"
+         },
+         {
+          "name": "D",
+          "role": null,
+          "type": "number"
+         }
+        ],
+        "empty_candidates": [],
+        "encoding": "utf-8",
+        "error": null,
+        "fields": [
+         {
+          "column": "D",
+          "constant": false,
+          "empty": [],
+          "kind": "number",
+          "name": "D",
+          "role": null,
+          "unit": null
+         }
+        ],
+        "format": "csv",
+        "grid": {
+         "corner": [
+          0.5,
+          1.5,
+          2.5
+         ],
+         "counts": [
+          2,
+          2,
+          2
+         ],
+         "div": [
+          1,
+          1,
+          1
+         ],
+         "order": "F",
+         "rotation": 0.0,
+         "size": [
+          1.0,
+          1.0,
+          1.0
+         ]
+        },
+        "label": "CSV / TXT",
+        "parents": 2,
+        "roles": {
+         "dx": null,
+         "dy": null,
+         "dz": null,
+         "x": "A",
+         "y": "B",
+         "z": "C"
+        },
+        "rows": 2,
+        "rows_exact": true,
+        "sub": false,
+        "units": {},
+        "warnings": []
+       },
+       "choices": {},
+       "crs": null,
+       "encoding": "utf-8",
+       "file": "noroles.csv",
+       "format": "csv",
+       "kind": "block_model",
+       "label": "CSV / TXT",
+       "layers": [],
+       "left_out": [],
+       "ok": true,
+       "path": "/данные/noroles.csv",
+       "preliminary": false,
+       "rasters": [],
+       "sidecars": [],
+       "totals": {
+        "block_models": 1,
+        "cells": 2,
+        "layers": 0,
+        "lines": 0,
+        "points": 0,
+        "rasters": 0,
+        "triangles": 0,
+        "vertices": 0,
+        "wireframes": 0
+       },
+       "unread": 0,
+       "warnings": [],
+       "wireframes": []
+      }
+     ],
+     "raster_z": {
+      "applies": false,
+      "elevation": null,
+      "shift": 0.0
+     },
+     "rest": [],
+     "section": null,
+     "totals": {
+      "block_models": 1,
+      "cells": 2,
+      "failed": 0,
+      "files": 1,
+      "layers": 0,
+      "lines": 0,
+      "points": 0,
+      "rasters": 0,
+      "triangles": 0,
+      "vertices": 0,
+      "wireframes": 0
+     }
+    },
+    "status": 200
+   },
+   "request": {
+    "files": [
+     "/данные/noroles.csv"
+    ],
+    "options": {
+     "/данные/noroles.csv": {
+      "blocks": {
+       "roles": {
+        "x": "A",
+        "y": "B",
+        "z": "C"
+       }
+      }
+     }
+    },
+    "section": true
+   }
+  },
+  "sub_dm": {
+   "answer": {
+    "body": {
+     "files": [
+      {
+       "block_models": [
+        {
+         "cells": 170,
+         "counts": [
+          4,
+          3,
+          2
+         ],
+         "fields": [
+          "AU"
+         ],
+         "name": "sub"
+        }
+       ],
+       "blocks": {
+        "check3": {
+         "dist": 0.0,
+         "ok": true,
+         "rows": [
+          0,
+          85,
+          169
+         ]
+        },
+        "columns": [
+         {
+          "name": "XC",
+          "role": "x",
+          "type": "number"
+         },
+         {
+          "name": "YC",
+          "role": "y",
+          "type": "number"
+         },
+         {
+          "name": "ZC",
+          "role": "z",
+          "type": "number"
+         },
+         {
+          "name": "XINC",
+          "role": "dx",
+          "type": "number"
+         },
+         {
+          "name": "YINC",
+          "role": "dy",
+          "type": "number"
+         },
+         {
+          "name": "ZINC",
+          "role": "dz",
+          "type": "number"
+         },
+         {
+          "name": "AU",
+          "role": null,
+          "type": "number"
+         }
+        ],
+        "empty_candidates": [],
+        "encoding": "cp1251",
+        "error": null,
+        "fields": [
+         {
+          "column": "AU",
+          "constant": false,
+          "empty": [],
+          "kind": "number",
+          "name": "AU",
+          "role": "grade",
+          "unit": "г/т"
+         }
+        ],
+        "format": "dm",
+        "grid": {
+         "corner": [
+          466167.5,
+          4584527.5,
+          202.5
+         ],
+         "counts": [
+          4,
+          3,
+          2
+         ],
+         "div": [
+          8,
+          4,
+          4
+         ],
+         "order": "F",
+         "rotation": 0.0,
+         "size": [
+          8.0,
+          8.0,
+          4.0
+         ]
+        },
+        "label": "Datamine DM",
+        "parents": 19,
+        "roles": {
+         "dx": "XINC",
+         "dy": "YINC",
+         "dz": "ZINC",
+         "x": "XC",
+         "y": "YC",
+         "z": "ZC"
+        },
+        "rows": 170,
+        "rows_exact": true,
+        "sub": true,
+        "units": {
+         "AU": "г/т"
+        },
+        "warnings": [
+         "Размер родительского блока взят по самому большому блоку: 8 × 8 × 4."
+        ]
+       },
+       "choices": {},
+       "crs": null,
+       "encoding": "cp1251",
+       "file": "sub.dm",
+       "format": "dm",
+       "kind": "block_model",
+       "label": "Datamine DM",
+       "layers": [],
+       "left_out": [],
+       "ok": true,
+       "path": "/данные/sub.dm",
+       "preliminary": false,
+       "rasters": [],
+       "sidecars": [],
+       "totals": {
+        "block_models": 1,
+        "cells": 170,
+        "layers": 0,
+        "lines": 0,
+        "points": 0,
+        "rasters": 0,
+        "triangles": 0,
+        "vertices": 0,
+        "wireframes": 0
+       },
+       "unread": 0,
+       "warnings": [
+        "Размер родительского блока взят по самому большому блоку: 8 × 8 × 4."
+       ],
+       "wireframes": []
+      }
+     ],
+     "raster_z": {
+      "applies": false,
+      "elevation": null,
+      "shift": 0.0
+     },
+     "rest": [],
+     "section": null,
+     "totals": {
+      "block_models": 1,
+      "cells": 170,
+      "failed": 0,
+      "files": 1,
+      "layers": 0,
+      "lines": 0,
+      "points": 0,
+      "rasters": 0,
+      "triangles": 0,
+      "vertices": 0,
+      "wireframes": 0
+     }
+    },
+    "status": 200
+   },
+   "request": {
+    "files": [
+     "/данные/sub.dm"
+    ],
+    "options": {},
+    "section": true
+   }
+  },
+  "sub_fbm": {
+   "answer": {
+    "body": {
+     "files": [
+      {
+       "block_models": [
+        {
+         "cells": 170,
+         "counts": [
+          4,
+          3,
+          2
+         ],
+         "fields": [
+          "AU"
+         ],
+         "name": "sub"
+        }
+       ],
+       "blocks": {
+        "check3": {
+         "dist": 0.0,
+         "ok": true,
+         "rows": [
+          0,
+          85,
+          169
+         ]
+        },
+        "columns": [
+         {
+          "name": "XC",
+          "role": "x",
+          "type": "number"
+         },
+         {
+          "name": "YC",
+          "role": "y",
+          "type": "number"
+         },
+         {
+          "name": "ZC",
+          "role": "z",
+          "type": "number"
+         },
+         {
+          "name": "XINC",
+          "role": "dx",
+          "type": "number"
+         },
+         {
+          "name": "YINC",
+          "role": "dy",
+          "type": "number"
+         },
+         {
+          "name": "ZINC",
+          "role": "dz",
+          "type": "number"
+         },
+         {
+          "name": "AU",
+          "role": null,
+          "type": "number"
+         }
+        ],
+        "empty_candidates": [],
+        "encoding": "cp1251",
+        "error": null,
+        "fields": [
+         {
+          "column": "AU",
+          "constant": false,
+          "empty": [],
+          "kind": "number",
+          "name": "AU",
+          "role": "grade",
+          "unit": "г/т"
+         }
+        ],
+        "format": "fbm",
+        "grid": {
+         "corner": [
+          466167.5,
+          4584527.5,
+          202.5
+         ],
+         "counts": [
+          4,
+          3,
+          2
+         ],
+         "div": [
+          8,
+          4,
+          4
+         ],
+         "order": "F",
+         "rotation": 0.0,
+         "size": [
+          8.0,
+          8.0,
+          4.0
+         ]
+        },
+        "label": "Datamine FBM",
+        "parents": 19,
+        "roles": {
+         "dx": "XINC",
+         "dy": "YINC",
+         "dz": "ZINC",
+         "x": "XC",
+         "y": "YC",
+         "z": "ZC"
+        },
+        "rows": 170,
+        "rows_exact": true,
+        "sub": true,
+        "units": {
+         "AU": "г/т"
+        },
+        "warnings": [
+         "Размер родительского блока взят по самому большому блоку: 8 × 8 × 4."
+        ]
+       },
+       "choices": {},
+       "crs": null,
+       "encoding": "cp1251",
+       "file": "sub.fbm",
+       "format": "fbm",
+       "kind": "block_model",
+       "label": "Datamine FBM",
+       "layers": [],
+       "left_out": [],
+       "ok": true,
+       "path": "/данные/sub.fbm",
+       "preliminary": false,
+       "rasters": [],
+       "sidecars": [],
+       "totals": {
+        "block_models": 1,
+        "cells": 170,
+        "layers": 0,
+        "lines": 0,
+        "points": 0,
+        "rasters": 0,
+        "triangles": 0,
+        "vertices": 0,
+        "wireframes": 0
+       },
+       "unread": 0,
+       "warnings": [
+        "Размер родительского блока взят по самому большому блоку: 8 × 8 × 4."
+       ],
+       "wireframes": []
+      }
+     ],
+     "raster_z": {
+      "applies": false,
+      "elevation": null,
+      "shift": 0.0
+     },
+     "rest": [],
+     "section": null,
+     "totals": {
+      "block_models": 1,
+      "cells": 170,
+      "failed": 0,
+      "files": 1,
+      "layers": 0,
+      "lines": 0,
+      "points": 0,
+      "rasters": 0,
+      "triangles": 0,
+      "vertices": 0,
+      "wireframes": 0
+     }
+    },
+    "status": 200
+   },
+   "request": {
+    "files": [
+     "/данные/sub.fbm"
+    ],
+    "options": {},
+    "section": true
+   }
+  },
+  "triangles_dm": {
+   "answer": {
+    "body": {
+     "files": [
+      {
+       "error": {
+        "code": "pair_missing",
+        "hint": "Каркас Datamine — это два файла: треугольники (…tr.dm) и точки (…pt.dm). Выберите оба.",
+        "message": "Для каркаса «tri.dm» не найдена таблица точек."
+       },
+       "file": "tri.dm",
+       "ok": false,
+       "path": "/данные/tri.dm"
+      }
+     ],
+     "raster_z": {
+      "applies": false,
+      "elevation": null,
+      "shift": 0.0
+     },
+     "rest": [],
+     "section": null,
+     "totals": {
+      "block_models": 0,
+      "cells": 0,
+      "failed": 1,
+      "files": 0,
+      "layers": 0,
+      "lines": 0,
+      "points": 0,
+      "rasters": 0,
+      "triangles": 0,
+      "vertices": 0,
+      "wireframes": 0
+     }
+    },
+    "status": 200
+   },
+   "request": {
+    "files": [
+     "/данные/tri.dm"
+    ],
+    "options": {},
+    "section": true
+   }
+  },
+  "turned_csv": {
+   "answer": {
+    "body": {
+     "files": [
+      {
+       "block_models": [
+        {
+         "cells": 170,
+         "counts": [
+          4,
+          3,
+          2
+         ],
+         "fields": [
+          "AU"
+         ],
+         "name": "turned"
+        }
+       ],
+       "blocks": {
+        "check3": {
+         "dist": 2.38131292e-10,
+         "ok": true,
+         "rows": [
+          0,
+          85,
+          169
+         ]
+        },
+        "columns": [
+         {
+          "name": "EAST",
+          "role": "x",
+          "type": "number"
+         },
+         {
+          "name": "NORTH",
+          "role": "y",
+          "type": "number"
+         },
+         {
+          "name": "RL",
+          "role": "z",
+          "type": "number"
+         },
+         {
+          "name": "_EAST",
+          "role": "dx",
+          "type": "number"
+         },
+         {
+          "name": "_NORTH",
+          "role": "dy",
+          "type": "number"
+         },
+         {
+          "name": "_RL",
+          "role": "dz",
+          "type": "number"
+         },
+         {
+          "name": "AU",
+          "role": null,
+          "type": "number"
+         }
+        ],
+        "empty_candidates": [],
+        "encoding": "utf-8",
+        "error": null,
+        "fields": [
+         {
+          "column": "AU",
+          "constant": false,
+          "empty": [],
+          "kind": "number",
+          "name": "AU",
+          "role": "grade",
+          "unit": "г/т"
+         }
+        ],
+        "format": "csv_micromine",
+        "grid": {
+         "corner": [
+          466167.5,
+          4584527.5,
+          202.5
+         ],
+         "counts": [
+          4,
+          3,
+          2
+         ],
+         "div": [
+          8,
+          4,
+          4
+         ],
+         "order": "F",
+         "rotation": 30.0,
+         "size": [
+          8.0,
+          8.0,
+          4.0
+         ]
+        },
+        "label": "CSV Micromine",
+        "parents": 19,
+        "roles": {
+         "dx": "_EAST",
+         "dy": "_NORTH",
+         "dz": "_RL",
+         "x": "EAST",
+         "y": "NORTH",
+         "z": "RL"
+        },
+        "rows": 170,
+        "rows_exact": true,
+        "sub": true,
+        "units": {
+         "AU": "г/т"
+        },
+        "warnings": []
+       },
+       "choices": {},
+       "crs": null,
+       "encoding": "utf-8",
+       "file": "turned.csv",
+       "format": "csv_micromine",
+       "kind": "block_model",
+       "label": "CSV Micromine",
+       "layers": [],
+       "left_out": [],
+       "ok": true,
+       "path": "/данные/turned.csv",
+       "preliminary": false,
+       "rasters": [],
+       "sidecars": [],
+       "totals": {
+        "block_models": 1,
+        "cells": 170,
+        "layers": 0,
+        "lines": 0,
+        "points": 0,
+        "rasters": 0,
+        "triangles": 0,
+        "vertices": 0,
+        "wireframes": 0
+       },
+       "unread": 0,
+       "warnings": [],
+       "wireframes": []
+      }
+     ],
+     "raster_z": {
+      "applies": false,
+      "elevation": null,
+      "shift": 0.0
+     },
+     "rest": [],
+     "section": null,
+     "totals": {
+      "block_models": 1,
+      "cells": 170,
+      "failed": 0,
+      "files": 1,
+      "layers": 0,
+      "lines": 0,
+      "points": 0,
+      "rasters": 0,
+      "triangles": 0,
+      "vertices": 0,
+      "wireframes": 0
+     }
+    },
+    "status": 200
+   },
+   "request": {
+    "files": [
+     "/данные/turned.csv"
+    ],
+    "options": {
+     "/данные/turned.csv": {
+      "blocks": {
+       "grid": {
+        "corner": [
+         466167.5,
+         4584527.5,
+         202.5
+        ],
+        "rotation": 30.0,
+        "size": [
+         8.0,
+         8.0,
+         4.0
+        ]
+       }
+      }
+     }
+    },
+    "section": true
+   }
+  },
+  "turned_dat": {
+   "answer": {
+    "body": {
+     "files": [
+      {
+       "block_models": [
+        {
+         "cells": 170,
+         "counts": [
+          4,
+          3,
+          2
+         ],
+         "fields": [
+          "AU"
+         ],
+         "name": "turned"
+        }
+       ],
+       "blocks": {
+        "check3": {
+         "dist": 2.38131292e-10,
+         "ok": true,
+         "rows": [
+          0,
+          85,
+          169
+         ]
+        },
+        "columns": [
+         {
+          "name": "EAST",
+          "role": "x",
+          "type": "number"
+         },
+         {
+          "name": "NORTH",
+          "role": "y",
+          "type": "number"
+         },
+         {
+          "name": "RL",
+          "role": "z",
+          "type": "number"
+         },
+         {
+          "name": "_EAST",
+          "role": "dx",
+          "type": "number"
+         },
+         {
+          "name": "_NORTH",
+          "role": "dy",
+          "type": "number"
+         },
+         {
+          "name": "_RL",
+          "role": "dz",
+          "type": "number"
+         },
+         {
+          "name": "AU",
+          "role": null,
+          "type": "number"
+         }
+        ],
+        "empty_candidates": [],
+        "encoding": "cp1251",
+        "error": null,
+        "fields": [
+         {
+          "column": "AU",
+          "constant": false,
+          "empty": [],
+          "kind": "number",
+          "name": "AU",
+          "role": "grade",
+          "unit": "г/т"
+         }
+        ],
+        "format": "dat",
+        "grid": {
+         "corner": [
+          466167.5,
+          4584527.5,
+          202.5
+         ],
+         "counts": [
+          4,
+          3,
+          2
+         ],
+         "div": [
+          8,
+          4,
+          4
+         ],
+         "order": "F",
+         "rotation": 30.0,
+         "size": [
+          8.0,
+          8.0,
+          4.0
+         ]
+        },
+        "label": "Micromine DAT",
+        "parents": 19,
+        "roles": {
+         "dx": "_EAST",
+         "dy": "_NORTH",
+         "dz": "_RL",
+         "x": "EAST",
+         "y": "NORTH",
+         "z": "RL"
+        },
+        "rows": 170,
+        "rows_exact": true,
+        "sub": true,
+        "units": {
+         "AU": "г/т"
+        },
+        "warnings": []
+       },
+       "choices": {},
+       "crs": null,
+       "encoding": "cp1251",
+       "file": "turned.dat",
+       "format": "dat",
+       "kind": "block_model",
+       "label": "Micromine DAT",
+       "layers": [],
+       "left_out": [],
+       "ok": true,
+       "path": "/данные/turned.dat",
+       "preliminary": false,
+       "rasters": [],
+       "sidecars": [],
+       "totals": {
+        "block_models": 1,
+        "cells": 170,
+        "layers": 0,
+        "lines": 0,
+        "points": 0,
+        "rasters": 0,
+        "triangles": 0,
+        "vertices": 0,
+        "wireframes": 0
+       },
+       "unread": 0,
+       "warnings": [],
+       "wireframes": []
+      }
+     ],
+     "raster_z": {
+      "applies": false,
+      "elevation": null,
+      "shift": 0.0
+     },
+     "rest": [],
+     "section": null,
+     "totals": {
+      "block_models": 1,
+      "cells": 170,
+      "failed": 0,
+      "files": 1,
+      "layers": 0,
+      "lines": 0,
+      "points": 0,
+      "rasters": 0,
+      "triangles": 0,
+      "vertices": 0,
+      "wireframes": 0
+     }
+    },
+    "status": 200
+   },
+   "request": {
+    "files": [
+     "/данные/turned.dat"
+    ],
+    "options": {
+     "/данные/turned.dat": {
+      "blocks": {
+       "grid": {
+        "corner": [
+         466167.5,
+         4584527.5,
+         202.5
+        ],
+        "rotation": 30.0,
+        "size": [
+         8.0,
+         8.0,
+         4.0
+        ]
+       }
+      }
+     }
+    },
+    "section": true
+   }
+  },
+  "turned_without_angle": {
+   "answer": {
+    "body": {
+     "files": [
+      {
+       "block_models": [
+        {
+         "cells": 170,
+         "counts": null,
+         "fields": [],
+         "name": "turned"
+        }
+       ],
+       "blocks": {
+        "check3": null,
+        "columns": [
+         {
+          "name": "EAST",
+          "role": "x",
+          "type": "number"
+         },
+         {
+          "name": "NORTH",
+          "role": "y",
+          "type": "number"
+         },
+         {
+          "name": "RL",
+          "role": "z",
+          "type": "number"
+         },
+         {
+          "name": "_EAST",
+          "role": "dx",
+          "type": "number"
+         },
+         {
+          "name": "_NORTH",
+          "role": "dy",
+          "type": "number"
+         },
+         {
+          "name": "_RL",
+          "role": "dz",
+          "type": "number"
+         },
+         {
+          "name": "AU",
+          "role": null,
+          "type": "number"
+         }
+        ],
+        "empty_candidates": [],
+        "encoding": "utf-8",
+        "error": {
+         "code": "blocks_unaligned",
+         "count": 170,
+         "hint": "Строки данных (с 1): 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 и другие. Субблоки должны делить родителя по подъячейкам 2^L (L ≤ 7) и не выходить за его границы, а блоки — лежать в сетке от её начала. Проверьте начало и размер родителя в мастере или пересохраните модель в исходной программе (субблоки по октодереву).",
+         "message": "Блоков, которые нельзя уложить в сетку модели: 170 (через границу родителя — 3; не по подъячейкам 2^L — 167).",
+         "rows": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19
+         ]
+        },
+        "fields": [],
+        "format": "csv_micromine",
+        "grid": null,
+        "label": "CSV Micromine",
+        "parents": 0,
+        "roles": {
+         "dx": "_EAST",
+         "dy": "_NORTH",
+         "dz": "_RL",
+         "x": "EAST",
+         "y": "NORTH",
+         "z": "RL"
+        },
+        "rows": 170,
+        "rows_exact": true,
+        "sub": false,
+        "units": {},
+        "warnings": [
+         "Размер родительского блока взят по самому большому блоку: 8 × 8 × 4."
+        ]
+       },
+       "choices": {},
+       "crs": null,
+       "encoding": "utf-8",
+       "file": "turned.csv",
+       "format": "csv_micromine",
+       "kind": "block_model",
+       "label": "CSV Micromine",
+       "layers": [],
+       "left_out": [],
+       "ok": true,
+       "path": "/данные/turned.csv",
+       "preliminary": false,
+       "rasters": [],
+       "sidecars": [],
+       "totals": {
+        "block_models": 0,
+        "cells": 170,
+        "layers": 0,
+        "lines": 0,
+        "points": 0,
+        "rasters": 0,
+        "triangles": 0,
+        "vertices": 0,
+        "wireframes": 0
+       },
+       "unread": 0,
+       "warnings": [
+        "Блоков, которые нельзя уложить в сетку модели: 170 (через границу родителя — 3; не по подъячейкам 2^L — 167). Строки данных (с 1): 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 и другие. Субблоки должны делить родителя по подъячейкам 2^L (L ≤ 7) и не выходить за его границы, а блоки — лежать в сетке от её начала. Проверьте начало и размер родителя в мастере или пересохраните модель в исходной программе (субблоки по октодереву).",
+        "Размер родительского блока взят по самому большому блоку: 8 × 8 × 4."
+       ],
+       "wireframes": []
+      }
+     ],
+     "raster_z": {
+      "applies": false,
+      "elevation": null,
+      "shift": 0.0
+     },
+     "rest": [],
+     "section": null,
+     "totals": {
+      "block_models": 0,
+      "cells": 170,
+      "failed": 0,
+      "files": 1,
+      "layers": 0,
+      "lines": 0,
+      "points": 0,
+      "rasters": 0,
+      "triangles": 0,
+      "vertices": 0,
+      "wireframes": 0
+     }
+    },
+    "status": 200
+   },
+   "request": {
+    "files": [
+     "/данные/turned.csv"
+    ],
+    "options": {},
+    "section": true
+   }
+  },
+  "turned_wrong_angle": {
+   "answer": {
+    "body": {
+     "files": [
+      {
+       "block_models": [
+        {
+         "cells": 170,
+         "counts": null,
+         "fields": [],
+         "name": "turned"
+        }
+       ],
+       "blocks": {
+        "check3": null,
+        "columns": [
+         {
+          "name": "EAST",
+          "role": "x",
+          "type": "number"
+         },
+         {
+          "name": "NORTH",
+          "role": "y",
+          "type": "number"
+         },
+         {
+          "name": "RL",
+          "role": "z",
+          "type": "number"
+         },
+         {
+          "name": "_EAST",
+          "role": "dx",
+          "type": "number"
+         },
+         {
+          "name": "_NORTH",
+          "role": "dy",
+          "type": "number"
+         },
+         {
+          "name": "_RL",
+          "role": "dz",
+          "type": "number"
+         },
+         {
+          "name": "AU",
+          "role": null,
+          "type": "number"
+         }
+        ],
+        "empty_candidates": [],
+        "encoding": "utf-8",
+        "error": {
+         "code": "blocks_unaligned",
+         "count": 170,
+         "hint": "Строки данных (с 1): 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 и другие. Субблоки должны делить родителя по подъячейкам 2^L (L ≤ 7) и не выходить за его границы, а блоки — лежать в сетке от её начала. Проверьте начало и размер родителя в мастере или пересохраните модель в исходной программе (субблоки по октодереву).",
+         "message": "Блоков, которые нельзя уложить в сетку модели: 170 (за началом или за краем сетки — 15; не по подъячейкам 2^L — 155).",
+         "rows": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19
+         ]
+        },
+        "fields": [],
+        "format": "csv_micromine",
+        "grid": null,
+        "label": "CSV Micromine",
+        "parents": 0,
+        "roles": {
+         "dx": "_EAST",
+         "dy": "_NORTH",
+         "dz": "_RL",
+         "x": "EAST",
+         "y": "NORTH",
+         "z": "RL"
+        },
+        "rows": 170,
+        "rows_exact": true,
+        "sub": false,
+        "units": {},
+        "warnings": []
+       },
+       "choices": {},
+       "crs": null,
+       "encoding": "utf-8",
+       "file": "turned.csv",
+       "format": "csv_micromine",
+       "kind": "block_model",
+       "label": "CSV Micromine",
+       "layers": [],
+       "left_out": [],
+       "ok": true,
+       "path": "/данные/turned.csv",
+       "preliminary": false,
+       "rasters": [],
+       "sidecars": [],
+       "totals": {
+        "block_models": 0,
+        "cells": 170,
+        "layers": 0,
+        "lines": 0,
+        "points": 0,
+        "rasters": 0,
+        "triangles": 0,
+        "vertices": 0,
+        "wireframes": 0
+       },
+       "unread": 0,
+       "warnings": [
+        "Блоков, которые нельзя уложить в сетку модели: 170 (за началом или за краем сетки — 15; не по подъячейкам 2^L — 155). Строки данных (с 1): 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 и другие. Субблоки должны делить родителя по подъячейкам 2^L (L ≤ 7) и не выходить за его границы, а блоки — лежать в сетке от её начала. Проверьте начало и размер родителя в мастере или пересохраните модель в исходной программе (субблоки по октодереву)."
+       ],
+       "wireframes": []
+      }
+     ],
+     "raster_z": {
+      "applies": false,
+      "elevation": null,
+      "shift": 0.0
+     },
+     "rest": [],
+     "section": null,
+     "totals": {
+      "block_models": 0,
+      "cells": 170,
+      "failed": 0,
+      "files": 1,
+      "layers": 0,
+      "lines": 0,
+      "points": 0,
+      "rasters": 0,
+      "triangles": 0,
+      "vertices": 0,
+      "wireframes": 0
+     }
+    },
+    "status": 200
+   },
+   "request": {
+    "files": [
+     "/данные/turned.csv"
+    ],
+    "options": {
+     "/данные/turned.csv": {
+      "blocks": {
+       "grid": {
+        "corner": [
+         466167.5,
+         4584527.5,
+         202.5
+        ],
+        "rotation": 35.0,
+        "size": [
+         8.0,
+         8.0,
+         4.0
+        ]
+       }
+      }
+     }
+    },
+    "section": true
+   }
+  }
+ },
+ "jobs": {
+  "dat": {
+   "job": {
+    "error": null,
+    "kind": "import.objects",
+    "message": "Готово",
+    "progress": 1.0,
+    "queue": "heavy",
+    "result": {
+     "block_model_ids": [
+      1
+     ],
+     "block_models": 1,
+     "cells": 103,
+     "cloud_ids": [],
+     "failed": [],
+     "files": [
+      {
+       "block_models": 1,
+       "cells": 103,
+       "checks": {
+        "duplicates": 0,
+        "overlaps": 0
+       },
+       "file": "model.dat",
+       "format": "dat",
+       "kind": "block_models",
+       "object_id": 1,
+       "object_ids": [
+        1
+       ],
+       "parents": 103,
+       "rows": 103,
+       "skipped": 0,
+       "sub": false
+      }
+     ],
+     "layers": 0,
+     "lines": 0,
+     "objects": [
+      1
+     ],
+     "points": 0,
+     "rasters": 0,
+     "rest": [],
+     "triangles": 0,
+     "vertices": 0,
+     "wireframe_ids": [],
+     "wireframes": 0
+    },
+    "status": "done",
+    "title": "Импорт файлов: model.dat"
+   },
+   "log": {
+    "lines": [
+     {
+      "level": "info",
+      "seq": 1,
+      "text": "model.dat: блочная модель «Моя модель» — сетка 6 × 5 × 4, блоков 103, родителей 103, полей 2"
+     }
+    ]
+   },
+   "request": {
+    "files": [
+     "/данные/model.dat"
+    ],
+    "options": {
+     "/данные/model.dat": {
+      "blocks": {
+       "empty": [
+        -99
+       ],
+       "fields": {
+        "AU": {
+         "role": "grade",
+         "unit": "г/т"
+        },
+        "ROCK": {
+         "role": "code"
+        }
+       }
+      },
+      "name": "Моя модель"
+     }
+    }
+   }
+  },
+  "dups": {
+   "job": {
+    "error": null,
+    "kind": "import.objects",
+    "message": "Готово",
+    "progress": 1.0,
+    "queue": "heavy",
+    "result": {
+     "block_model_ids": [
+      4
+     ],
+     "block_models": 1,
+     "cells": 103,
+     "cloud_ids": [],
+     "failed": [],
+     "files": [
+      {
+       "block_models": 1,
+       "cells": 103,
+       "checks": {
+        "duplicates": 2,
+        "overlaps": 0
+       },
+       "file": "dups.csv",
+       "format": "csv",
+       "kind": "block_models",
+       "object_id": 4,
+       "object_ids": [
+        4
+       ],
+       "parents": 103,
+       "rows": 103,
+       "skipped": 0,
+       "sub": false
+      }
+     ],
+     "layers": 0,
+     "lines": 0,
+     "objects": [
+      4
+     ],
+     "points": 0,
+     "rasters": 0,
+     "rest": [],
+     "triangles": 0,
+     "vertices": 0,
+     "wireframe_ids": [],
+     "wireframes": 0
+    },
+    "status": "done",
+    "title": "Импорт файлов: dups.csv"
+   },
+   "log": {
+    "lines": [
+     {
+      "level": "warn",
+      "seq": 1,
+      "text": "«dups.csv»: Повторяющиеся блоки: 2. Оставлена первая строка. Повторы не меняют модель; проверьте исходный файл, если они не ожидались."
+     },
+     {
+      "level": "info",
+      "seq": 2,
+      "text": "dups.csv: блочная модель «dups» — сетка 6 × 5 × 4, блоков 103, родителей 103, полей 2"
+     }
+    ]
+   },
+   "request": {
+    "files": [
+     "/данные/dups.csv"
+    ],
+    "options": {}
+   }
+  },
+  "failed_and_points": {
+   "job": {
+    "error": null,
+    "kind": "import.objects",
+    "message": "Готово",
+    "progress": 1.0,
+    "queue": "heavy",
+    "result": {
+     "block_model_ids": [
+      6
+     ],
+     "block_models": 1,
+     "cells": 103,
+     "cloud_ids": [],
+     "failed": [
+      {
+       "code": "no_coordinates",
+       "file": "noroles.csv",
+       "hint": "Колонки файла: A, B, C, D. Назовите колонки X, Y, Z или укажите их при импорте.",
+       "message": "В файле не найдены колонки координат X и Y.",
+       "path": "/данные/noroles.csv"
+      }
+     ],
+     "files": [
+      {
+       "block_models": 1,
+       "cells": 103,
+       "checks": {
+        "duplicates": 0,
+        "overlaps": 0
+       },
+       "file": "off.csv",
+       "format": "csv",
+       "kind": "block_models",
+       "object_id": 6,
+       "object_ids": [
+        6
+       ],
+       "parents": 103,
+       "rows": 103,
+       "skipped": 0,
+       "sub": false
+      },
+      {
+       "file": "points.csv",
+       "format": "points",
+       "kind": "points",
+       "layers": 1,
+       "lines": 0,
+       "object_id": 7,
+       "points": 3,
+       "rasters": 0,
+       "vertices": 0
+      }
+     ],
+     "layers": 1,
+     "lines": 0,
+     "objects": [
+      6,
+      7
+     ],
+     "points": 3,
+     "rasters": 0,
+     "rest": [],
+     "triangles": 0,
+     "vertices": 0,
+     "wireframe_ids": [],
+     "wireframes": 0
+    },
+    "status": "done",
+    "title": "Импорт файлов: noroles.csv, off.csv, points.csv"
+   },
+   "log": {
+    "lines": [
+     {
+      "level": "error",
+      "seq": 1,
+      "text": "«noroles.csv» не загружен: В файле не найдены колонки координат X и Y. Колонки файла: A, B, C, D. Назовите колонки X, Y, Z или укажите их при импорте."
+     },
+     {
+      "level": "info",
+      "seq": 2,
+      "text": "off.csv: блочная модель «off» — сетка 6 × 5 × 4, блоков 103, родителей 103, полей 2"
+     },
+     {
+      "level": "info",
+      "seq": 3,
+      "text": "points.csv: слоёв — 1, линий — 0, вершин — 0, точек — 3"
+     }
+    ]
+   },
+   "request": {
+    "files": [
+     "/данные/noroles.csv",
+     "/данные/off.csv",
+     "/данные/points.csv"
+    ],
+    "options": {}
+   }
+  },
+  "over": {
+   "job": {
+    "error": null,
+    "kind": "import.objects",
+    "message": "Готово",
+    "progress": 1.0,
+    "queue": "heavy",
+    "result": {
+     "block_model_ids": [
+      5
+     ],
+     "block_models": 1,
+     "cells": 171,
+     "cloud_ids": [],
+     "failed": [],
+     "files": [
+      {
+       "block_models": 1,
+       "cells": 171,
+       "checks": {
+        "duplicates": 0,
+        "overlaps": 3
+       },
+       "file": "over.csv",
+       "format": "csv",
+       "kind": "block_models",
+       "object_id": 5,
+       "object_ids": [
+        5
+       ],
+       "parents": 19,
+       "rows": 171,
+       "skipped": 0,
+       "sub": true
+      }
+     ],
+     "layers": 0,
+     "lines": 0,
+     "objects": [
+      5
+     ],
+     "points": 0,
+     "rasters": 0,
+     "rest": [],
+     "triangles": 0,
+     "vertices": 0,
+     "wireframe_ids": [],
+     "wireframes": 0
+    },
+    "status": "done",
+    "title": "Импорт файлов: over.csv"
+   },
+   "log": {
+    "lines": [
+     {
+      "level": "warn",
+      "seq": 1,
+      "text": "«over.csv»: Перекрывающиеся блоки: 3 (по сетке наименьшего блока). Строки не удалены: объём и тоннаж по ним завышены. Исправьте модель в исходной программе."
+     },
+     {
+      "level": "warn",
+      "seq": 2,
+      "text": "«over.csv»: Сумма объёмов субблоков больше объёма родителя: 1 блоков. Субблоки перекрываются: проверьте их смещения и размеры."
+     },
+     {
+      "level": "info",
+      "seq": 3,
+      "text": "over.csv: блочная модель «over» — сетка 4 × 3 × 2, блоков 171, родителей 19, полей 1"
+     }
+    ]
+   },
+   "request": {
+    "files": [
+     "/данные/over.csv"
+    ],
+    "options": {
+     "/данные/over.csv": {
+      "blocks": {
+       "grid": {
+        "corner": [
+         466167.5,
+         4584527.5,
+         202.5
+        ],
+        "size": [
+         8.0,
+         8.0,
+         4.0
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "sub_dm": {
+   "job": {
+    "error": null,
+    "kind": "import.objects",
+    "message": "Готово",
+    "progress": 1.0,
+    "queue": "heavy",
+    "result": {
+     "block_model_ids": [
+      2
+     ],
+     "block_models": 1,
+     "cells": 170,
+     "cloud_ids": [],
+     "failed": [],
+     "files": [
+      {
+       "block_models": 1,
+       "cells": 170,
+       "checks": {
+        "duplicates": 0,
+        "overlaps": 0
+       },
+       "file": "sub.dm",
+       "format": "dm",
+       "kind": "block_models",
+       "object_id": 2,
+       "object_ids": [
+        2
+       ],
+       "parents": 19,
+       "rows": 170,
+       "skipped": 0,
+       "sub": true
+      }
+     ],
+     "layers": 0,
+     "lines": 0,
+     "objects": [
+      2
+     ],
+     "points": 0,
+     "rasters": 0,
+     "rest": [],
+     "triangles": 0,
+     "vertices": 0,
+     "wireframe_ids": [],
+     "wireframes": 0
+    },
+    "status": "done",
+    "title": "Импорт файлов: sub.dm"
+   },
+   "log": {
+    "lines": [
+     {
+      "level": "info",
+      "seq": 1,
+      "text": "sub.dm: блочная модель «sub» — сетка 4 × 3 × 2, блоков 170, родителей 19, полей 1"
+     }
+    ]
+   },
+   "request": {
+    "files": [
+     "/данные/sub.dm"
+    ],
+    "options": {
+     "/данные/sub.dm": {
+      "blocks": {
+       "fields": {
+        "AU": {
+         "unit": "г/т"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "turned": {
+   "job": {
+    "error": null,
+    "kind": "import.objects",
+    "message": "Готово",
+    "progress": 1.0,
+    "queue": "heavy",
+    "result": {
+     "block_model_ids": [
+      3
+     ],
+     "block_models": 1,
+     "cells": 170,
+     "cloud_ids": [],
+     "failed": [],
+     "files": [
+      {
+       "block_models": 1,
+       "cells": 170,
+       "checks": {
+        "duplicates": 0,
+        "overlaps": 0
+       },
+       "file": "turned.csv",
+       "format": "csv_micromine",
+       "kind": "block_models",
+       "object_id": 3,
+       "object_ids": [
+        3
+       ],
+       "parents": 19,
+       "rows": 170,
+       "skipped": 0,
+       "sub": true
+      }
+     ],
+     "layers": 0,
+     "lines": 0,
+     "objects": [
+      3
+     ],
+     "points": 0,
+     "rasters": 0,
+     "rest": [],
+     "triangles": 0,
+     "vertices": 0,
+     "wireframe_ids": [],
+     "wireframes": 0
+    },
+    "status": "done",
+    "title": "Импорт файлов: turned.csv"
+   },
+   "log": {
+    "lines": [
+     {
+      "level": "info",
+      "seq": 1,
+      "text": "turned.csv: блочная модель «turned» — сетка 4 × 3 × 2, блоков 170, родителей 19, полей 1"
+     }
+    ]
+   },
+   "request": {
+    "files": [
+     "/данные/turned.csv"
+    ],
+    "options": {
+     "/данные/turned.csv": {
+      "blocks": {
+       "grid": {
+        "corner": [
+         466167.5,
+         4584527.5,
+         202.5
+        ],
+        "rotation": 30.0,
+        "size": [
+         8.0,
+         8.0,
+         4.0
+        ]
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "list": {
+  "body": {
+   "block_models": [
+    {
+     "cells": 103,
+     "crs": null,
+     "extent": [
+      1000.5,
+      2000.25,
+      -50.0,
+      1060.5,
+      2100.25,
+      -30.0
+     ],
+     "fields": [
+      {
+       "dtype": "f8",
+       "kind": "number",
+       "name": "AU",
+       "role": "grade",
+       "unit": "г/т"
+      },
+      {
+       "dtype": "cat",
+       "kind": "category",
+       "name": "ROCK",
+       "role": "code",
+       "unit": null
+      }
+     ],
+     "folder": null,
+     "full": false,
+     "grid": {
+      "corner": [
+       1000.5,
+       2000.25,
+       -50.0
+      ],
+      "counts": [
+       6,
+       5,
+       4
+      ],
+      "div": [
+       1,
+       1,
+       1
+      ],
+      "levels": [
+       0,
+       0,
+       0
+      ],
+      "order": "F",
+      "rotation": 0.0,
+      "size": [
+       10.0,
+       20.0,
+       5.0
+      ],
+      "variable": false
+     },
+     "id": 4,
+     "meta_v": 2,
+     "name": "dups",
+     "parents": 103,
+     "rows": 103,
+     "source": {
+      "file": "dups.csv",
+      "format": "csv",
+      "op": "import"
+     },
+     "sub": false,
+     "version": 1,
+     "warnings": [
+      "Повторяющиеся блоки: 2. Оставлена первая строка."
+     ]
+    },
+    {
+     "cells": 103,
+     "crs": null,
+     "extent": [
+      1000.5,
+      2000.25,
+      -50.0,
+      1060.5,
+      2100.25,
+      -30.0
+     ],
+     "fields": [
+      {
+       "dtype": "f8",
+       "kind": "number",
+       "name": "AU",
+       "role": "grade",
+       "unit": "г/т"
+      },
+      {
+       "dtype": "cat",
+       "kind": "category",
+       "name": "ROCK",
+       "role": "code",
+       "unit": null
+      }
+     ],
+     "folder": null,
+     "full": false,
+     "grid": {
+      "corner": [
+       1000.5,
+       2000.25,
+       -50.0
+      ],
+      "counts": [
+       6,
+       5,
+       4
+      ],
+      "div": [
+       1,
+       1,
+       1
+      ],
+      "levels": [
+       0,
+       0,
+       0
+      ],
+      "order": "F",
+      "rotation": 0.0,
+      "size": [
+       10.0,
+       20.0,
+       5.0
+      ],
+      "variable": false
+     },
+     "id": 6,
+     "meta_v": 2,
+     "name": "off",
+     "parents": 103,
+     "rows": 103,
+     "source": {
+      "file": "off.csv",
+      "format": "csv",
+      "op": "import"
+     },
+     "sub": false,
+     "version": 1,
+     "warnings": []
+    },
+    {
+     "cells": 171,
+     "crs": null,
+     "extent": [
+      466167.5,
+      4584527.5,
+      202.5,
+      466199.5,
+      4584551.5,
+      210.5
+     ],
+     "fields": [
+      {
+       "dtype": "f8",
+       "kind": "number",
+       "name": "AU",
+       "role": "grade",
+       "unit": "г/т"
+      }
+     ],
+     "folder": null,
+     "full": false,
+     "grid": {
+      "corner": [
+       466167.5,
+       4584527.5,
+       202.5
+      ],
+      "counts": [
+       4,
+       3,
+       2
+      ],
+      "div": [
+       8,
+       4,
+       4
+      ],
+      "levels": [
+       3,
+       2,
+       2
+      ],
+      "order": "F",
+      "rotation": 0.0,
+      "size": [
+       8.0,
+       8.0,
+       4.0
+      ],
+      "variable": false
+     },
+     "id": 5,
+     "meta_v": 2,
+     "name": "over",
+     "parents": 19,
+     "rows": 171,
+     "source": {
+      "file": "over.csv",
+      "format": "csv",
+      "op": "import"
+     },
+     "sub": true,
+     "version": 1,
+     "warnings": [
+      "Перекрывающиеся блоки: 3 (по сетке наименьшего блока).",
+      "Сумма объёмов субблоков больше объёма родителя: 1 блоков."
+     ]
+    },
+    {
+     "cells": 170,
+     "crs": null,
+     "extent": [
+      466167.5,
+      4584527.5,
+      202.5,
+      466199.5,
+      4584551.5,
+      210.5
+     ],
+     "fields": [
+      {
+       "dtype": "f8",
+       "kind": "number",
+       "name": "AU",
+       "role": "grade",
+       "unit": "г/т"
+      }
+     ],
+     "folder": null,
+     "full": false,
+     "grid": {
+      "corner": [
+       466167.5,
+       4584527.5,
+       202.5
+      ],
+      "counts": [
+       4,
+       3,
+       2
+      ],
+      "div": [
+       8,
+       4,
+       4
+      ],
+      "levels": [
+       3,
+       2,
+       2
+      ],
+      "order": "F",
+      "rotation": 0.0,
+      "size": [
+       8.0,
+       8.0,
+       4.0
+      ],
+      "variable": false
+     },
+     "id": 2,
+     "meta_v": 2,
+     "name": "sub",
+     "parents": 19,
+     "rows": 170,
+     "source": {
+      "file": "sub.dm",
+      "format": "dm",
+      "op": "import"
+     },
+     "sub": true,
+     "version": 1,
+     "warnings": [
+      "Размер родительского блока взят по самому большому блоку: 8 × 8 × 4."
+     ]
+    },
+    {
+     "cells": 170,
+     "crs": null,
+     "extent": [
+      466155.5,
+      4584527.5,
+      202.5,
+      466195.213,
+      4584564.28,
+      210.5
+     ],
+     "fields": [
+      {
+       "dtype": "f8",
+       "kind": "number",
+       "name": "AU",
+       "role": "grade",
+       "unit": "г/т"
+      }
+     ],
+     "folder": null,
+     "full": false,
+     "grid": {
+      "corner": [
+       466167.5,
+       4584527.5,
+       202.5
+      ],
+      "counts": [
+       4,
+       3,
+       2
+      ],
+      "div": [
+       8,
+       4,
+       4
+      ],
+      "levels": [
+       3,
+       2,
+       2
+      ],
+      "order": "F",
+      "rotation": 30.0,
+      "size": [
+       8.0,
+       8.0,
+       4.0
+      ],
+      "variable": false
+     },
+     "id": 3,
+     "meta_v": 2,
+     "name": "turned",
+     "parents": 19,
+     "rows": 170,
+     "source": {
+      "file": "turned.csv",
+      "format": "csv_micromine",
+      "op": "import"
+     },
+     "sub": true,
+     "version": 1,
+     "warnings": []
+    },
+    {
+     "cells": 103,
+     "crs": null,
+     "extent": [
+      1000.5,
+      2000.25,
+      -50.0,
+      1060.5,
+      2100.25,
+      -30.0
+     ],
+     "fields": [
+      {
+       "dtype": "f8",
+       "kind": "number",
+       "name": "AU",
+       "role": "grade",
+       "unit": "г/т"
+      },
+      {
+       "dtype": "cat",
+       "kind": "category",
+       "name": "ROCK",
+       "role": "code",
+       "unit": null
+      }
+     ],
+     "folder": null,
+     "full": false,
+     "grid": {
+      "corner": [
+       1000.5,
+       2000.25,
+       -50.0
+      ],
+      "counts": [
+       6,
+       5,
+       4
+      ],
+      "div": [
+       1,
+       1,
+       1
+      ],
+      "levels": [
+       0,
+       0,
+       0
+      ],
+      "order": "F",
+      "rotation": 0.0,
+      "size": [
+       10.0,
+       20.0,
+       5.0
+      ],
+      "variable": false
+     },
+     "id": 1,
+     "meta_v": 2,
+     "name": "Моя модель",
+     "parents": 103,
+     "rows": 103,
+     "source": {
+      "file": "model.dat",
+      "format": "dat",
+      "op": "import"
+     },
+     "sub": false,
+     "version": 1,
+     "warnings": [
+      "Поле «AU»: значений с кодом пустого (-99) — 2; они пустые, не нули."
+     ]
+    }
+   ]
+  },
+  "status": 200
+ },
+ "models": {
+  "dat": {
+   "body": {
+    "algo": null,
+    "cells": 103,
+    "checks": {
+     "constant": [],
+     "duplicates": 0,
+     "empty": [],
+     "examples": [],
+     "overlaps": {
+      "method": "exact",
+      "n": 0
+     },
+     "volume": 103000.0
+    },
+    "crs": null,
+    "extent": [
+     1000.5,
+     2000.25,
+     -50.0,
+     1060.5,
+     2100.25,
+     -30.0
+    ],
+    "fields": [
+     {
+      "description": null,
+      "dtype": "f8",
+      "file": "cells",
+      "kind": "number",
+      "name": "AU",
+      "role": "grade",
+      "source": {
+       "algo": null,
+       "inputs": [],
+       "op": "import",
+       "params": {
+        "column": "AU",
+        "empty": [
+         -99.0
+        ],
+        "file": "model.dat",
+        "format": "dat"
+       },
+       "versions": {}
+      },
+      "stats": {
+       "count": 101,
+       "max": 7.13,
+       "mean": 3.63019802,
+       "min": 0.11,
+       "missing": 2,
+       "std": 1.86051786
+      },
+      "unit": "г/т"
+     },
+     {
+      "description": null,
+      "dtype": "cat",
+      "file": "cells",
+      "kind": "category",
+      "labels": [
+       "sulfide",
+       "waste",
+       "oxide"
+      ],
+      "name": "ROCK",
+      "role": "code",
+      "source": {
+       "algo": null,
+       "inputs": [],
+       "op": "import",
+       "params": {
+        "column": "ROCK",
+        "empty": [
+         -99.0
+        ],
+        "file": "model.dat",
+        "format": "dat"
+       },
+       "versions": {}
+      },
+      "stats": {
+       "count": 103,
+       "counts": [
+        34,
+        36,
+        33
+       ],
+       "missing": 0
+      },
+      "unit": null
+     }
+    ],
+    "folder": null,
+    "full": false,
+    "grid": {
+     "corner": [
+      1000.5,
+      2000.25,
+      -50.0
+     ],
+     "counts": [
+      6,
+      5,
+      4
+     ],
+     "div": [
+      1,
+      1,
+      1
+     ],
+     "levels": [
+      0,
+      0,
+      0
+     ],
+     "order": "F",
+     "rotation": 0.0,
+     "size": [
+      10.0,
+      20.0,
+      5.0
+     ],
+     "variable": false
+    },
+    "groups": [
+     {
+      "k0": 0,
+      "k1": 3,
+      "rows": 103
+     }
+    ],
+    "id": 1,
+    "inputs": null,
+    "meta_v": 2,
+    "name": "Моя модель",
+    "parents": 103,
+    "rows": 103,
+    "source": {
+     "file": "model.dat",
+     "format": "dat",
+     "op": "import"
+    },
+    "sub": false,
+    "version": 1,
+    "warnings": [
+     "Поле «AU»: значений с кодом пустого (-99) — 2; они пустые, не нули."
+    ]
+   },
+   "status": 200
+  },
+  "dups": {
+   "body": {
+    "algo": null,
+    "cells": 103,
+    "checks": {
+     "constant": [],
+     "duplicates": 2,
+     "empty": [],
+     "examples": [
+      {
+       "check": "duplicate",
+       "other_row": 2,
+       "p": 3,
+       "row": 103,
+       "sub": null
+      },
+      {
+       "check": "duplicate",
+       "other_row": 4,
+       "p": 5,
+       "row": 104,
+       "sub": null
+      }
+     ],
+     "overlaps": {
+      "method": "exact",
+      "n": 0
+     },
+     "volume": 103000.0
+    },
+    "crs": null,
+    "extent": [
+     1000.5,
+     2000.25,
+     -50.0,
+     1060.5,
+     2100.25,
+     -30.0
+    ],
+    "fields": [
+     {
+      "description": null,
+      "dtype": "f8",
+      "file": "cells",
+      "kind": "number",
+      "name": "AU",
+      "role": "grade",
+      "source": {
+       "algo": null,
+       "inputs": [],
+       "op": "import",
+       "params": {
+        "column": "AU",
+        "empty": [],
+        "file": "dups.csv",
+        "format": "csv"
+       },
+       "versions": {}
+      },
+      "stats": {
+       "count": 103,
+       "max": 7.13,
+       "mean": 1.63737864,
+       "min": -99.0,
+       "missing": 0,
+       "std": 14.2809814
+      },
+      "unit": "г/т"
+     },
+     {
+      "description": null,
+      "dtype": "cat",
+      "file": "cells",
+      "kind": "category",
+      "labels": [
+       "sulfide",
+       "waste",
+       "oxide"
+      ],
+      "name": "ROCK",
+      "role": "code",
+      "source": {
+       "algo": null,
+       "inputs": [],
+       "op": "import",
+       "params": {
+        "column": "ROCK",
+        "empty": [],
+        "file": "dups.csv",
+        "format": "csv"
+       },
+       "versions": {}
+      },
+      "stats": {
+       "count": 103,
+       "counts": [
+        34,
+        36,
+        33
+       ],
+       "missing": 0
+      },
+      "unit": null
+     }
+    ],
+    "folder": null,
+    "full": false,
+    "grid": {
+     "corner": [
+      1000.5,
+      2000.25,
+      -50.0
+     ],
+     "counts": [
+      6,
+      5,
+      4
+     ],
+     "div": [
+      1,
+      1,
+      1
+     ],
+     "levels": [
+      0,
+      0,
+      0
+     ],
+     "order": "F",
+     "rotation": 0.0,
+     "size": [
+      10.0,
+      20.0,
+      5.0
+     ],
+     "variable": false
+    },
+    "groups": [
+     {
+      "k0": 0,
+      "k1": 3,
+      "rows": 103
+     }
+    ],
+    "id": 4,
+    "inputs": null,
+    "meta_v": 2,
+    "name": "dups",
+    "parents": 103,
+    "rows": 103,
+    "source": {
+     "file": "dups.csv",
+     "format": "csv",
+     "op": "import"
+    },
+    "sub": false,
+    "version": 1,
+    "warnings": [
+     "Повторяющиеся блоки: 2. Оставлена первая строка."
+    ]
+   },
+   "status": 200
+  },
+  "over": {
+   "body": {
+    "algo": null,
+    "cells": 171,
+    "checks": {
+     "constant": [],
+     "duplicates": 0,
+     "empty": [],
+     "examples": [
+      {
+       "check": "overlap",
+       "other_row": 170,
+       "p": 12,
+       "row": 1,
+       "sub": [
+        0,
+        0,
+        0,
+        4,
+        4,
+        4
+       ]
+      },
+      {
+       "check": "overlap",
+       "other_row": 2,
+       "p": 12,
+       "row": 170,
+       "sub": [
+        2,
+        0,
+        0,
+        4,
+        4,
+        4
+       ]
+      }
+     ],
+     "overlaps": {
+      "method": "exact",
+      "n": 3
+     },
+     "volume": 4992.0
+    },
+    "crs": null,
+    "extent": [
+     466167.5,
+     4584527.5,
+     202.5,
+     466199.5,
+     4584551.5,
+     210.5
+    ],
+    "fields": [
+     {
+      "description": null,
+      "dtype": "f8",
+      "file": "cells",
+      "kind": "number",
+      "name": "AU",
+      "role": "grade",
+      "source": {
+       "algo": null,
+       "inputs": [],
+       "op": "import",
+       "params": {
+        "column": "AU",
+        "empty": [],
+        "file": "over.csv",
+        "format": "csv"
+       },
+       "versions": {}
+      },
+      "stats": {
+       "count": 171,
+       "max": 170.0,
+       "mean": 85.0,
+       "min": 0.0,
+       "missing": 0,
+       "std": 49.3626039
+      },
+      "unit": "г/т"
+     }
+    ],
+    "folder": null,
+    "full": false,
+    "grid": {
+     "corner": [
+      466167.5,
+      4584527.5,
+      202.5
+     ],
+     "counts": [
+      4,
+      3,
+      2
+     ],
+     "div": [
+      8,
+      4,
+      4
+     ],
+     "levels": [
+      3,
+      2,
+      2
+     ],
+     "order": "F",
+     "rotation": 0.0,
+     "size": [
+      8.0,
+      8.0,
+      4.0
+     ],
+     "variable": false
+    },
+    "groups": [
+     {
+      "k0": 0,
+      "k1": 1,
+      "rows": 171
+     }
+    ],
+    "id": 5,
+    "inputs": null,
+    "meta_v": 2,
+    "name": "over",
+    "parents": 19,
+    "rows": 171,
+    "source": {
+     "file": "over.csv",
+     "format": "csv",
+     "op": "import"
+    },
+    "sub": true,
+    "version": 1,
+    "warnings": [
+     "Перекрывающиеся блоки: 3 (по сетке наименьшего блока).",
+     "Сумма объёмов субблоков больше объёма родителя: 1 блоков."
+    ]
+   },
+   "status": 200
+  },
+  "sub_dm": {
+   "body": {
+    "algo": null,
+    "cells": 170,
+    "checks": {
+     "constant": [],
+     "duplicates": 0,
+     "empty": [],
+     "examples": [],
+     "overlaps": {
+      "method": "exact",
+      "n": 0
+     },
+     "volume": 4864.0
+    },
+    "crs": null,
+    "extent": [
+     466167.5,
+     4584527.5,
+     202.5,
+     466199.5,
+     4584551.5,
+     210.5
+    ],
+    "fields": [
+     {
+      "description": null,
+      "dtype": "f8",
+      "file": "cells",
+      "kind": "number",
+      "name": "AU",
+      "role": "grade",
+      "source": {
+       "algo": null,
+       "inputs": [],
+       "op": "import",
+       "params": {
+        "column": "AU",
+        "empty": [],
+        "file": "sub.dm",
+        "format": "dm"
+       },
+       "versions": {}
+      },
+      "stats": {
+       "count": 170,
+       "max": 42.25,
+       "mean": 21.125,
+       "min": 0.0,
+       "missing": 0,
+       "std": 12.268481
+      },
+      "unit": "г/т"
+     }
+    ],
+    "folder": null,
+    "full": false,
+    "grid": {
+     "corner": [
+      466167.5,
+      4584527.5,
+      202.5
+     ],
+     "counts": [
+      4,
+      3,
+      2
+     ],
+     "div": [
+      8,
+      4,
+      4
+     ],
+     "levels": [
+      3,
+      2,
+      2
+     ],
+     "order": "F",
+     "rotation": 0.0,
+     "size": [
+      8.0,
+      8.0,
+      4.0
+     ],
+     "variable": false
+    },
+    "groups": [
+     {
+      "k0": 0,
+      "k1": 1,
+      "rows": 170
+     }
+    ],
+    "id": 2,
+    "inputs": null,
+    "meta_v": 2,
+    "name": "sub",
+    "parents": 19,
+    "rows": 170,
+    "source": {
+     "file": "sub.dm",
+     "format": "dm",
+     "op": "import"
+    },
+    "sub": true,
+    "version": 1,
+    "warnings": [
+     "Размер родительского блока взят по самому большому блоку: 8 × 8 × 4."
+    ]
+   },
+   "status": 200
+  },
+  "turned": {
+   "body": {
+    "algo": null,
+    "cells": 170,
+    "checks": {
+     "constant": [],
+     "duplicates": 0,
+     "empty": [],
+     "examples": [],
+     "overlaps": {
+      "method": "exact",
+      "n": 0
+     },
+     "volume": 4864.0
+    },
+    "crs": null,
+    "extent": [
+     466155.5,
+     4584527.5,
+     202.5,
+     466195.213,
+     4584564.28,
+     210.5
+    ],
+    "fields": [
+     {
+      "description": null,
+      "dtype": "f8",
+      "file": "cells",
+      "kind": "number",
+      "name": "AU",
+      "role": "grade",
+      "source": {
+       "algo": null,
+       "inputs": [],
+       "op": "import",
+       "params": {
+        "column": "AU",
+        "empty": [],
+        "file": "turned.csv",
+        "format": "csv_micromine"
+       },
+       "versions": {}
+      },
+      "stats": {
+       "count": 170,
+       "max": 42.25,
+       "mean": 21.125,
+       "min": 0.0,
+       "missing": 0,
+       "std": 12.268481
+      },
+      "unit": "г/т"
+     }
+    ],
+    "folder": null,
+    "full": false,
+    "grid": {
+     "corner": [
+      466167.5,
+      4584527.5,
+      202.5
+     ],
+     "counts": [
+      4,
+      3,
+      2
+     ],
+     "div": [
+      8,
+      4,
+      4
+     ],
+     "levels": [
+      3,
+      2,
+      2
+     ],
+     "order": "F",
+     "rotation": 30.0,
+     "size": [
+      8.0,
+      8.0,
+      4.0
+     ],
+     "variable": false
+    },
+    "groups": [
+     {
+      "k0": 0,
+      "k1": 1,
+      "rows": 170
+     }
+    ],
+    "id": 3,
+    "inputs": null,
+    "meta_v": 2,
+    "name": "turned",
+    "parents": 19,
+    "rows": 170,
+    "source": {
+     "file": "turned.csv",
+     "format": "csv_micromine",
+     "op": "import"
+    },
+    "sub": true,
+    "version": 1,
+    "warnings": []
+   },
+   "status": 200
+  }
+ },
+ "rules": "ответы настоящего ядра через маршруты /import/objects/inspect, /import/objects и GET /blocks/{id} (test_blocks_import_window_answers.py); номера заданий и времена не хранятся"
+}

@@ -5,8 +5,8 @@ export const commands: Command[] = [
   {
     id: "import.files",
     title: "Импорт файлов",
-    description: "Мастер импорта с автоопределением типа. kind — какие файлы предлагает окно выбора (omf — файлы OMF); folder — папка дерева, в которую лягут объекты («Импорт/Карьер»; без неё — папка по имени файла).",
-    params: { kind: { type: "string", enum: ["holes", "wireframes", "lines", "rasters", "omf", "project"] }, folder: { type: "string" } },
+    description: "Мастер импорта с автоопределением типа. kind — какие файлы предлагает окно выбора (omf — файлы OMF, blocks — блочные модели Micromine DAT и CSV, Datamine .dm и .fbm: столбцы центра и размера блока находятся по названиям, роли столбцов, единицы, коды «пусто», сетка и поворот правятся в окне); folder — папка дерева, в которую лягут объекты («Импорт/Карьер»; без неё — папка по имени файла).",
+    params: { kind: { type: "string", enum: ["holes", "wireframes", "lines", "rasters", "omf", "blocks", "project"] }, folder: { type: "string" } },
     uiOnly: true,
     stage: "Э3",
   },

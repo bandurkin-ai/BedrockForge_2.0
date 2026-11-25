@@ -359,6 +359,7 @@ function registerIpc(): void {
     // a point cloud (ADR 0014 §6)
     las: [{ name: "Облако точек LAS", extensions: ["las"] }],
     omf: [{ name: "OMF v1 (Leapfrog OMF 0.9)", extensions: ["omf"] }],
+    parquet: [{ name: "Apache Parquet", extensions: ["parquet"] }],
     jpg: [{ name: "JPEG", extensions: ["jpg", "jpeg"] }],
     png: [{ name: "PNG", extensions: ["png"] }],
     tif: [{ name: "TIFF, GeoTIFF", extensions: ["tif", "tiff"] }],
@@ -400,7 +401,7 @@ function registerIpc(): void {
     objects: [
       {
         name: "Все поддерживаемые",
-        extensions: [...new Set(["omf", ...wireframeFiles, ...lineFiles, ...rasterFiles, "las", "laz", "dat", "csv", "txt", "xlsx", "xlsm", "xls", "bfggis"])],
+        extensions: [...new Set(["omf", ...wireframeFiles, ...lineFiles, ...rasterFiles, "las", "laz", "dat", "csv", "txt", "xlsx", "xlsm", "xls", "fbm", "bfggis"])],
       },
       { name: "Все файлы", extensions: ["*"] },
     ],
@@ -415,6 +416,11 @@ function registerIpc(): void {
     ],
     rasters: [
       { name: "Растры и файлы привязки", extensions: rasterFiles },
+      { name: "Все файлы", extensions: ["*"] },
+    ],
+    // «Блочная модель» (ТЗ 7.31; ADR 0023 §7): Micromine DAT and CSV, Datamine .dm and .fbm
+    blocks: [
+      { name: "Блочные модели", extensions: ["dat", "csv", "txt", "dm", "fbm"] },
       { name: "Все файлы", extensions: ["*"] },
     ],
     // «Облако точек» (ADR 0014 §6): a LAS, or a table of points loaded as a cloud; a .laz is told why it is not read.

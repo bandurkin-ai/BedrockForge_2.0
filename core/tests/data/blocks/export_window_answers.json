@@ -1,0 +1,1464 @@
+{
+ "blocks": {
+  "body": {
+   "block_models": [
+    {
+     "cells": 170,
+     "crs": null,
+     "extent": [
+      466167.5,
+      4584527.5,
+      202.5,
+      466199.5,
+      4584551.5,
+      210.5
+     ],
+     "fields": [
+      {
+       "dtype": "f8",
+       "kind": "number",
+       "name": "AU",
+       "role": "grade",
+       "unit": "г/т"
+      }
+     ],
+     "folder": null,
+     "full": false,
+     "grid": {
+      "corner": [
+       466167.5,
+       4584527.5,
+       202.5
+      ],
+      "counts": [
+       4,
+       3,
+       2
+      ],
+      "div": [
+       8,
+       4,
+       4
+      ],
+      "levels": [
+       3,
+       2,
+       2
+      ],
+      "order": "F",
+      "rotation": 0.0,
+      "size": [
+       8.0,
+       8.0,
+       4.0
+      ],
+      "variable": false
+     },
+     "id": 2,
+     "meta_v": 2,
+     "name": "sub",
+     "parents": 19,
+     "rows": 170,
+     "size": 2673,
+     "source": {
+      "file": "sub.dm",
+      "format": "dm",
+      "op": "import"
+     },
+     "sub": true,
+     "version": 1,
+     "warnings": [
+      "Размер родительского блока взят по самому большому блоку: 8 × 8 × 4."
+     ]
+    },
+    {
+     "cells": 2,
+     "crs": null,
+     "extent": [
+      0.0,
+      0.0,
+      0.0,
+      2.0,
+      1.0,
+      1.0
+     ],
+     "fields": [
+      {
+       "dtype": "cat",
+       "kind": "category",
+       "name": "DOM",
+       "role": null,
+       "unit": null
+      }
+     ],
+     "folder": null,
+     "full": false,
+     "grid": {
+      "corner": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "counts": [
+       2,
+       1,
+       1
+      ],
+      "div": [
+       1,
+       1,
+       1
+      ],
+      "levels": [
+       0,
+       0,
+       0
+      ],
+      "order": "F",
+      "rotation": 0.0,
+      "size": [
+       1.0,
+       1.0,
+       1.0
+      ],
+      "variable": false
+     },
+     "id": 4,
+     "meta_v": 2,
+     "name": "Иероглифы",
+     "parents": 2,
+     "rows": 2,
+     "size": 725,
+     "source": {
+      "file": "k.dat",
+      "format": "dat",
+      "op": "import"
+     },
+     "sub": false,
+     "version": 1,
+     "warnings": []
+    },
+    {
+     "cells": 350,
+     "crs": null,
+     "extent": [
+      980.5,
+      2000.25,
+      -300.0,
+      1043.80127,
+      2059.89102,
+      -285.0
+     ],
+     "fields": [
+      {
+       "dtype": "f8",
+       "kind": "number",
+       "name": "AU",
+       "role": "grade",
+       "unit": "г/т"
+      },
+      {
+       "dtype": "f4",
+       "kind": "number",
+       "name": "CU",
+       "role": null,
+       "unit": "%"
+      },
+      {
+       "dtype": "i2",
+       "kind": "number",
+       "name": "N",
+       "role": null,
+       "unit": null
+      },
+      {
+       "dtype": "cat",
+       "kind": "category",
+       "name": "DOM",
+       "role": "code",
+       "unit": null
+      }
+     ],
+     "folder": null,
+     "full": false,
+     "grid": {
+      "corner": [
+       1000.5,
+       2000.25,
+       -300.0
+      ],
+      "counts": [
+       10,
+       8,
+       6
+      ],
+      "div": [
+       1,
+       1,
+       1
+      ],
+      "levels": [
+       0,
+       0,
+       0
+      ],
+      "order": "F",
+      "rotation": 30.0,
+      "size": [
+       5.0,
+       5.0,
+       2.5
+      ],
+      "variable": false
+     },
+     "id": 1,
+     "meta_v": 2,
+     "name": "Повёрнутая",
+     "parents": 350,
+     "rows": 350,
+     "size": 9151,
+     "source": {
+      "file": "m.dat",
+      "format": "dat",
+      "op": "import"
+     },
+     "sub": false,
+     "version": 1,
+     "warnings": []
+    }
+   ]
+  },
+  "status": 200
+ },
+ "failed": {
+  "empty_code_taken": {
+   "answer": {
+    "body": {
+     "keys": [
+      "id",
+      "source"
+     ],
+     "source": "str"
+    },
+    "status": 200
+   },
+   "job": {
+    "error": {
+     "code": "empty_code_taken",
+     "hint": "Выберите другой код пустого или оставьте пропуски пустыми.",
+     "message": "В поле «N» 5 значений равны коду пустого 3: после экспорта их нельзя отличить от пропусков."
+    },
+    "kind": "blocks.export",
+    "message": "В поле «N» 5 значений равны коду пустого 3: после экспорта их нельзя отличить от пропусков.",
+    "progress": 0.0,
+    "queue": "heavy",
+    "result": null,
+    "status": "failed",
+    "title": "Экспорт блочной модели (DAT)"
+   },
+   "log": {
+    "lines": []
+   },
+   "request": {
+    "empty": 3,
+    "format": "dat",
+    "path": "/выгрузка/taken.dat"
+   }
+  },
+  "encoding_char": {
+   "answer": {
+    "body": {
+     "keys": [
+      "id",
+      "source"
+     ],
+     "source": "str"
+    },
+    "status": 200
+   },
+   "job": {
+    "error": {
+     "code": "export_encoding",
+     "hint": "Выберите кодировку UTF-8 или переименуйте поле или метку.",
+     "message": "Метка категории: в «鉱石» есть символы, которых нет в кодировке cp1251."
+    },
+    "kind": "blocks.export",
+    "message": "Метка категории: в «鉱石» есть символы, которых нет в кодировке cp1251.",
+    "progress": 0.0,
+    "queue": "heavy",
+    "result": null,
+    "status": "failed",
+    "title": "Экспорт блочной модели (DAT)"
+   },
+   "log": {
+    "lines": []
+   },
+   "request": {
+    "encoding": "cp1251",
+    "format": "dat",
+    "path": "/выгрузка/k.dat"
+   }
+  },
+  "nothing_passes": {
+   "answer": {
+    "body": {
+     "keys": [
+      "id",
+      "source"
+     ],
+     "source": "str"
+    },
+    "status": 200
+   },
+   "job": {
+    "error": {
+     "code": "export_empty",
+     "hint": "Ослабьте фильтр или ограничитель, либо отмените их.",
+     "message": "Ни один блок не прошёл отбор: записывать нечего."
+    },
+    "kind": "blocks.export",
+    "message": "Ни один блок не прошёл отбор: записывать нечего.",
+    "progress": 0.0,
+    "queue": "heavy",
+    "result": null,
+    "status": "failed",
+    "title": "Экспорт блочной модели (DAT)"
+   },
+   "log": {
+    "lines": []
+   },
+   "request": {
+    "format": "dat",
+    "path": "/выгрузка/none.dat",
+    "restrict": {
+     "cond": {
+      "field": "AU",
+      "op": ">",
+      "value": 1000000000.0
+     }
+    }
+   }
+  }
+ },
+ "filters": {
+  "body": {
+   "filters": [
+    {
+     "fields": [
+      "AU"
+     ],
+     "folder": null,
+     "id": 3,
+     "name": "Руда",
+     "note": null,
+     "text": "AU > 1",
+     "title": "AU > 1",
+     "version": 1
+    }
+   ]
+  },
+  "status": 200
+ },
+ "ids": {
+  "filter": 3,
+  "model": 1,
+  "sub": 2
+ },
+ "model": {
+  "body": {
+   "algo": null,
+   "cells": 350,
+   "checks": null,
+   "crs": null,
+   "extent": [
+    980.5,
+    2000.25,
+    -300.0,
+    1043.80127,
+    2059.89102,
+    -285.0
+   ],
+   "fields": [
+    {
+     "description": null,
+     "dtype": "f8",
+     "file": "cells",
+     "kind": "number",
+     "name": "AU",
+     "role": "grade",
+     "source": null,
+     "stats": {
+      "count": 309,
+      "max": 12.6407986,
+      "mean": 1.37623772,
+      "min": 0.0632653266,
+      "missing": 41,
+      "std": 1.52668164
+     },
+     "unit": "г/т"
+    },
+    {
+     "description": null,
+     "dtype": "f4",
+     "file": "cells",
+     "kind": "number",
+     "name": "CU",
+     "role": null,
+     "source": null,
+     "stats": {
+      "count": 318,
+      "max": 0.999430954,
+      "mean": 0.529125056,
+      "min": 0.000656758377,
+      "missing": 32,
+      "std": 0.285068328
+     },
+     "unit": "%"
+    },
+    {
+     "description": null,
+     "dtype": "i2",
+     "file": "cells",
+     "kind": "number",
+     "name": "N",
+     "role": null,
+     "source": null,
+     "stats": {
+      "count": 280,
+      "max": 49.0,
+      "mean": 24.4035714,
+      "min": 0.0,
+      "missing": 70,
+      "std": 15.0206282
+     },
+     "unit": null
+    },
+    {
+     "description": null,
+     "dtype": "cat",
+     "file": "cells",
+     "kind": "category",
+     "labels": [
+      "руда",
+      "порода",
+      "дайка"
+     ],
+     "name": "DOM",
+     "role": "code",
+     "source": null,
+     "stats": {
+      "count": 271,
+      "counts": [
+       85,
+       85,
+       101
+      ],
+      "missing": 79
+     },
+     "unit": null
+    }
+   ],
+   "folder": null,
+   "full": false,
+   "grid": {
+    "corner": [
+     1000.5,
+     2000.25,
+     -300.0
+    ],
+    "counts": [
+     10,
+     8,
+     6
+    ],
+    "div": [
+     1,
+     1,
+     1
+    ],
+    "levels": [
+     0,
+     0,
+     0
+    ],
+    "order": "F",
+    "rotation": 30.0,
+    "size": [
+     5.0,
+     5.0,
+     2.5
+    ],
+    "variable": false
+   },
+   "groups": [
+    {
+     "k0": 0,
+     "k1": 1,
+     "rows": 100
+    },
+    {
+     "k0": 1,
+     "k1": 3,
+     "rows": 100
+    },
+    {
+     "k0": 3,
+     "k1": 5,
+     "rows": 100
+    },
+    {
+     "k0": 5,
+     "k1": 5,
+     "rows": 50
+    }
+   ],
+   "id": 1,
+   "inputs": null,
+   "meta_v": 2,
+   "name": "Повёрнутая",
+   "parents": 350,
+   "rows": 350,
+   "size": 9151,
+   "source": {
+    "file": "m.dat",
+    "format": "dat",
+    "op": "import"
+   },
+   "sub": false,
+   "version": 1,
+   "warnings": []
+  },
+  "status": 200
+ },
+ "refused": {
+  "decimal_is_delimiter": {
+   "answer": {
+    "body": {
+     "code": "bad_param",
+     "hint": "Выберите «;» или табуляцию.",
+     "message": "Десятичный знак совпадает с разделителем.",
+     "param": "decimal"
+    },
+    "status": 422
+   },
+   "request": {
+    "decimal": ",",
+    "delimiter": ",",
+    "format": "csv",
+    "path": "/выгрузка/dd.csv"
+   }
+  },
+  "delimiter": {
+   "answer": {
+    "body": {
+     "code": "bad_param",
+     "hint": "Проверьте параметры экспорта.",
+     "message": "Разделитель: «;», «,», табуляция или «|».",
+     "param": "delimiter"
+    },
+    "status": 422
+   },
+   "request": {
+    "delimiter": "x",
+    "format": "csv",
+    "path": "/выгрузка/d.csv"
+   }
+  },
+  "empty_text": {
+   "answer": {
+    "body": {
+     "code": "bad_param",
+     "hint": "Например -99.",
+     "message": "Код пустого — число.",
+     "param": "empty"
+    },
+    "status": 422
+   },
+   "request": {
+    "empty": "abc",
+    "format": "dat",
+    "path": "/выгрузка/t.dat"
+   }
+  },
+  "encoding": {
+   "answer": {
+    "body": {
+     "code": "bad_param",
+     "hint": "Допустимо: cp1251, bocu1, utf-8.",
+     "message": "Кодировка «ebcdic» не подходит.",
+     "param": "encoding"
+    },
+    "status": 422
+   },
+   "request": {
+    "encoding": "ebcdic",
+    "format": "dat",
+    "path": "/выгрузка/e.dat"
+   }
+  },
+  "field_missing": {
+   "answer": {
+    "body": {
+     "code": "block_field_not_found",
+     "hint": "Обновите свойства модели.",
+     "message": "Поле «NOPE» не найдено."
+    },
+    "status": 404
+   },
+   "request": {
+    "fields": [
+     "NOPE"
+    ],
+    "format": "dat",
+    "path": "/выгрузка/f.dat"
+   }
+  },
+  "files_exist": {
+   "answer": {
+    "body": {
+     "code": "files_exist",
+     "files": [
+      "model.dat"
+     ],
+     "hint": "Подтвердите замену или выберите другое имя файла.",
+     "message": "Файл «model.dat» уже есть."
+    },
+    "status": 409
+   },
+   "request": {
+    "format": "dat",
+    "path": "/выгрузка/model.dat"
+   }
+  },
+  "filter_missing": {
+   "answer": {
+    "body": {
+     "code": "filter_not_found",
+     "hint": "Обновите список фильтров.",
+     "message": "Фильтр не найден."
+    },
+    "status": 404
+   },
+   "request": {
+    "filter_id": 99999,
+    "format": "dat",
+    "path": "/выгрузка/g.dat"
+   }
+  },
+  "format": {
+   "answer": {
+    "body": {
+     "code": "bad_param",
+     "hint": "Допустимо: DAT, CSV, OMF, Parquet.",
+     "message": "Неизвестный формат экспорта.",
+     "param": "format"
+    },
+    "status": 422
+   },
+   "request": {
+    "format": "gpx",
+    "path": "/выгрузка/x.gpx"
+   }
+  },
+  "inside_project": {
+   "answer": {
+    "body": {
+     "code": "bad_path",
+     "hint": "Выберите другую папку, например «Документы».",
+     "message": "Нельзя сохранить файл внутрь папки проекта.",
+     "param": "path"
+    },
+    "status": 422
+   },
+   "request": {
+    "format": "dat",
+    "path": "/проект/m.dat"
+   }
+  },
+  "model_missing": {
+   "answer": {
+    "body": {
+     "code": "block_model_not_found",
+     "hint": "Обновите дерево проекта.",
+     "message": "Блочная модель не найдена."
+    },
+    "status": 404
+   },
+   "request": {
+    "format": "dat",
+    "path": "/выгрузка/i.dat"
+   }
+  },
+  "no_folder": {
+   "answer": {
+    "body": {
+     "code": "bad_param",
+     "hint": "Выберите папку заново.",
+     "message": "Папка для файла не найдена.",
+     "param": "path"
+    },
+    "status": 422
+   },
+   "request": {
+    "format": "dat",
+    "path": "/выгрузка/нет/m.dat"
+   }
+  },
+  "no_path": {
+   "answer": {
+    "body": {
+     "code": "bad_param",
+     "hint": "Выберите, куда сохранить файл.",
+     "message": "Не выбран путь файла.",
+     "param": "path"
+    },
+    "status": 422
+   },
+   "request": {
+    "format": "dat",
+    "path": ""
+   }
+  },
+  "not_object": {
+   "answer": {
+    "body": {
+     "code": "bad_request",
+     "hint": "Повторите действие из окна экспорта.",
+     "message": "Неверные данные запроса."
+    },
+    "status": 422
+   },
+   "request": []
+  },
+  "omf_no_fields": {
+   "answer": {
+    "body": {
+     "code": "bad_param",
+     "hint": "Отметьте поля в окне экспорта.",
+     "message": "Для OMF выберите хотя бы одно поле.",
+     "param": "fields"
+    },
+    "status": 422
+   },
+   "request": {
+    "fields": [],
+    "format": "omf",
+    "path": "/выгрузка/none.omf"
+   }
+  },
+  "omf_subblocks": {
+   "answer": {
+    "body": {
+     "code": "omf_subblocks",
+     "hint": "Выполните регуляризацию модели (вкладка «Блочные модели», «Регуляризация») и экспортируйте результат.",
+     "message": "Блочная модель «sub» с субблоками: OMF не хранит субблоки — экспорт возможен только после регуляризации."
+    },
+    "status": 422
+   },
+   "request": {
+    "format": "omf",
+    "path": "/выгрузка/sub.omf"
+   }
+  },
+  "overwrite": {
+   "answer": {
+    "body": {
+     "keys": [
+      "id",
+      "source"
+     ],
+     "source": "str"
+    },
+    "status": 200
+   },
+   "job": {
+    "error": null,
+    "kind": "blocks.export",
+    "message": "Готово",
+    "progress": 1.0,
+    "queue": "heavy",
+    "result": {
+     "bytes": 32301,
+     "format": "dat",
+     "path": "/выгрузка/model.dat",
+     "rows": 350,
+     "total": 350,
+     "warnings": []
+    },
+    "status": "done",
+    "title": "Экспорт блочной модели (DAT)"
+   },
+   "log": {
+    "lines": [
+     {
+      "level": "info",
+      "seq": 1,
+      "text": "Записан файл «model.dat»: блоков 350 из 350"
+     }
+    ]
+   },
+   "request": {
+    "format": "dat",
+    "overwrite": true,
+    "path": "/выгрузка/model.dat"
+   }
+  },
+  "relative": {
+   "answer": {
+    "body": {
+     "code": "bad_param",
+     "hint": "Выберите файл в окне сохранения.",
+     "message": "Путь к файлу должен быть полным.",
+     "param": "path"
+    },
+    "status": 422
+   },
+   "request": {
+    "format": "dat",
+    "path": "m.dat"
+   }
+  },
+  "restrict_field": {
+   "answer": {
+    "body": {
+     "code": "filter_field_missing",
+     "field": "ZZZ",
+     "hint": "Выберите другую модель или другой фильтр, либо добавьте поле в модель.",
+     "message": "В модели «Повёрнутая» нет поля «ZZZ», которое нужно фильтру.",
+     "model": "Повёрнутая"
+    },
+    "status": 422
+   },
+   "request": {
+    "format": "dat",
+    "path": "/выгрузка/h.dat",
+    "restrict": {
+     "cond": {
+      "field": "ZZZ",
+      "op": ">",
+      "value": 1
+     }
+    }
+   }
+  }
+ },
+ "rules": "ответы настоящего ядра через маршрут /blocks/{id}/export и задание blocks.export (test_blocks_export_window_answers.py); номера заданий, времена и папка файлов не хранятся",
+ "runs": {
+  "csv": {
+   "answer": {
+    "body": {
+     "keys": [
+      "id",
+      "source"
+     ],
+     "source": "str"
+    },
+    "status": 200
+   },
+   "job": {
+    "error": null,
+    "kind": "blocks.export",
+    "message": "Готово",
+    "progress": 1.0,
+    "queue": "heavy",
+    "result": {
+     "bytes": 34983,
+     "format": "csv",
+     "path": "/выгрузка/model.csv",
+     "rows": 350,
+     "total": 350,
+     "warnings": []
+    },
+    "status": "done",
+    "title": "Экспорт блочной модели (CSV)"
+   },
+   "log": {
+    "lines": [
+     {
+      "level": "info",
+      "seq": 1,
+      "text": "Записан файл «model.csv»: блоков 350 из 350"
+     }
+    ]
+   },
+   "request": {
+    "format": "csv",
+    "path": "/выгрузка/model.csv"
+   }
+  },
+  "csv_micromine": {
+   "answer": {
+    "body": {
+     "keys": [
+      "id",
+      "source"
+     ],
+     "source": "str"
+    },
+    "status": 200
+   },
+   "job": {
+    "error": null,
+    "kind": "blocks.export",
+    "message": "Готово",
+    "progress": 1.0,
+    "queue": "heavy",
+    "result": {
+     "bytes": 35054,
+     "format": "csv",
+     "path": "/выгрузка/micromine.csv",
+     "rows": 350,
+     "total": 350,
+     "warnings": [
+      "Строка сетки не записана: модель повёрнута. При импорте укажите угол поворота."
+     ]
+    },
+    "status": "done",
+    "title": "Экспорт блочной модели (CSV)"
+   },
+   "log": {
+    "lines": [
+     {
+      "level": "warn",
+      "seq": 1,
+      "text": "Строка сетки не записана: модель повёрнута. При импорте укажите угол поворота."
+     },
+     {
+      "level": "info",
+      "seq": 2,
+      "text": "Записан файл «micromine.csv»: блоков 350 из 350"
+     }
+    ]
+   },
+   "request": {
+    "decimal": ".",
+    "delimiter": ",",
+    "encoding": "utf-8",
+    "format": "csv",
+    "header": "micromine",
+    "path": "/выгрузка/micromine.csv"
+   }
+  },
+  "csv_tab": {
+   "answer": {
+    "body": {
+     "keys": [
+      "id",
+      "source"
+     ],
+     "source": "str"
+    },
+    "status": 200
+   },
+   "job": {
+    "error": null,
+    "kind": "blocks.export",
+    "message": "Готово",
+    "progress": 1.0,
+    "queue": "heavy",
+    "result": {
+     "bytes": 34197,
+     "format": "csv",
+     "path": "/выгрузка/tab.csv",
+     "rows": 350,
+     "total": 350,
+     "warnings": []
+    },
+    "status": "done",
+    "title": "Экспорт блочной модели (CSV)"
+   },
+   "log": {
+    "lines": [
+     {
+      "level": "info",
+      "seq": 1,
+      "text": "Записан файл «tab.csv»: блоков 350 из 350"
+     }
+    ]
+   },
+   "request": {
+    "decimal": ",",
+    "delimiter": "\t",
+    "empty": -999,
+    "encoding": "cp1251",
+    "format": "csv",
+    "path": "/выгрузка/tab.csv"
+   }
+  },
+  "dat": {
+   "answer": {
+    "body": {
+     "keys": [
+      "id",
+      "source"
+     ],
+     "source": "str"
+    },
+    "status": 200
+   },
+   "job": {
+    "error": null,
+    "kind": "blocks.export",
+    "message": "Готово",
+    "progress": 1.0,
+    "queue": "heavy",
+    "result": {
+     "bytes": 32301,
+     "format": "dat",
+     "path": "/выгрузка/model.dat",
+     "rows": 350,
+     "total": 350,
+     "warnings": []
+    },
+    "status": "done",
+    "title": "Экспорт блочной модели (DAT)"
+   },
+   "log": {
+    "lines": [
+     {
+      "level": "info",
+      "seq": 1,
+      "text": "Записан файл «model.dat»: блоков 350 из 350"
+     }
+    ]
+   },
+   "request": {
+    "format": "dat",
+    "path": "/выгрузка/model.dat"
+   }
+  },
+  "dat_fields": {
+   "answer": {
+    "body": {
+     "keys": [
+      "id",
+      "source"
+     ],
+     "source": "str"
+    },
+    "status": 200
+   },
+   "job": {
+    "error": null,
+    "kind": "blocks.export",
+    "message": "Готово",
+    "progress": 1.0,
+    "queue": "heavy",
+    "result": {
+     "bytes": 27013,
+     "format": "dat",
+     "path": "/выгрузка/fields.dat",
+     "rows": 350,
+     "total": 350,
+     "warnings": []
+    },
+    "status": "done",
+    "title": "Экспорт блочной модели (DAT)"
+   },
+   "log": {
+    "lines": [
+     {
+      "level": "info",
+      "seq": 1,
+      "text": "Записан файл «fields.dat»: блоков 350 из 350"
+     }
+    ]
+   },
+   "request": {
+    "empty": -99,
+    "encoding": "bocu1",
+    "fields": [
+     "DOM",
+     "AU"
+    ],
+    "format": "dat",
+    "path": "/выгрузка/fields.dat"
+   }
+  },
+  "dat_filtered": {
+   "answer": {
+    "body": {
+     "keys": [
+      "id",
+      "source"
+     ],
+     "source": "str"
+    },
+    "status": 200
+   },
+   "job": {
+    "error": null,
+    "kind": "blocks.export",
+    "message": "Готово",
+    "progress": 1.0,
+    "queue": "heavy",
+    "result": {
+     "bytes": 10929,
+     "format": "dat",
+     "path": "/выгрузка/filtered.dat",
+     "rows": 101,
+     "total": 350,
+     "warnings": []
+    },
+    "status": "done",
+    "title": "Экспорт блочной модели (DAT)"
+   },
+   "log": {
+    "lines": [
+     {
+      "level": "info",
+      "seq": 1,
+      "text": "Записан файл «filtered.dat»: блоков 101 из 350"
+     }
+    ]
+   },
+   "request": {
+    "fields": [
+     "AU",
+     "N"
+    ],
+    "filter_id": 3,
+    "format": "dat",
+    "path": "/выгрузка/filtered.dat",
+    "restrict": {
+     "cond": {
+      "field": "N",
+      "op": ">",
+      "value": 0
+     }
+    }
+   }
+  },
+  "extension_added": {
+   "answer": {
+    "body": {
+     "keys": [
+      "id",
+      "source"
+     ],
+     "source": "str"
+    },
+    "status": 200
+   },
+   "job": {
+    "error": null,
+    "kind": "blocks.export",
+    "message": "Готово",
+    "progress": 1.0,
+    "queue": "heavy",
+    "result": {
+     "bytes": 34983,
+     "format": "csv",
+     "path": "/выгрузка/noext.csv",
+     "rows": 350,
+     "total": 350,
+     "warnings": []
+    },
+    "status": "done",
+    "title": "Экспорт блочной модели (CSV)"
+   },
+   "log": {
+    "lines": [
+     {
+      "level": "info",
+      "seq": 1,
+      "text": "Записан файл «noext.csv»: блоков 350 из 350"
+     }
+    ]
+   },
+   "request": {
+    "format": "csv",
+    "path": "/выгрузка/noext"
+   }
+  },
+  "omf": {
+   "answer": {
+    "body": {
+     "keys": [
+      "id",
+      "source"
+     ],
+     "source": "str"
+    },
+    "status": 200
+   },
+   "job": {
+    "error": null,
+    "kind": "blocks.export",
+    "message": "Готово",
+    "progress": 1.0,
+    "queue": "heavy",
+    "result": {
+     "format": "omf",
+     "path": "/выгрузка/model.omf",
+     "rows": 350,
+     "total": 350,
+     "warnings": []
+    },
+    "status": "done",
+    "title": "Экспорт блочной модели (OMF)"
+   },
+   "log": {
+    "lines": [
+     {
+      "level": "info",
+      "seq": 1,
+      "text": "Записан файл «model.omf»: блоков 350 из 350"
+     }
+    ]
+   },
+   "request": {
+    "fields": [
+     "AU",
+     "DOM"
+    ],
+    "format": "omf",
+    "path": "/выгрузка/model.omf"
+   }
+  },
+  "parquet": {
+   "answer": {
+    "body": {
+     "keys": [
+      "id",
+      "source"
+     ],
+     "source": "str"
+    },
+    "status": 200
+   },
+   "job": {
+    "error": null,
+    "kind": "blocks.export",
+    "message": "Готово",
+    "progress": 1.0,
+    "queue": "heavy",
+    "result": {
+     "bytes": 10111,
+     "format": "parquet",
+     "path": "/выгрузка/model.parquet",
+     "rows": 350,
+     "total": 350,
+     "warnings": []
+    },
+    "status": "done",
+    "title": "Экспорт блочной модели (PARQUET)"
+   },
+   "log": {
+    "lines": [
+     {
+      "level": "info",
+      "seq": 1,
+      "text": "Записан файл «model.parquet»: блоков 350 из 350"
+     }
+    ]
+   },
+   "request": {
+    "fields": [
+     "AU",
+     "CU"
+    ],
+    "format": "parquet",
+    "path": "/выгрузка/model.parquet"
+   }
+  },
+  "sub_dat": {
+   "answer": {
+    "body": {
+     "keys": [
+      "id",
+      "source"
+     ],
+     "source": "str"
+    },
+    "status": 200
+   },
+   "job": {
+    "error": null,
+    "kind": "blocks.export",
+    "message": "Готово",
+    "progress": 1.0,
+    "queue": "heavy",
+    "result": {
+     "bytes": 14104,
+     "format": "dat",
+     "path": "/выгрузка/sub.dat",
+     "rows": 170,
+     "total": 170,
+     "warnings": []
+    },
+    "status": "done",
+    "title": "Экспорт блочной модели (DAT)"
+   },
+   "log": {
+    "lines": [
+     {
+      "level": "info",
+      "seq": 1,
+      "text": "Записан файл «sub.dat»: блоков 170 из 170"
+     }
+    ]
+   },
+   "request": {
+    "format": "dat",
+    "path": "/выгрузка/sub.dat"
+   }
+  },
+  "sub_parquet": {
+   "answer": {
+    "body": {
+     "keys": [
+      "id",
+      "source"
+     ],
+     "source": "str"
+    },
+    "status": 200
+   },
+   "job": {
+    "error": null,
+    "kind": "blocks.export",
+    "message": "Готово",
+    "progress": 1.0,
+    "queue": "heavy",
+    "result": {
+     "bytes": 5901,
+     "format": "parquet",
+     "path": "/выгрузка/sub.parquet",
+     "rows": 170,
+     "total": 170,
+     "warnings": []
+    },
+    "status": "done",
+    "title": "Экспорт блочной модели (PARQUET)"
+   },
+   "log": {
+    "lines": [
+     {
+      "level": "info",
+      "seq": 1,
+      "text": "Записан файл «sub.parquet»: блоков 170 из 170"
+     }
+    ]
+   },
+   "request": {
+    "format": "parquet",
+    "path": "/выгрузка/sub.parquet"
+   }
+  }
+ },
+ "sub_model": {
+  "body": {
+   "algo": null,
+   "cells": 170,
+   "checks": {
+    "constant": [],
+    "duplicates": 0,
+    "empty": [],
+    "examples": [],
+    "overlaps": {
+     "method": "exact",
+     "n": 0
+    },
+    "volume": 4864.0
+   },
+   "crs": null,
+   "extent": [
+    466167.5,
+    4584527.5,
+    202.5,
+    466199.5,
+    4584551.5,
+    210.5
+   ],
+   "fields": [
+    {
+     "description": null,
+     "dtype": "f8",
+     "file": "cells",
+     "kind": "number",
+     "name": "AU",
+     "role": "grade",
+     "source": {
+      "algo": null,
+      "inputs": [],
+      "op": "import",
+      "params": {
+       "column": "AU",
+       "empty": [],
+       "file": "sub.dm",
+       "format": "dm"
+      },
+      "versions": {}
+     },
+     "stats": {
+      "count": 170,
+      "max": 42.25,
+      "mean": 21.125,
+      "min": 0.0,
+      "missing": 0,
+      "std": 12.268481
+     },
+     "unit": "г/т"
+    }
+   ],
+   "folder": null,
+   "full": false,
+   "grid": {
+    "corner": [
+     466167.5,
+     4584527.5,
+     202.5
+    ],
+    "counts": [
+     4,
+     3,
+     2
+    ],
+    "div": [
+     8,
+     4,
+     4
+    ],
+    "levels": [
+     3,
+     2,
+     2
+    ],
+    "order": "F",
+    "rotation": 0.0,
+    "size": [
+     8.0,
+     8.0,
+     4.0
+    ],
+    "variable": false
+   },
+   "groups": [
+    {
+     "k0": 0,
+     "k1": 1,
+     "rows": 170
+    }
+   ],
+   "id": 2,
+   "inputs": null,
+   "meta_v": 2,
+   "name": "sub",
+   "parents": 19,
+   "rows": 170,
+   "size": 2673,
+   "source": {
+    "file": "sub.dm",
+    "format": "dm",
+    "op": "import"
+   },
+   "sub": true,
+   "version": 1,
+   "warnings": [
+    "Размер родительского блока взят по самому большому блоку: 8 × 8 × 4."
+   ]
+  },
+  "status": 200
+ }
+}

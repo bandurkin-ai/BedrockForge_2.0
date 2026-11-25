@@ -8,8 +8,9 @@ import { detectImportKind, IMPORT_TITLES, type ImportKind } from "../../shell/tr
 
 /** Formats of the other object types arrive with their stages (ТЗ 7.8): none is waiting now. */
 const LATER: Partial<Record<ImportKind, string>> = {};
-/** Drawings hold lines and wireframes; Datamine `.dm` — wireframes or strings: the core tells by the content. */
-const COMPOSED = new Set(["dxf", "dwg", "dm"]);
+/** Drawings hold lines and wireframes; Datamine `.dm` — wireframes, strings or a block model: the core tells by the
+ * content; `.fbm` is a block model of Datamine (ADR 0023 §7). */
+const COMPOSED = new Set(["dxf", "dwg", "dm", "fbm"]);
 
 export interface Route {
   /** tables of the drillhole wizard */

@@ -27,6 +27,7 @@ export function blockMenu(b: Pick<BlockModelInfo, "id">) {
     { label: "Показать в 3D", command: "blocks.show", args: { model_id: b.id } },
     { label: "Скрыть в 3D", command: "blocks.show", args: { model_id: b.id, visible: false } },
     { label: "Экспорт OMF…", command: "omf.export", args: { dataset_ids: String(b.id) } },
+    { label: "Экспорт…", command: "blocks.export", args: { model_id: String(b.id) } },
     SEPARATOR,
     { label: "Переименовать…", command: "object.rename", args: { kind: "blocks", id: b.id } },
     { label: "Удалить…", command: "object.delete", args: { kind: "blocks", id: b.id } },
