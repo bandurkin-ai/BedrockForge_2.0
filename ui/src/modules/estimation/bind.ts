@@ -88,6 +88,9 @@ export async function runEstimate(a: Record<string, unknown>): Promise<string> {
   if ((planId === null) === (ids.length === 0)) throw refusal("bad_param", "Укажите план или строки оценки (что-то одно).", "Передайте plan_id или estimation_ids, например 41; 42.");
   if (ids.some((n) => !Number.isInteger(n) || n < 1)) throw refusal("bad_param", "Номера строк оценки: нужны целые числа.", "Перечислите номера через «;», например 41; 42.");
   let modelId: number;
+  // a row or a plan saved a moment ago (the wizard saves and runs at once) is not in the store until the list is read again
+  const known = planId !== null ? estimationStore.get().plans.some((p) => p.id === planId) : ids.every((id) => rowById(id));
+  if (!known) await loadRows();
   if (planId !== null) {
     const plan = estimationStore.get().plans.find((p) => p.id === planId);
     if (!plan) throw refusal("plan_not_found", `План оценки №${planId} не найден.`, "Номера планов — в окне «План оценки».");

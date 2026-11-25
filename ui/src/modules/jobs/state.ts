@@ -53,15 +53,23 @@ export function onJobFinished(fn: (job: Job) => void): () => void {
 
 const key = (j: Pick<Job, "source" | "id">) => `${j.source}:${j.id}`;
 
+const ENDED: readonly JobStatus[] = ["done", "failed", "cancelled"];
+/** The first answer of the core is what the window found there (jobs of the past): it reports nothing; the later ones report every job that ended. */
+let baseline = false;
+
+/** A job reported ended: it changed its status in the list we hold, or came to the list already ended (a small import is over between two reads). */
+export function endedNow(was: JobStatus | undefined, now: JobStatus, known: boolean): boolean {
+  return ENDED.includes(now) && (was === undefined ? known : was !== now);
+}
+
 export async function refresh(): Promise<void> {
   try {
     const r = await api.get<{ jobs: Job[]; workers: WorkersInfo }>("/jobs");
     const before = new Map(jobsStore.get().jobs.map((j) => [key(j), j.status]));
+    const known = baseline;
+    baseline = true;
     jobsStore.set({ jobs: r.jobs, workers: r.workers, error: null });
-    for (const j of r.jobs) {
-      const was = before.get(key(j));
-      if (was && was !== j.status && ["done", "failed", "cancelled"].includes(j.status)) for (const fn of finishedListeners) fn(j);
-    }
+    for (const j of r.jobs) if (endedNow(before.get(key(j)), j.status, known)) for (const fn of finishedListeners) fn(j);
   } catch (e) {
     jobsStore.set({ error: e instanceof Error ? e.message : String(e) });
   }
