@@ -340,9 +340,9 @@ describe("«Применить к параметрам…»", () => {
     expect(w.editing?.id).toBe(4);
     expect(w.step).toBe(4);
     expect(w.dirty).toBe(true);
-    const passes = (w.form.rest.search as { passes: { n_max: number }[] }).passes;
+    const passes = w.form.search.passes ?? [];
     expect(passes.length).toBeGreaterThan(0);
-    expect(passes.every((p) => p.n_max === 16)).toBe(true);
+    expect(passes.every((p) => p.nMax === "16")).toBe(true);
     expect(core.sent.filter((q) => q.method === "PUT" || (q.method === "POST" && q.path === "/geostat/estimations"))).toEqual([]);
   });
   it("the button of the window does the same by the person's click only (the recommendation alone changes nothing)", async () => {

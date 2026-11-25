@@ -3,16 +3,21 @@
  * defaults of the core for the data of the form (`GET /estimate/defaults`: the counts, the declustered means, the mapping of the
  * labels, the model of variogram; an answer that was overtaken is dropped), the stored models of variogram with their scale
  * (Д-38: a model of Y without its back transform is not chosen), the row being edited (its version) and the save
- * (`POST` / `PUT /estimations`; 409 `version_conflict` — «Перечитать» / «Сохранить как новые»). One wizard per project;
- * another project — a clean form. No React.
+ * (`POST` / `PUT /estimations`; 409 `version_conflict` — «Перечитать» / «Сохранить как новые»), the preview of one block of the
+ * parameters not saved yet (`POST /estimate/preview`, step 6; the newest answer only) and the edits of the search, the passes and
+ * the output fields of steps 4–5 (a pass or a field not touched stays the core's default). One wizard per project; another project —
+ * a clean form. No React.
  */
 import { refusal } from "../../shell/objectRun";
 import { errorText } from "../../shell/props";
 import { Store } from "../../shell/store";
 import { projectStore } from "../projects/state";
 import { loadModel, loadModels, type ModelRow } from "../variography/api";
-import { createEstimation, loadDefaults, loadEstimation, refusalOf, replaceEstimation, type DefaultsAnswer, type Refusal, type Saved, type VarioScale } from "./api";
+import { createEstimation, loadDefaults, loadEstimation, refusalOf, replaceEstimation, type DefaultsAnswer, type Refusal, type Saved, type Triple, type VarioScale } from "./api";
 import { bodyOf, defaultsQueryOf, EMPTY_FORM, formOfMeta, scaleOf, stepOfParam, type EstimationForm, type Issue } from "./form";
+import { bad } from "./formBase";
+import { ALLOWED_FIELDS, anyHy, passesOf, type OutputsForm, type PassForm, type SearchForm, type Tri } from "./formSearch";
+import { loadPreview, type PreviewAnswer } from "./previewApi";
 import { loadRows } from "./state";
 
 export const WIZARD_WINDOW = "estimation-wizard";
@@ -37,6 +42,17 @@ export interface VarioState {
   error: string | null;
 }
 
+export interface PreviewState {
+  phase: "idle" | "loading" | "ok" | "error";
+  /** the block asked for: the indices i, j, k of a parent, as typed */
+  at: Tri;
+  seq: number;
+  data: PreviewAnswer | null;
+  error: Issue | null;
+  /** the form changed after the answer: it is of other parameters */
+  stale: boolean;
+}
+
 export interface WizardState {
   form: EstimationForm;
   /** 1…6 */
@@ -50,12 +66,14 @@ export interface WizardState {
   /** the form changed after the save */
   dirty: boolean;
   saving: boolean;
+  preview: PreviewState;
 }
 
+const EMPTY_PREVIEW: PreviewState = { phase: "idle", at: ["", "", ""], seq: 0, data: null, error: null, stale: false };
 const EMPTY_DEFAULTS: DefaultsState = { phase: "idle", key: "", seq: 0, data: null, error: null };
 const EMPTY_VARIO: VarioState = { rows: [], backs: {}, loaded: false, error: null };
 
-const fresh = (): WizardState => ({ form: EMPTY_FORM, step: 1, issue: null, defaults: EMPTY_DEFAULTS, vario: EMPTY_VARIO, editing: null, saved: null, dirty: false, saving: false });
+const fresh = (): WizardState => ({ form: EMPTY_FORM, step: 1, issue: null, defaults: EMPTY_DEFAULTS, vario: EMPTY_VARIO, editing: null, saved: null, dirty: false, saving: false, preview: EMPTY_PREVIEW });
 
 export const wizardStore = new Store<WizardState>(fresh());
 
@@ -69,12 +87,16 @@ export function issueOfRefusal(r: Refusal): Issue {
 
 /** A change of the form (the person types): the old refusal goes. */
 export function setForm(patch: Partial<EstimationForm>): void {
-  wizardStore.set((s) => ({ form: { ...s.form, ...patch }, issue: null, dirty: true }));
+  wizardStore.set((s) => {
+    // another method writes other fields: the typed list of the keys of the old one does not go over
+    const fields = patch.method !== undefined && patch.method !== s.form.method && patch.outputs === undefined ? { outputs: { ...s.form.outputs, fields: null } } : {};
+    return { form: { ...s.form, ...patch, ...fields }, issue: null, dirty: true, preview: s.preview.data ? { ...s.preview, stale: true } : s.preview };
+  });
 }
 
 /** The whole form replaced (a stored row, a call of the command). */
 export function putForm(f: EstimationForm, extra: Partial<WizardState> = {}): void {
-  wizardStore.set({ form: f, issue: null, dirty: false, ...extra });
+  wizardStore.set((s) => ({ form: f, issue: null, dirty: false, preview: s.preview.data ? { ...s.preview, stale: true } : s.preview, ...extra }));
 }
 
 export const setStep = (step: number): void => wizardStore.set({ step: Math.min(6, Math.max(1, step)) });
@@ -83,7 +105,7 @@ export const setIssue = (issue: Issue | null): void => wizardStore.set(issue ? {
 /** Another project: a clean wizard (what was asked of one project does not belong to another). */
 export function resetWizard(): void {
   const old = wizardStore.get();
-  wizardStore.set({ ...fresh(), defaults: { ...EMPTY_DEFAULTS, seq: old.defaults.seq + 1 } });
+  wizardStore.set({ ...fresh(), defaults: { ...EMPTY_DEFAULTS, seq: old.defaults.seq + 1 }, preview: { ...EMPTY_PREVIEW, seq: old.preview.seq + 1 } });
 }
 
 // ---- the defaults of the core ----
@@ -193,4 +215,86 @@ export async function saveWizard(opts: { asNew?: boolean } = {}): Promise<Saved>
   } finally {
     wizardStore.set({ saving: false });
   }
+}
+
+// ---- the edits of steps 4–5: the search, the passes, the output fields ----
+
+const defaultParams = (): Record<string, unknown> | null => wizardStore.get().defaults.data?.params ?? null;
+
+export const setSearch = (patch: Partial<SearchForm>): void => setForm({ search: { ...form().search, ...patch } });
+export const setOutputs = (patch: Partial<OutputsForm>): void => setForm({ outputs: { ...form().outputs, ...patch } });
+
+/** The passes as the person left them (those of the core while none are typed) changed by `fn`; the rule of Д-29 on brings the field NHY. */
+export function editPasses(fn: (passes: PassForm[]) => PassForm[]): void {
+  const f = form();
+  const passes = fn(passesOf(f.search, defaultParams()).map((p) => ({ ...p, hy: { ...p.hy } })));
+  const o = f.outputs;
+  const nhy = anyHy(passes) && o.fields !== null && !o.fields.includes("NHY") && ALLOWED_FIELDS[f.method].includes("NHY");
+  setForm({ search: { ...f.search, passes }, ...(nhy ? { outputs: { ...o, fields: [...o.fields!, "NHY"] } } : {}) });
+}
+
+export const setPass = (i: number, patch: Partial<PassForm>): void => editPasses((ps) => ps.map((p, k) => (k === i ? { ...p, ...patch } : p)));
+export const setHy = (i: number, patch: Partial<PassForm["hy"]>): void => editPasses((ps) => ps.map((p, k) => (k === i ? { ...p, hy: { ...p.hy, ...patch } } : p)));
+export const removePass = (i: number): void => editPasses((ps) => (ps.length > 1 ? ps.filter((_, k) => k !== i) : ps));
+export function addPass(): void {
+  editPasses((ps) => {
+    const last = ps[ps.length - 1];
+    // the next pass: the last one with the radii one step farther
+    return ps.length >= 5 ? ps : [...ps, { ...last, factor: String(Number.parseFloat(last.factor.replace(",", ".")) + 1 || ps.length + 1), hy: { ...last.hy, on: false } }];
+  });
+}
+/** «Как в ядре»: the passes the person typed go, the core's default ones stay. */
+export const resetPasses = (): void => setSearch({ passes: null });
+
+/** A key of the output fields on or off (the keys of the method by default until the first touch); STATUS cannot be switched off. */
+export function toggleField(key: string, on: boolean, current: readonly string[]): void {
+  if (key === "STATUS") return;
+  const next = on ? [...current, key] : current.filter((k) => k !== key);
+  setOutputs({ fields: ALLOWED_FIELDS[form().method].filter((k) => k === "STATUS" || next.includes(k)) });
+}
+
+// ---- the preview of one block (step 6) ----
+
+export const setPreviewAt = (at: Tri): void => wizardStore.set((s) => ({ preview: { ...s.preview, at } }));
+
+/** The block i, j, k of the parent as typed: whole numbers from 0; the words under the field otherwise. */
+export function parseBlock(at: Tri): Triple | Issue {
+  const out: number[] = [];
+  for (let i = 0; i < 3; i++) {
+    const v = Number(at[i].trim().replace(",", "."));
+    if (!at[i].trim() || !Number.isInteger(v) || v < 0) return bad(`at.ijk.${i}`, `Блок: индекс ${"ijk"[i]} — целое число от 0.`, "Введите номера ячейки родителя по X, Y, Z, например 4; 4; 7.");
+    out.push(v);
+  }
+  return out as Triple;
+}
+
+/** «Показать»: the parameters of the wizard estimate one block (not saved, not run); a wrong form or block is told under the preview, the newest answer only. */
+export async function requestPreview(): Promise<void> {
+  const s = wizardStore.get();
+  const seq = s.preview.seq + 1;
+  const fail = (error: Issue) => wizardStore.set((x) => ({ preview: { ...x.preview, seq, phase: "error", data: null, error, stale: false } }));
+  const at = parseBlock(s.preview.at);
+  if (!Array.isArray(at)) return fail(at);
+  const got = bodyOf(s.form, { scales: scalesOf(s.vario) });
+  if (!got.ok) return fail(got.issue);
+  wizardStore.set((x) => ({ preview: { ...x.preview, seq, phase: "loading", error: null } }));
+  const uid = projectStore.get().current?.uid ?? null;
+  try {
+    const data = await loadPreview(got.body, { ijk: at });
+    if (wizardStore.get().preview.seq === seq && (projectStore.get().current?.uid ?? null) === uid) wizardStore.set((x) => ({ preview: { ...x.preview, phase: "ok", data, error: null, stale: false } }));
+  } catch (e) {
+    if (wizardStore.get().preview.seq === seq) fail(issueOfRefusal(refusalOf(e)));
+  }
+}
+
+// ---- the run of the row from step 6 ----
+
+/**
+ * «Выполнить оценку»: the row is saved when it is new or changed (a refusal stands under its field, on its step), then `estimate.run`
+ * runs it (the command asks «Заменить поля?» when the model has them and follows the job). The answer is the line of the command.
+ */
+export async function runWizard(app: { run: (id: string, args?: Record<string, unknown>) => Promise<unknown> }): Promise<unknown> {
+  const s = wizardStore.get();
+  const id = !s.dirty && s.editing ? s.editing.id : (await saveWizard()).id;
+  return app.run("estimate.run", { estimation_ids: String(id) });
 }

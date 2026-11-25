@@ -21,7 +21,11 @@ import { copySnapshot, InspectWindow } from "../../src/modules/estimation/inspec
 import { intervalTarget, openInterval } from "../../src/modules/estimation/inspect/interval";
 import { activeResult, inspect, inspectStore, INSPECT_WINDOW, pick, pickedCandidate, reinspect, resetInspect, setActive, setReason, setShow, sortBy } from "../../src/modules/estimation/inspect/state";
 import { blockTitle, compareText, COLORS, countsText, cssColor, intervalText, maxWeight, nextSort, reasonOptions, shownCandidates, snapshotText, tabLabel, valueRows, weightClass, weightColor, weightSums } from "../../src/modules/estimation/inspect/view";
-import { newApp, installCore, teardown, type Core } from "./harness";
+import { blocksStore } from "../../src/modules/blocks/state";
+import { MODEL, newApp, installCore, teardown, type Core } from "./harness";
+
+/** The model of `inspect_answers.json` (its own world, the block model 7), next to the one of `contract_answers.json` of the harness. */
+const INSPECT_MODEL = 7;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const F: any = JSON.parse(readFileSync(resolve(__dirname, "../../../core/tests/data/estimate/inspect_answers.json"), "utf-8"));
@@ -34,6 +38,7 @@ let core: Core;
 beforeEach(() => {
   core = installCore();
   app = newApp();
+  blocksStore.set((s) => ({ list: [...s.list, { ...MODEL, id: INSPECT_MODEL }] }));
   bindInspect(app);
   resetInspect();
   inspectStore.set({ show: { ellipsoid: true, segments: true, excluded: true } });

@@ -21,6 +21,7 @@ import { onCoreEvent } from "../jobs/state";
 import { projectStore } from "../projects/state";
 import { readRun, refusalOf, startRun, waitJob, type RunBody } from "./api";
 import { formOfArgs } from "./form";
+import { PARAMS_TITLE, PARAMS_WINDOW, ParamsWindow } from "./ParamsWindow";
 import { PlanWindow } from "./PlanWindow";
 import { choosePlan, chooseModel as choosePlanModel, confirmDiscard, deletePlan, pickModel, planById, planStore, PLAN_TITLE, PLAN_WINDOW, resetPlan, syncPlan } from "./planState";
 import { bindChecks, renderCheckWindow } from "./checksBind";
@@ -185,6 +186,35 @@ export async function runDelete(a: Record<string, unknown>, source: CommandSourc
   }
 }
 
+// ---- the window «Параметры оценки» ----
+
+/** The window of the parameters of a row, if open. */
+export const paramsWindow = (): string | null => windowStore.get().windows.find((w) => w.kind === PARAMS_WINDOW)?.id ?? null;
+
+/**
+ * `estimate.params {id?}`: the stored row on one page (the same form as the wizard's); without `id` — the row the form holds. A form
+ * changed and not saved is not replaced without the person's word. The wizard and this window are two views of one form.
+ */
+export async function openParams(a: Record<string, unknown>, source: CommandSource): Promise<string> {
+  const have = wizardStore.get();
+  const id = typeof a.id === "number" ? a.id : (have.editing?.id ?? null);
+  if (id === null) throw refusal("no_row", "Не указана строка «Параметры оценки».", "Передайте id строки из раздела «Геостатистика → Параметры оценки» дерева.");
+  if (!rowById(id) && estimationStore.get().loaded) throw refusal("estimation_not_found", `Строка «Параметры оценки» №${id} не найдена.`, "Номера строк — в разделе «Геостатистика → Параметры оценки» дерева.");
+  if (id !== have.editing?.id) {
+    if (have.dirty && source === "user" && !(await askConfirm({ title: PARAMS_TITLE, message: "В мастере есть несохранённые изменения. Заменить их строкой из проекта?", okLabel: "Заменить", danger: true }))) return "Отменено";
+    await startEdit(id).catch((e: unknown) => {
+      const r = refusalOf(e);
+      throw refusal(r.code, r.message, r.hint);
+    });
+    chooseModel(wizardStore.get().form.modelId);
+  }
+  if (!wizardStore.get().vario.loaded) void loadVariogramModels();
+  const open = paramsWindow();
+  if (open) focusWindow(open);
+  else openWindow(PARAMS_WINDOW, PARAMS_TITLE, "normal", {}, ...viewport());
+  return `Открыто окно «${PARAMS_TITLE}»`;
+}
+
 // ---- the window «План оценки» ----
 
 /** The window of the plan, if open. */
@@ -239,6 +269,7 @@ export function bindEstimation(app: App): void {
   // without a plan or rows `estimate.run` is the window where they are chosen (§12: a command without parameters opens its window)
   app.registry.bind("estimate.run", noted(app, (a, s) => (a.plan_id === undefined && a.estimation_ids === undefined ? openPlan(app, a, s) : runEstimate(a))), needWritable(app));
   app.registry.bind("estimate.delete", noted(app, (a, s) => runDelete(a, s)), needWritable(app));
+  app.registry.bind("estimate.params", noted(app, (a, s) => openParams(a, s)), needProject);
   app.registry.bind("estimate.plan", noted(app, (a, s) => openPlan(app, a, s)), needProject);
   app.registry.bind("estimate.plan_delete", noted(app, (a, s) => runPlanDelete(a, s)), needWritable(app));
   unbind.push(bindChecks(app)); // estimate.kna, .global, .qq, .swath (18.24)
@@ -275,5 +306,6 @@ export function bindEstimation(app: App): void {
 /** The windows for the shell's window layer (`shell/Shell.tsx`); null — not a window of the estimation. */
 export function renderEstimationWindow(w: FloatWin): ReactNode | null {
   if (w.kind === WIZARD_WINDOW) return createElement(Wizard, { winId: w.id });
+  if (w.kind === PARAMS_WINDOW) return createElement(ParamsWindow, { winId: w.id });
   return w.kind === PLAN_WINDOW ? createElement(PlanWindow, { winId: w.id }) : (renderCheckWindow(w) ?? renderXvalWindow(w) ?? renderInspectWindow(w));
 }

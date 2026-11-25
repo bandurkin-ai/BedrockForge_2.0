@@ -463,6 +463,19 @@ export interface RunResult {
   rows: RunRow[];
   merged: RunMerged[];
   log: string[];
+  /** the seconds of the stages of the run (`samples`, `search`, `write`, `total`); {} — the core did not tell */
+  stages: Record<string, number>;
+}
+
+/** `meta.last_run` of a stored row (`GET /estimations/{id}`): the job (a number), the version of the model, the counts, the hash of the parameters of the run. */
+export interface StoredRun {
+  at: string;
+  job: number | null;
+  version: number | null;
+  /** the hash of the parameters the row was run with: another one now — «изменены параметры» */
+  params: string | null;
+  merged: number;
+  counts: RunCounts | null;
 }
 
 const nums = (v: unknown): number[] => (Array.isArray(v) ? v.map((n) => (isNum(n) ? n : 0)) : []);
@@ -472,6 +485,17 @@ function readSamples(raw: unknown): RunSamples | null {
   if (!Object.keys(o).length) return null;
   const n = (k: string) => (isNum(o[k]) ? (o[k] as number) : 0);
   return { rows: n("rows"), missing: n("missing"), no_position: n("no_position"), outside_domain: n("outside_domain"), used: n("used"), merged: n("merged"), topcut: n("topcut"), soft: n("soft"), no_weight: n("no_weight") };
+}
+
+function readRunCounts(raw: unknown): RunCounts {
+  const c = obj(raw);
+  return { targets: Number(c.targets ?? 0), by_status: nums(c.by_status), by_pass: nums(c.by_pass), singular: nums(c.singular), samples: readSamples(c.samples) };
+}
+
+export function readLastRun(raw: unknown): StoredRun | null {
+  const o = obj(raw);
+  if (!Object.keys(o).length) return null;
+  return { at: String(o.at ?? ""), job: numOrNull(o.job), version: numOrNull(o.version), params: str(o.params), merged: numOrNull(o.merged) ?? 0, counts: Object.keys(obj(o.counts)).length ? readRunCounts(o.counts) : null };
 }
 
 export function readRun(raw: unknown): RunResult | null {
@@ -484,10 +508,10 @@ export function readRun(raw: unknown): RunResult | null {
     fields: strs(o.fields),
     rows: (Array.isArray(o.rows) ? o.rows : []).map((r) => {
       const x = obj(r);
-      const c = obj(x.counts);
-      return { estimation_id: Number(x.estimation_id), prefix: String(x.prefix ?? ""), label: str(x.label), counts: { targets: Number(c.targets ?? 0), by_status: nums(c.by_status), by_pass: nums(c.by_pass), singular: nums(c.singular), samples: readSamples(c.samples) } };
+      return { estimation_id: Number(x.estimation_id), prefix: String(x.prefix ?? ""), label: str(x.label), counts: readRunCounts(x.counts) };
     }),
     merged: (Array.isArray(o.merged) ? o.merged : []).map((m) => ({ prefix: String(obj(m).prefix ?? ""), estimation_ids: Array.isArray(obj(m).estimation_ids) ? (obj(m).estimation_ids as unknown[]).filter(isNum) : [] })),
     log: strs(o.log),
+    stages: Object.fromEntries(Object.entries(obj(o.stages)).filter(([, v]) => isNum(v))) as Record<string, number>,
   };
 }

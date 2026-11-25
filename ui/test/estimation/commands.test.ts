@@ -1,4 +1,4 @@
-// The commands `estimate.*` of the registry (Э18, 18.19; ADR 0024 §10, e18-api.md §12) on the answers of the contract: the
+// The commands `estimate.*` of the registry (Э18, 18.19; ADR 0024 §10, e18-api.md §12) on the real answers of the core: the
 // declarations (the ribbon, Ctrl+K and the assistant read them), `estimate.open` (the wizard, the arguments of the contact analysis),
 // `estimate.run` (the job, «Заменить поля?»), `estimate.delete`; the rest waits for its window and says so.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -12,7 +12,7 @@ import { jobsStore } from "../../src/modules/jobs/state";
 import { loadRows } from "../../src/modules/estimation/state";
 import { WIZARD_WINDOW, wizardStore } from "../../src/modules/estimation/wizardState";
 import { moduleCommands } from "../../src/shell/catalog";
-import { A, installCore, newApp, teardown, type Core } from "./harness";
+import { A, ID, MODEL_NAME, MODEL_VERSION, RUN_VERSION, installCore, newApp, teardown, type Core } from "./harness";
 
 let app: App;
 let core: Core;
@@ -22,6 +22,8 @@ beforeEach(() => {
 });
 afterEach(teardown);
 
+const ROW = A.estimations.body.estimations[0];
+const RUN = A.run_result.body;
 const requests = (route: string) => core.sent.filter((r) => `${r.method} ${r.path}` === route);
 const tick = (ms = 20) => new Promise((r) => setTimeout(r, ms));
 async function waitFor(cond: () => boolean, ms = 2000): Promise<void> {
@@ -79,11 +81,11 @@ describe("the declarations", () => {
 
 describe("estimate.open", () => {
   it("opens the wizard with the only block model that can be estimated (a variable step and a prototype are not offered)", async () => {
-    expect(estimableModels().map((m) => m.id)).toEqual([7]);
+    expect(estimableModels().map((m) => m.id)).toEqual([ID.model]);
     const r = await app.registry.execute("estimate.open", {}, "user");
     expect(r).toEqual({ ok: true, result: "Открыт мастер «Оценка содержаний»" });
     expect(windowStore.get().windows.filter((w) => w.kind === WIZARD_WINDOW)).toHaveLength(1);
-    expect(wizardStore.get().form.modelId).toBe(7);
+    expect(wizardStore.get().form.modelId).toBe(ID.model);
     expect(wizardStore.get().step).toBe(1);
     await waitFor(() => wizardStore.get().vario.loaded);
   });
@@ -96,9 +98,9 @@ describe("estimate.open", () => {
     expect(wizardStore.get().form.method).toBe("sk");
   });
   it("the model chosen in the tree is the model of the wizard", async () => {
-    app.store.set({ selected: { kind: "blocks", id: 7 } as never });
+    app.store.set({ selected: { kind: "blocks", id: ID.model } as never });
     await app.registry.execute("estimate.open", {}, "user");
-    expect(wizardStore.get().form.modelId).toBe(7);
+    expect(wizardStore.get().form.modelId).toBe(ID.model);
   });
   it("the method of the button «Индикаторы»", async () => {
     await app.registry.execute("estimate.open", { method: "ik" }, "user");
@@ -112,19 +114,19 @@ describe("estimate.open", () => {
   });
   it("a stored row for editing", async () => {
     await loadRows();
-    const r = await app.registry.execute("estimate.open", { id: 41 }, "user");
+    const r = await app.registry.execute("estimate.open", { id: ID.row }, "user");
     expect(r.ok).toBe(true);
-    expect(wizardStore.get().form.name).toBe("AU · OK · окисл");
-    expect(wizardStore.get().editing).toEqual({ id: 41, version: 2 });
+    expect(wizardStore.get().form.name).toBe(ROW.name);
+    expect(wizardStore.get().editing).toEqual({ id: ID.row, version: A.estimation.body.version });
   });
   it("a row or a model that is not there: the words of the refusal, the wizard stays shut", async () => {
     await loadRows();
-    const a = await app.registry.execute("estimate.open", { id: 99 }, "user");
+    const a = await app.registry.execute("estimate.open", { id: ID.none }, "user");
     expect(a).toMatchObject({ ok: false });
-    expect(a.result).toContain("№99 не найдена");
-    const b = await app.registry.execute("estimate.open", { model_id: 77 }, "user");
+    expect(a.result).toContain(`№${ID.none} не найдена`);
+    const b = await app.registry.execute("estimate.open", { model_id: ID.noModel }, "user");
     expect(b.ok).toBe(false);
-    expect(b.result).toContain("Блочная модель №77 не найдена");
+    expect(b.result).toContain(`Блочная модель №${ID.noModel} не найдена`);
     expect(wizardWindow()).toBeNull();
   });
   it("the assistant may not open it (a window needs a person)", async () => {
@@ -150,41 +152,41 @@ describe("estimate.delete", () => {
   };
   it("from the interface the person is asked first (an own dialog); «Нет» deletes nothing", async () => {
     await loadRows();
-    const run = app.registry.execute("estimate.delete", { id: 41 }, "user");
+    const run = app.registry.execute("estimate.delete", { id: ID.row }, "user");
     const d = await answer(false);
     if (d.kind === "confirm") {
-      expect(d.options.message).toContain("Удалить строку «AU · OK · окисл»?");
-      expect(d.options.message).toContain("Она уйдёт из планов (1)");
+      expect(d.options.message).toContain(`Удалить строку «${ROW.name}»?`);
+      expect(d.options.message).toContain(`Она уйдёт из планов (${ROW.plans.length})`);
       expect(d.options.message).toContain("останутся");
     }
     expect(await run).toEqual({ ok: true, result: "Отменено" });
-    expect(requests("DELETE /geostat/estimations/41")).toHaveLength(0);
+    expect(requests(`DELETE /geostat/estimations/${ID.row}`)).toHaveLength(0);
   });
   it("«Да»: the core is asked, the plans are told", async () => {
     await loadRows();
-    const run = app.registry.execute("estimate.delete", { id: 41 }, "user");
+    const run = app.registry.execute("estimate.delete", { id: ID.row }, "user");
     await answer(true);
-    expect(await run).toEqual({ ok: true, result: "Строка «AU · OK · окисл» удалена; убрана из планов: 1" });
-    expect(requests("DELETE /geostat/estimations/41")).toHaveLength(1);
+    expect(await run).toEqual({ ok: true, result: `Строка «${ROW.name}» удалена; убрана из планов: ${ROW.plans.length}` });
+    expect(requests(`DELETE /geostat/estimations/${ID.row}`)).toHaveLength(1);
   });
   it("a call of the assistant is asked once, by the registry (the data changes)", async () => {
     await loadRows();
-    const run = app.registry.execute("estimate.delete", { id: 41 }, "claude");
+    const run = app.registry.execute("estimate.delete", { id: ID.row }, "claude");
     await answer(true);
     expect((await run).ok).toBe(true);
     expect(dialogStore.get().queue).toHaveLength(0);
-    expect(requests("DELETE /geostat/estimations/41")).toHaveLength(1);
+    expect(requests(`DELETE /geostat/estimations/${ID.row}`)).toHaveLength(1);
   });
   it("a row that is not there", async () => {
     await loadRows();
-    const r = await app.registry.execute("estimate.delete", { id: 99 }, "user");
+    const r = await app.registry.execute("estimate.delete", { id: ID.none }, "user");
     expect(r.ok).toBe(false);
     expect(r.result).toContain("не найдена");
     expect(dialogStore.get().queue).toHaveLength(0);
   });
   it("«только просмотр»: no deletion", async () => {
     app.store.set({ projectReadOnly: true });
-    const r = await app.registry.execute("estimate.delete", { id: 41 }, "user");
+    const r = await app.registry.execute("estimate.delete", { id: ID.row }, "user");
     expect(r).toEqual({ ok: false, result: "Проект открыт только для чтения" });
   });
 });
@@ -192,43 +194,43 @@ describe("estimate.delete", () => {
 describe("estimate.run", () => {
   it("the rows of one model: the version of the model goes with the run; the job is followed; the answer names the fields and the version", async () => {
     await loadRows();
-    const r = await app.registry.execute("estimate.run", { estimation_ids: "41; 42" }, "user").catch(() => null);
-    // the row 42 is not in the list of the contract (one row): it is told, nothing is sent
+    const r = await app.registry.execute("estimate.run", { estimation_ids: `${ID.row}; ${ID.none}` }, "user").catch(() => null);
+    // the row `ID.none` is not in the list: it is told, nothing is sent
     expect(r).toMatchObject({ ok: false });
-    expect(r?.result).toContain("Не найдены строки «Параметры оценки»: 42");
+    expect(r?.result).toContain(`Не найдены строки «Параметры оценки»: ${ID.none}`);
     expect(requests("POST /geostat/estimate/run")).toHaveLength(0);
   });
   it("one row: POST /estimate/run {estimation_ids, expected_version, replace}; the result as the core wrote it", async () => {
     await loadRows();
-    const r = await app.registry.execute("estimate.run", { estimation_ids: "41" }, "user");
+    const r = await app.registry.execute("estimate.run", { estimation_ids: String(ID.row) }, "user");
     expect(r.ok).toBe(true);
-    expect(requests("POST /geostat/estimate/run")[0].body).toEqual({ estimation_ids: [41], expected_version: 4, replace: false });
-    expect(r.result).toContain("Оценка записана в модель «Модель» (версия 5)");
-    expect(r.result).toContain("AU_OK_STATUS, AU_OK_EST, AU_OK_KV, AU_OK_NS, AU_OK_NH, AU_OK_AD и ещё 3");
-    expect(r.result).toContain("Проход 1: 3 блока — вырожденная система, переход к проходу 2.");
+    expect(requests("POST /geostat/estimate/run")[0].body).toEqual({ estimation_ids: [ID.row], expected_version: MODEL_VERSION, replace: false });
+    expect(r.result).toContain(`Оценка записана в модель «${MODEL_NAME}» (версия ${RUN_VERSION})`);
+    expect(r.result).toContain(`${RUN.fields.slice(0, 6).join(", ")} и ещё ${RUN.fields.length - 6}`);
+    expect(r.result).toContain(RUN.log[0]); // the journal of the core goes to the answer
   });
   it("a plan: POST with `plan_id`; the model is the plan's", async () => {
     await loadRows();
-    const r = await app.registry.execute("estimate.run", { plan_id: 51 }, "user");
+    const r = await app.registry.execute("estimate.run", { plan_id: ID.plan }, "user");
     expect(r.ok).toBe(true);
-    expect(requests("POST /geostat/estimate/run")[0].body).toEqual({ plan_id: 51, expected_version: 4, replace: false });
+    expect(requests("POST /geostat/estimate/run")[0].body).toEqual({ plan_id: ID.plan, expected_version: MODEL_VERSION, replace: false });
   });
   it("a plan or rows — one of the two; numbers must be whole; a plan that is not there", async () => {
     await loadRows();
     expect((await app.registry.execute("estimate.run", { estimation_ids: "" }, "user")).result).toContain("plan_id или estimation_ids");
-    expect((await app.registry.execute("estimate.run", { plan_id: 51, estimation_ids: "41" }, "user")).result).toContain("что-то одно");
-    expect((await app.registry.execute("estimate.run", { estimation_ids: "41; x" }, "user")).result).toContain("нужны целые числа");
-    expect((await app.registry.execute("estimate.run", { plan_id: 9 }, "user")).result).toContain("План оценки №9 не найден");
+    expect((await app.registry.execute("estimate.run", { plan_id: ID.plan, estimation_ids: String(ID.row) }, "user")).result).toContain("что-то одно");
+    expect((await app.registry.execute("estimate.run", { estimation_ids: `${ID.row}; x` }, "user")).result).toContain("нужны целые числа");
+    expect((await app.registry.execute("estimate.run", { plan_id: ID.noPlan }, "user")).result).toContain(`План оценки №${ID.noPlan} не найден`);
     expect(requests("POST /geostat/estimate/run")).toHaveLength(0);
   });
   it("the fields are in the model already: the person is asked «Заменить поля», «Заменить» sends `replace: true`", async () => {
     await loadRows();
     core.force("POST /geostat/estimate/run", A.run_field_exists);
-    const run = app.registry.execute("estimate.run", { estimation_ids: "41" }, "user");
+    const run = app.registry.execute("estimate.run", { estimation_ids: String(ID.row) }, "user");
     await waitFor(() => dialogStore.get().queue.length > 0);
     const d = dialogStore.get().queue[0];
     expect(d.kind === "confirm" && d.options.title).toBe("Заменить поля");
-    expect(d.kind === "confirm" && d.options.message).toContain("Поле «AU_OK_EST» уже есть в модели.");
+    expect(d.kind === "confirm" && d.options.message).toContain(A.run_field_exists.body.message);
     if (d.kind === "confirm") d.resolve(true);
     expect((await run).ok).toBe(true);
     const posts = requests("POST /geostat/estimate/run");
@@ -237,7 +239,7 @@ describe("estimate.run", () => {
   it("«Нет» на вопрос о замене: оценка не запущена", async () => {
     await loadRows();
     core.force("POST /geostat/estimate/run", A.run_field_exists);
-    const run = app.registry.execute("estimate.run", { estimation_ids: "41" }, "user");
+    const run = app.registry.execute("estimate.run", { estimation_ids: String(ID.row) }, "user");
     await waitFor(() => dialogStore.get().queue.length > 0);
     const d = dialogStore.get().queue[0];
     if (d.kind === "confirm") d.resolve(false);
@@ -248,7 +250,7 @@ describe("estimate.run", () => {
   });
   it("`replace: true` goes without the question", async () => {
     await loadRows();
-    const r = await app.registry.execute("estimate.run", { estimation_ids: "41", replace: true }, "user");
+    const r = await app.registry.execute("estimate.run", { estimation_ids: String(ID.row), replace: true }, "user");
     expect(r.ok).toBe(true);
     expect(requests("POST /geostat/estimate/run")[0].body.replace).toBe(true);
     expect(dialogStore.get().queue).toHaveLength(0);
@@ -256,28 +258,28 @@ describe("estimate.run", () => {
   it("a refusal of the core before the job (the model was changed by another window)", async () => {
     await loadRows();
     core.force("POST /geostat/estimate/run", { status: 409, body: { code: "version_conflict", version: 5, message: "Блочная модель изменена.", hint: "Перечитайте модель." } });
-    const r = await app.registry.execute("estimate.run", { estimation_ids: "41" }, "user");
+    const r = await app.registry.execute("estimate.run", { estimation_ids: String(ID.row) }, "user");
     expect(r).toEqual({ ok: false, result: "Блочная модель изменена. Перечитайте модель." });
   });
   it("the job fails or is cancelled: told in Russian, nothing is said to be written", async () => {
     await loadRows();
     core.job = { status: "failed", result: null, error: { code: "no_samples", message: "В домене нет проб.", hint: "Проверьте домен проб." } };
-    const f = await app.registry.execute("estimate.run", { estimation_ids: "41" }, "user");
+    const f = await app.registry.execute("estimate.run", { estimation_ids: String(ID.row) }, "user");
     expect(f).toEqual({ ok: false, result: "В домене нет проб. Проверьте домен проб." });
     jobsStore.set({ jobs: [], workers: null, error: null }); // the next job has another number in the core
     core.job = { status: "cancelled", result: null, error: null };
-    const c = await app.registry.execute("estimate.run", { estimation_ids: "41" }, "user");
-    expect(c).toEqual({ ok: true, result: "Оценка модели «Модель» отменена: ничего не записано" });
+    const c = await app.registry.execute("estimate.run", { estimation_ids: String(ID.row) }, "user");
+    expect(c).toEqual({ ok: true, result: `Оценка модели «${MODEL_NAME}» отменена: ничего не записано` });
   });
   it("a result without the fields is told, not shown as a success", async () => {
     await loadRows();
     core.job = { status: "done", result: {}, error: null };
-    const r = await app.registry.execute("estimate.run", { estimation_ids: "41" }, "user");
+    const r = await app.registry.execute("estimate.run", { estimation_ids: String(ID.row) }, "user");
     expect(r.ok).toBe(false);
     expect(r.result).toContain("без итогов");
   });
   it("«только просмотр»: no run", async () => {
     app.store.set({ projectReadOnly: true });
-    expect((await app.registry.execute("estimate.run", { plan_id: 51 }, "user")).result).toBe("Проект открыт только для чтения");
+    expect((await app.registry.execute("estimate.run", { plan_id: ID.plan }, "user")).result).toBe("Проект открыт только для чтения");
   });
 });
