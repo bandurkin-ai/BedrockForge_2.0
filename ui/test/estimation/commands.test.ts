@@ -12,7 +12,7 @@ import { windowStore } from "../../src/shell/windows";
 import { ESTIMATE_BUTTONS, CHECK_BUTTONS, SIM_BUTTONS, commands } from "../../src/modules/estimation/commands";
 import { estimableModels, wizardWindow } from "../../src/modules/estimation/bind";
 import { jobsStore } from "../../src/modules/jobs/state";
-import { loadRows } from "../../src/modules/estimation/state";
+import { clearEstimations, loadRows } from "../../src/modules/estimation/state";
 import { WIZARD_WINDOW, wizardStore } from "../../src/modules/estimation/wizardState";
 import { moduleCommands } from "../../src/shell/catalog";
 import { A, ID, MODEL_NAME, MODEL_VERSION, RUN_VERSION, installCore, newApp, teardown, type Core } from "./harness";
@@ -218,6 +218,12 @@ describe("estimate.run", () => {
     expect(r.result).toContain(`Оценка записана в модель «${MODEL_NAME}» (версия ${RUN_VERSION})`);
     expect(r.result).toContain(`${RUN.fields.slice(0, 6).join(", ")} и ещё ${RUN.fields.length - 6}`);
     expect(r.result).toContain(RUN.log[0]); // the journal of the core goes to the answer
+  });
+  it("a row saved a moment ago is not in the store yet (the wizard saves and runs at once): the list is read again, the run goes (18.26)", async () => {
+    clearEstimations(); // what the store holds before `loadRows()` of the save is over
+    const r = await app.registry.execute("estimate.run", { estimation_ids: String(ID.row) }, "user");
+    expect(r.ok, r.result).toBe(true);
+    expect(requests("POST /geostat/estimate/run")[0].body).toEqual({ estimation_ids: [ID.row], expected_version: MODEL_VERSION, replace: false });
   });
   it("a plan: POST with `plan_id`; the model is the plan's", async () => {
     await loadRows();
