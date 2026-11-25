@@ -503,17 +503,29 @@ class GridV2:
         d, div = self.regular("Субблоки"), self.sub.div
         return (d[0] / div[0], d[1] / div[1], d[2] / div[2])
 
-    def steps(self, axis: int) -> list[float]:
-        if self.tensors is not None:
-            return list(self.tensors[axis])
-        return [self.regular()[axis]] * self.counts[axis]
+    def steps(self, axis: int) -> np.ndarray:
+        """Parent steps along a LOCAL axis, `counts[axis]` values (float64)."""
+        import numpy as np
 
-    def edges(self, axis: int) -> list[float]:
-        """Parent boundaries along a LOCAL axis, from 0: n + 1 values of q."""
-        return [0.0, *itertools.accumulate(self.steps(axis))]
+        if self.tensors is not None:
+            return np.asarray(self.tensors[axis], dtype=np.float64)
+        return np.full(self.counts[axis], self.regular()[axis], dtype=np.float64)
+
+    def edges(self, axis: int) -> np.ndarray:
+        """Parent boundaries along a LOCAL axis, from 0: n + 1 values of q. A regular grid: k·size (a product, never
+        a running sum); a variable one: the running sum of its steps."""
+        import numpy as np
+
+        if self.tensors is not None:
+            return np.concatenate(([0.0], np.cumsum(np.asarray(self.tensors[axis], dtype=np.float64))))
+        return np.arange(self.counts[axis] + 1, dtype=np.float64) * self.regular()[axis]
 
     def lengths(self) -> tuple[float, float, float]:
-        return (self.edges(0)[-1], self.edges(1)[-1], self.edges(2)[-1])
+        """The length of the grid along the local axes: size·count (regular) or the last edge (variable)."""
+        if self.tensors is None:
+            d = self.regular()
+            return (d[0] * self.counts[0], d[1] * self.counts[1], d[2] * self.counts[2])
+        return (float(self.edges(0)[-1]), float(self.edges(1)[-1]), float(self.edges(2)[-1]))
 
     def sin_cos(self) -> tuple[float, float]:
         return _sin_cos(self.rotation)
