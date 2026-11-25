@@ -13,17 +13,22 @@ import { windowStore } from "../../src/shell/windows";
 import { readInspect, type InspectAnswer } from "../../src/modules/estimation/inspect/api";
 import { buildSegments } from "../../src/modules/estimation/inspect/build";
 import { InspectWindow } from "../../src/modules/estimation/inspect/InspectWindow";
-import { inspectStore, resetInspect } from "../../src/modules/estimation/inspect/state";
-import { isSelected, solved, subText, takenSet, unsolvedNote, weightSums } from "../../src/modules/estimation/inspect/view";
-import { installCore, newApp, teardown } from "./harness";
+import { inspectStore, INSPECT_WINDOW, resetInspect } from "../../src/modules/estimation/inspect/state";
+import { CLICK_HINT, isSelected, solved, subText, takenSet, unsolvedNote, weightSums } from "../../src/modules/estimation/inspect/view";
+import { CHECK_BUTTONS, commands } from "../../src/modules/estimation/commands";
+import { bindInspect, inspectedModel } from "../../src/modules/estimation/inspect/bind";
+import { estimationStore } from "../../src/modules/estimation/state";
+import { blocksStore } from "../../src/modules/blocks/state";
+import { installCore, newApp, teardown, type Core } from "./harness";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const F: any = JSON.parse(readFileSync(resolve(__dirname, "../../../core/tests/data/estimate/inspect_answers.json"), "utf-8"));
 const flat = (s: string): string => s.replace(/[  ]/g, " ");
 
 let app: App;
+let core: Core;
 beforeEach(() => {
-  installCore();
+  core = installCore();
   app = newApp();
   resetInspect();
 });
@@ -128,5 +133,42 @@ describe("the sub-blocks of the row", () => {
   });
   it("the reader keeps it", () => {
     expect(readInspect(F.answers.pass_1).results[0].sub).toBe("parent");
+  });
+});
+
+describe("the button «Инспектор блока» (ТЗ 7.35.4) and the command without a model or a block", () => {
+  const ROUTE = "POST /geostat/estimate/inspect";
+  const asked = () => core.sent.filter((x) => `${x.method} ${x.path}` === ROUTE);
+  const windows = () => windowStore.get().windows.filter((w) => w.kind === INSPECT_WINDOW);
+  beforeEach(() => bindInspect(app));
+  it("it is on the ribbon in «Проверка», and `model_id` is no longer required", () => {
+    expect(CHECK_BUTTONS.find((x) => x.command === "estimate.inspect")).toMatchObject({ label: "Инспектор блока" });
+    expect(commands.find((c) => c.id === "estimate.inspect")!.required).toBeUndefined();
+  });
+  it("without a block: the window with «Щёлкните блок в 3D», the core is not asked; again — the same window", async () => {
+    expect(await app.registry.execute("estimate.inspect", {}, "user")).toEqual({ ok: true, result: CLICK_HINT });
+    expect(windows()).toHaveLength(1);
+    await app.registry.execute("estimate.inspect", {}, "user");
+    expect(windows()).toHaveLength(1);
+    expect(asked()).toHaveLength(0);
+    expect(flat(renderToStaticMarkup(createElement(AppContext.Provider, { value: app }, createElement(InspectWindow, { winId: "w1" }))))).toContain("Щёлкните блок в 3D");
+  });
+  it("`model_id` is optional: the one chosen in the tree, else the only model with an estimation that was run, else a refusal in words", async () => {
+    blocksStore.set((s) => ({ list: [...s.list, { ...s.list[0], id: 7 }] }));
+    core.force(ROUTE, { status: 200, body: F.answers.pass_1 });
+    const row = estimationStore.get().rows[0];
+    estimationStore.set({ rows: [{ ...row, model_id: 7, last_run: { at: "2026-01-01", by_status: [1] } }] });
+    expect(inspectedModel(app)).toBe(7);
+    expect((await app.registry.execute("estimate.inspect", { block: "13; 7; 1" }, "user")).ok).toBe(true);
+    expect(asked().at(-1)!.body).toMatchObject({ model_id: 7, block: [13, 7, 1] });
+    app.store.set({ selected: { kind: "blocks", id: 5 } });
+    expect(inspectedModel(app)).toBe(5); // the tree wins
+    estimationStore.set({ rows: [] });
+    app.store.set({ selected: null });
+    expect(inspectedModel(app)).toBeNull();
+    const r = await app.registry.execute("estimate.inspect", { block: "13; 7; 1" }, "claude");
+    expect(r.ok).toBe(false);
+    expect(r.result).toContain("Не задана блочная модель");
+    expect(r.result).toContain("Выберите блочную модель в дереве");
   });
 });

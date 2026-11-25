@@ -14,7 +14,7 @@ import { Candidates } from "./Candidates";
 import mod from "./Inspect.module.css";
 import { openInterval } from "./interval";
 import { activeResult, inspectStore, reinspect, setActive, setNote, setShow, failText } from "./state";
-import { blockTitle, COLORS, compareText, dash, numText, pointText, snapshotText, solved, subText, tabLabel, unsolvedNote, valueRows, weightSums } from "./view";
+import { blockTitle, CLICK_HINT, COLORS, compareText, dash, numText, pointText, snapshotText, solved, subText, tabLabel, unsolvedNote, valueRows, weightSums } from "./view";
 
 /** The snapshot to the clipboard; the note says whether it got there. */
 export async function copySnapshot(): Promise<string> {
@@ -164,7 +164,7 @@ export function InspectWindow({ winId }: { winId: string }) {
           </dl>
         ) : (
           <p className={css.note} data-testid="inspect-empty">
-            {s.loading ? "Блок проверяется…" : "Щёлкните блок модели в 3D или выполните «Инспектор блока»."}
+            {s.loading ? "Блок проверяется…" : CLICK_HINT}
           </p>
         )}
         <div className={mod.actions}>

@@ -17,6 +17,9 @@ export const COLORS = {
 
 export const dash = "—";
 
+/** The text of the empty window and the answer of the command without a block: a block is asked by a click in the 3D. */
+export const CLICK_HINT = "Щёлкните блок в 3D: окно покажет, какие пробы вошли в его оценку.";
+
 export const numText = (v: number | null | undefined, digits = 3): string => (v === null || v === undefined || !Number.isFinite(v) ? dash : fieldNumber(v, digits));
 
 /** The title of the window: «Блок · 13, 7, 1» (the cell of the parent, from 0). */

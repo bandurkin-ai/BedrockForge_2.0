@@ -257,7 +257,7 @@ describe("the command estimate.inspect", () => {
   });
   it("the block is given once; the numbers are checked before the core is asked", async () => {
     const run = (a: Record<string, unknown>) => app.registry.execute("estimate.inspect", { model_id: 7, ...a }, "claude");
-    expect((await run({})).result).toContain("Задайте блок");
+    expect(() => requestOf({ model_id: 7 })).toThrow("Задайте блок");
     expect((await run({ block: "1; 2; 3", xyz: "1; 2; 3" })).result).toContain("что-то одно");
     expect((await run({ block: "1; 2" })).result).toContain("три целых");
     expect((await run({ block: "1; 2,5; 3" })).result).toContain("три целых");
@@ -408,7 +408,7 @@ describe("the window drawn", () => {
     expect(html).toContain("Проход 3");
   });
   it("without the block asked: the hint; while it is asked: «проверяется»", () => {
-    expect(render()).toContain("Щёлкните блок модели в 3D");
+    expect(render()).toContain("Щёлкните блок в 3D");
     inspectStore.set({ loading: true });
     expect(render()).toContain("Блок проверяется…");
     expect(render()).toContain('data-state="loading"');

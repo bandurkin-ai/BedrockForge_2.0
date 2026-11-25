@@ -101,9 +101,11 @@ export const commands: Command[] = [
   {
     id: "estimate.inspect",
     title: "Блок · i, j, k",
-    description: "Инспектор блока: какие пробы вошли в оценку блока, с какими весами и почему остальные отброшены; сверка с записанными полями. block — «i; j; k» родителя, xyz — «x; y; z» точки, row — номер строки блока (одно из трёх); params_id — одна строка.",
+    description:
+      "Инспектор блока («Геостатистика › Проверка › Инспектор блока»): какие пробы вошли в оценку блока, с какими весами и почему остальные отброшены; сверка с записанными полями. " +
+      "block — «i; j; k» родителя, xyz — «x; y; z» точки, row — номер строки блока (одно из трёх); params_id — одна строка. " +
+      "model_id — блочная модель; без неё берётся выбранная в дереве или единственная модель с выполненной оценкой. Без блока открывает окно: блок задаёт щелчок по нему в 3D.",
     params: { model_id: MODEL, block: P("string", "ячейка родителя: i; j; k"), xyz: P("string", "точка: x; y; z, м"), row: P("integer", "номер строки блока модели (его даёт щелчок по блоку в 3D)"), params_id: ESTIMATION },
-    required: ["model_id"],
     stage: "Э18 (18.Д4)",
   },
   {
@@ -181,6 +183,7 @@ export const ESTIMATE_BUTTONS: readonly EstimateButton[] = [
 ];
 
 export const CHECK_BUTTONS: readonly EstimateButton[] = [
+  { command: "estimate.inspect", label: "Инспектор блока", icon: icon("search"), hint: "Какие пробы вошли в оценку блока и с какими весами; щёлкните блок в 3D", small: true },
   { command: "estimate.xval", label: "Перекрёстная проверка", icon: icon("scatter"), hint: "Каждая проба или скважина оценивается по остальным: ошибки, сводка, рассеяние" },
   { command: "estimate.kna", label: "Анализ окрестности", icon: icon("variogram"), hint: "Перебор n_max, радиусов и дискретизации: эффективность кригинга и наклон регрессии", small: true },
   { command: "estimate.swath", label: "Swath plot", icon: icon("swath"), hint: "Композиты и оценка блоков по полосам", small: true },
