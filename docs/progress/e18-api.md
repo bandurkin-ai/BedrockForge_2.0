@@ -408,13 +408,17 @@ blob real: Parquet zstd, строки — цели (P, D) родителей р�
   шаг — 422 `variable_grid` (№ 83).
 - `POST /simulate/run {simulation: тело | simulation_id, expected_version?}` → `simulate.run` (`heavy`): стадии
   «Нормальные оценки», «Реализации k / N», «Запись»; итог `{simulation_id, nodes, realizations, seconds,
-  events}`. `GET /simulations[?model_id]`, `GET /simulations/{id}` (форма `contract_answers.simulation`),
-  `PUT /simulations/{id} {expected_version, …}`, `DELETE /simulations/{id}` (blob `real` — со сборкой мусора).
+  events}`. `GET /simulations[?model_id]`, `POST /simulations` (тело строки; `{id, name, version}`), `GET /simulations/{id}`
+  (форма — `core/tests/data/simulate/answers.json`, ключ `simulation`; `contract_answers.simulation` — старый образец),
+  `PUT /simulations/{id} {expected_version, …}`, `DELETE /simulations/{id}` (blob `real` — со сборкой мусора),
+  `GET /simulations/{id}/summary` (ниже). Тела запросов `/geostat/simulat*` ограничены, как у `/geostat/estimate*`: 8 МБ и вложенность 64
+  (`api/body_limit.py`: больше — 413 `request_too_large`, глубже — 422 `bad_request`).
 - `POST /simulations/{id}/post {expected_version (модели), prefix (умолч. «‹ПОЛЕ›_SGS_»), stats: ["mean", "std",
   "p10", "p50", "p90", "prob"], thresholds: [t…] (для prob), replace}` → `simulate.post` (`quick`): поля MEAN,
   STD (f8), P10, P50, P90 (f8), `PROB_GT_<t>` (f4; t — `format(t, "g")`, «.» → «_») через `stats/local.local_*`;
   409 `field_exists`, `version_conflict`.
-- Команды: `simulate.sgs` (+ `secondary`), `simulate.sis`, `simulate.post`; дерево «Геостатистика → Реализации».
+- Команды: `simulate.open`, `simulate.sgs`, `simulate.sis`, `simulate.cosgs` (вид — по команде; ко-SGS — `secondary_field`, `rho`), `simulate.save`,
+  `simulate.run`, `simulate.summary`, `simulate.post`, `simulate.delete` (§12); раздел дерева «Моделирование»; группа «Моделирование» вкладки «Геостатистика».
 
 **Как сделано в 18.32** (код — `S/{spec,store,store_check,real,targets,job,post,routes}.py`; настоящие ответы —
 `core/tests/data/simulate/answers.json`, `BF_REGEN_SIMULATE=1`):
@@ -437,8 +441,13 @@ blob real: Parquet zstd, строки — цели (P, D) родителей р�
   транзакцией задания (отмена и сбой её не оставляют), итог несёт `simulation_id`. Ответ `{source, id}`; итог задания
   `{simulation_id, nodes, realizations, seconds, counts {degenerate, free, on_sample, cond {min, mean, max}}, log,
   stages {seconds}, events}`. Отказы до задания: 404 `simulation_not_found`, `block_model_not_found`, 409
-  `version_conflict {version}`, `source_lost`, `name_taken`, 422 `bad_param`, `variable_grid`, `variogram_scale`,
-  `not_ready`, 423.
+  `version_conflict {version}`, `source_lost`, `name_taken`, 422 `bad_param`, `variable_grid`, `grid_too_large {param: model_id}`,
+  `variogram_scale`, `not_ready`, 423. `grid_too_large` — число ячеек родительской сетки модели больше `nodes.MAX_CELLS` (300 млн: индекс
+  сетки — `i4` на каждую ячейку, 1,2 ГБ): проверка `nodes.check_cells` до задания (`job.plan_run`) и до выделения памяти; подсказка — более
+  крупные родительские блоки или часть модели. `memory_mb` задания учитывает ячейки сетки (`cells` в параметрах), узлы, число реализаций,
+  пробы таблицы, буферы потоков и (ко-SGS) вторичную. Отмена и ход — внутри реализации (порциями по `STEP` = 2¹⁵ узлов пути, в том числе при
+  одном потоке): отмена останавливает расчёт на ближайшей порции, ничего не записывая (файл `real` и строка не меняются); сообщение хода —
+  «Реализации k / N».
 - `GET /simulations/{id}/summary` → `{simulation_id, nodes, realizations, seconds, counts, cond, samples, summary
   {per, all}, at}`; 409 `no_realizations` до первого запуска.
 - `POST /simulations/{id}/post` (и `POST /simulate/post {simulation_id, …}`) → `{source, id}`; итог `{simulation_id,
@@ -780,7 +789,13 @@ post(realizations: f4[n, N], stats, thresholds) -> dict[str, f8[n]]    # stats/l
 | `chart.contact` + `blocks` | — | `POST /stats/contact` (§8.5) |
 | `lineage.status {kind?, id?, sub?}`, `lineage.impact {…}`, `lineage.pin {…, pinned?}` | —, —, — | `POST /lineage/status`, `GET /lineage/impact`, `POST /lineage/pin` (ADR 0025 §10; группа «Настройки проекта › Зависимости»; без объекта — выбранный в дереве); `lineage.impact` открывает окно «Влияние изменения», если зависимые есть |
 | `lineage.rebuild {kind?, id?, sub?, with_dependents?, drop_lost?, confirmed?}` | confirm | `POST /lineage/rebuild`; окно «Влияние изменения» показывает план (`dry_run`) и само запускает перестроение, передавая `confirmed: true` («план уже показан и подтверждён» — без повторного вопроса о плане); для ассистента план подтверждается `confirm` реестра |
-| `simulate.sgs {…, secondary?}`, `simulate.sis {…}`, `simulate.post {id, …}` | —, —, confirm | §9 (Э18б; в коде ещё нет) |
+| `simulate.open {kind?, id?, model_id?}` | uiOnly | мастер «Моделирование» (шаги: вид и цель, пробы, вариограмма и метод, поиск, реализации, задание); `kind` — `sgs` / `sis` / `cosgs`; `id` — правка строки; шаги 1 и 2 — общие с мастером оценки (`GET /estimate/defaults`) |
+| `simulate.sgs {…}`, `simulate.sis {… thresholds \| categories, labels, models, variogram_ids}`, `simulate.cosgs {… secondary_field, rho?}` | — | без аргументов — мастер нужного вида; с `id` — `POST /simulate/run {simulation_id}`; с параметрами (`model_id`, `set_id`, `table`, `field`, `variogram_id`, `n_real`, `seed`, `nodes`, `n_max`, `factor`, `search_from`, `r1–r3`, `ang1–ang3`, `ltail`, `utail`, …) — `POST /simulate/run {simulation: тело}`, строка создаётся последней транзакцией задания. Плоские параметры (списки — текст через «;») |
+| `simulate.save {id?, as_new?}` | — | форма открытого мастера: `POST /simulations` / `PUT /simulations/{id}` (версия — из формы; 409 → «Перечитать» / «Сохранить как новое»); `id` — проверка, что форма правит эту строку |
+| `simulate.run {id}` | — | `POST /simulate/run {simulation_id: id}` → задание `simulate.run` (`heavy`); итог — число узлов и реализаций, счётчики, журнал |
+| `simulate.summary {id?}` | uiOnly | окно «Сводка реализаций»: `GET /simulations`, `GET /simulations/{id}/summary` (409 `no_realizations` — до первого запуска) |
+| `simulate.post {id?, run?, prefix?, stats?, thresholds?, replace?}` | confirm | без `run` и без параметров выполнения — окно «Постобработка реализаций»; иначе `POST /simulations/{id}/post` → задание `simulate.post` (`quick`); `stats`, `thresholds` — текст через «;»; `confirm` — «Заменить поля?» при существующих полях (`replace: true` — без вопроса); 409 `field_exists {field}` |
+| `simulate.delete {id}` | confirm | `DELETE /simulations/{id}` — строка и реализации уходят, поля блочной модели остаются |
 
 Без параметров команда открывает окно; «только просмотр» — 423 у пишущих.
 
