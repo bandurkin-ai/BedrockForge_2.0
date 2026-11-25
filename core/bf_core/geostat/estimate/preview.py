@@ -16,7 +16,6 @@ import hashlib
 import json
 import math
 import threading
-from collections import OrderedDict
 from dataclasses import replace
 from typing import Any
 
@@ -27,6 +26,7 @@ from bf_core.db import dialect
 from bf_core.storage.blobs import BlobStore
 
 from . import kernel as kn
+from . import memory as mem
 from . import samples as sm
 from . import store_base as sb
 from . import store_check as sc
@@ -35,13 +35,12 @@ from .spec import EstimationSpec, parse_at, parse_estimation
 from .spec_parts import DTYPES
 
 CACHE_MAX = 3
-_cache: OrderedDict[str, tuple[kn.RowKernel, Blocks]] = OrderedDict()
-_lock = threading.Lock()
+_cache = mem.ByteLru("preview", CACHE_MAX)  # also within the budget of all the caches of the estimation (`memory`)
+_BUILD = threading.Lock()  # the builds: one at a time (a click that comes twice builds once; a hit does not wait)
 
 
 def forget() -> None:
-    with _lock:
-        _cache.clear()
+    _cache.clear()
 
 
 def _bad(param: str, message: str, hint: str) -> ApiError:
@@ -81,22 +80,21 @@ def _key(project: Any, spec: EstimationSpec, origin: np.ndarray | None, fps: lis
 def _compiled(project: Any, spec: EstimationSpec, origin: np.ndarray | None,
               fps: list[str]) -> tuple[kn.RowKernel, Blocks]:  # fmt: skip
     key = _key(project, spec, origin, fps)
-    with _lock:
-        hit = _cache.get(key)
-        if hit is not None:
-            _cache.move_to_end(key)
-            return hit
+    hit = _cache.get(key)
+    if hit is not None:
+        return hit  # type: ignore[no-any-return]
     if not spec.resolved_search:
         raise ApiError(422, "search_unresolved", "Эллипсоид поиска не определён.",
                        "Выберите модель вариограммы или задайте радиусы поиска.", {"param": "search"})  # fmt: skip
-    s = sm.load(project, spec, origin=origin)
-    with dialect.read_tx(project.engine) as conn:
-        bl = Blocks.open(conn, BlobStore(project.folder), spec)
-    rk = kn.compile_row(spec, s, rotation_deg=bl.rotation, blockcov=None)
-    with _lock:
-        _cache[key] = (rk, bl)
-        while len(_cache) > CACHE_MAX:
-            _cache.popitem(last=False)
+    with _BUILD:
+        hit = _cache.get(key)
+        if hit is not None:
+            return hit  # type: ignore[no-any-return]
+        s = sm.load(project, spec, origin=origin)
+        with dialect.read_tx(project.engine) as conn:
+            bl = Blocks.open(conn, BlobStore(project.folder), spec)
+        rk = kn.compile_row(spec, s, rotation_deg=bl.rotation, blockcov=None)
+        _cache.put(key, (rk, bl), mem.row_bytes(rk, bl))
     return rk, bl
 
 

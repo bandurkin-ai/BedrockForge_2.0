@@ -13,6 +13,7 @@ from bf_core.api.app import CoreState
 from bf_core.db import dialect, migrate
 from bf_core.paths import default_projects_dir, instance_db
 
+from .project import Project
 from .store import ProjectService
 
 _create_lock = threading.Lock()
@@ -22,9 +23,27 @@ MAINTENANCE_EVERY_S = 30 * 60  # unused files go within the hour (ТЗ 7.6); dai
 log = logging.getLogger("bf_core.projects")
 
 
+def _sweep_lineage(project: Project) -> None:
+    """A project that is opened: the rows of the graph of nodes that are gone leave it, so an id of SQLite that is used
+    again never inherits the `pin` or the inputs of the object that had it (ADR 0025). Never stops the opening."""
+    if project.read_only:
+        return
+    try:
+        from bf_core import lineage
+
+        with dialect.write_tx(project.engine) as conn:
+            lineage.sweep(conn)
+    except Exception:  # noqa: BLE001 - the graph is a convenience, a project opens without it
+        log.warning("lineage sweep failed for %s", project.uid, exc_info=True)
+
+
 class _Service(ProjectService):
     def __init__(self, root: Path, instance: sa.Engine) -> None:
         super().__init__(root, instance)
+        from bf_core.geostat.estimate import memory
+
+        self.on_open.append(_sweep_lineage)
+        memory.install(self)  # a closed project empties the caches of the estimation (they hold its samples)
         self.sweep()
         self._stop = threading.Event()
         threading.Thread(target=self._maintenance, name="project-maintenance", daemon=True).start()

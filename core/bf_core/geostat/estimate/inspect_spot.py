@@ -34,6 +34,8 @@ from bf_core.blocks.model import P as COL_P
 from bf_core.blocks.model import S as COL_S
 from bf_core.blocks.model import W as COL_W
 
+from . import memory as mem
+
 
 def _bad(param: str, message: str, hint: str = "Щёлкните блок в 3D.") -> ApiError:
     return ApiError(422, "bad_param", message, hint, {"param": param})
@@ -46,6 +48,23 @@ _COLUMNS: OrderedDict[tuple[str, str, int], np.ndarray] = OrderedDict()
 _BYTES = [0]
 _SIZES: dict[str, list[int]] = {}
 _LOCK = threading.Lock()
+
+
+def _used() -> int:
+    return _BYTES[0]
+
+
+def _evict() -> bool:
+    """The oldest decoded column goes (the budget of all the caches of the estimation, `memory`)."""
+    with _LOCK:
+        if len(_COLUMNS) <= 1:
+            return False
+        _, old = _COLUMNS.popitem(last=False)
+        _BYTES[0] -= int(old.nbytes)
+        return True
+
+
+mem.register_counted("inspect_spot.columns", _used, _evict)
 
 
 def forget() -> None:
@@ -108,6 +127,7 @@ def read_fields(model: Model, names: Sequence[str], a: int, b: int) -> dict[str,
             while _BYTES[0] > COLUMNS_BYTES and len(_COLUMNS) > len(miss):
                 _, old = _COLUMNS.popitem(last=False)
                 _BYTES[0] -= int(old.nbytes)
+        mem.enforce()  # the sum with the compiled rows stays within the budget of the caches of the estimation
     return {n: have[n][a - gs : b - gs].copy() for n in names}
 
 
