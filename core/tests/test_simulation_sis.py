@@ -481,6 +481,24 @@ def test_tick_cancels(small, threads: int) -> None:
     assert seen[-1][1] is not None and seen[-1][1].startswith("Реализации")
 
 
+def test_one_realization_is_cancelled_and_reported_inside(small, monkeypatch: pytest.MonkeyPatch) -> None:
+    par, _, s, _, grid, c = small
+    monkeypatch.setattr(sis, "STEP", 100)  # a portion of the path: the tick goes between portions
+    monkeypatch.setattr(sis, "POLL", 0.0)
+    one = dataclasses.replace(par, n_real=1)
+    seen: list[float] = []
+
+    def tick(p: float | None, label: str | None) -> None:
+        if p is not None and label and label.startswith("Реализации"):
+            seen.append(p)
+            if 0.0 < p < 1.0 and len(seen) >= 3:
+                raise Stop
+
+    with pytest.raises(Stop):
+        sis.simulate(one, s, grid, c, threads=1, tick=tick)
+    assert len(seen) >= 3 and seen == sorted(seen) and all(0.0 < p < 1.0 for p in seen)  # inside the realization
+
+
 def test_tick_reports_every_realization(small) -> None:
     par, _, s, _, grid, c = small
     labels: list[str] = []
