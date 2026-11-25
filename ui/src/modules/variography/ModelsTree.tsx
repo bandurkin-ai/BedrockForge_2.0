@@ -16,7 +16,7 @@ import type { IconName } from "../../shell/Icon";
 import { Glyph } from "../../shell/ObjectRows";
 import { TreeRow } from "../../shell/TreeRow";
 import tree from "../../shell/DataTree.module.css";
-import type { ExchangeFormat, ModelRow } from "./api";
+import { INDICATOR, isIndicator, type ExchangeFormat, type ModelRow } from "./api";
 import { exportFlow } from "./exchange";
 import { MODEL_TITLES, type ModelType } from "./model";
 import { variographyStore } from "./state";
@@ -36,11 +36,17 @@ export function rebuildReason(m: Pick<ModelRow, "stale" | "source_lost">): strin
   return null;
 }
 
+/** «нормальные оценки» / «индикатор, порог 0,5» with the brackets given; "" — no transform. */
+function transformNote(t: string, open: string, close: string): string {
+  if (t === "nscore") return `${open}нормальные оценки${close}`;
+  return isIndicator(t) ? `${open}индикатор, порог ${n(Number(t.slice(INDICATOR.length)))}${close}` : "";
+}
+
 const typeTitle = (t: string) => MODEL_TITLES[t as ModelType] ?? t;
 
 /** The tooltip of a row. */
 export function modelTitleText(m: ModelRow): string {
-  const parts = [`Модель «${m.name}»: ${typeTitle(m.type)}${m.transform === "nscore" ? " (нормальные оценки)" : ""}, ${m.field ?? "—"}`, `структур ${m.structures}, порог ${n(m.sill)}`];
+  const parts = [`Модель «${m.name}»: ${typeTitle(m.type)}${transformNote(m.transform, " (", ")")}, ${m.field ?? "—"}`, `структур ${m.structures}, порог ${n(m.sill)}`];
   const st = staleText(m);
   if (st) parts.push(st[0].toUpperCase() + st.slice(1));
   parts.push("Двойной щелчок — открыть в окне «Вариография»");
@@ -52,7 +58,7 @@ export function propertiesText(m: ModelRow): string {
   const at = (s: string | null) => (s ? new Date(s).toLocaleString("ru-RU") : "—");
   return [
     `№${m.id} «${m.name}»`,
-    `Тип: ${typeTitle(m.type)}${m.transform === "nscore" ? ", нормальные оценки" : ""}`,
+    `Тип: ${typeTitle(m.type)}${transformNote(m.transform, ", ", "")}`,
     `Данные: набор №${m.set_id ?? "—"}, таблица ${m.table ?? "—"}, поле ${m.field ?? "—"}`,
     `Структур: ${m.structures}; порог C0 + Σc = ${n(m.sill)}`,
     `Состояние: ${staleText(m) ?? "актуальна"}`,

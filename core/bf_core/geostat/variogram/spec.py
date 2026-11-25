@@ -36,6 +36,7 @@ PAIRS_MAX = 2_000_000_000  # checks of pairs above which the points are sampled 
 SEED = 12345
 DECL_W = "DECL_W"
 TRANSFORMS = ("none", "nscore")
+INDICATOR = "indicator"  # `indicator:<t>` — the indicator of the threshold t (ТЗ 8.8.1; ADR 0024 № 85)
 WHAT = ("fan", "map")
 MODEL_TYPES = ("semivariogram", "correlogram", "pairwise", "nscore")
 STRUCTURE_TYPES = ("spherical", "exponential", "gaussian")
@@ -205,7 +206,12 @@ class Data:
     unit: str | None
     domain: DomainSel | None
     weights: str | None  # stored name of the weight field; None — no weights
-    transform: str  # none | nscore
+    transform: str  # none | nscore | indicator:<t> (t — `format(t, ".15g")`, see `parse_transform`)
+
+    @property
+    def threshold(self) -> float | None:
+        """The threshold t of the indicator transform; None — another transform."""
+        return indicator_threshold(self.transform)
 
     def tables(self) -> list[tuple[int, list[str]]]:
         """(table id, fields read): the samples first, then the table of the domain."""
@@ -297,6 +303,42 @@ def _weights(conn: sa.Connection, table_id: int, raw: Any) -> str | None:
     return str(_field(conn, table_id, raw, "Веса", "weights", number=True).name)
 
 
+def indicator_threshold(transform: str) -> float | None:
+    """t of `indicator:<t>` (a canonical string of `parse_transform`); None — another transform."""
+    return float(transform[len(INDICATOR) + 1 :]) if transform.startswith(INDICATOR + ":") else None
+
+
+def _threshold(raw: Any) -> float:
+    """A finite number — a JSON number or a text (a decimal comma too); bool, NaN, ±∞ are not."""
+    t = float("nan")
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        t = float(raw)
+    elif isinstance(raw, str) and raw.strip():
+        try:
+            t = float(raw.strip().replace(",", "."))
+        except ValueError:
+            pass
+    if not math.isfinite(t):
+        raise bad("bad_param", f"Порог индикатора: «{str(raw)[:40]}» — не число.",
+                  "Укажите конечное число в единицах поля, например 0,5.", "transform")  # fmt: skip
+    return t + 0.0  # −0 → 0
+
+
+def parse_transform(raw: Any, threshold: Any = None) -> str:
+    """`transform` of a request as the canonical string: `none`, `nscore`, `indicator:<t>`. The threshold is in
+    the string (`indicator:0.5`: so the query of `GET /defaults` has it too) or in `threshold` beside `indicator`;
+    the indicator is i = 1 for z ≤ t, else 0 (`points.indicators`). 422 `bad_param {param: "transform"}`."""
+    if isinstance(raw, str) and raw.startswith(INDICATOR):
+        rest = raw[len(INDICATOR) :]
+        if rest == "" and threshold is not None:
+            return f"{INDICATOR}:{format(_threshold(threshold), '.15g')}"
+        if rest.startswith(":"):
+            return f"{INDICATOR}:{format(_threshold(rest[1:]), '.15g')}"
+        if rest == "":
+            raise bad("bad_param", "Индикатор: не задан порог.", "Укажите порог: indicator:<число>.", "transform")
+    return choice(raw, TRANSFORMS, "none", "Преобразование", "transform")
+
+
 def parse_data(conn: sa.Connection, body: dict[str, Any]) -> Data:
     """set_id, table, field, domain, weights, transform — common to every calculation."""
     from bf_core.composites import jobs as cj
@@ -307,7 +349,7 @@ def parse_data(conn: sa.Connection, body: dict[str, Any]) -> Data:
     return Data(set_id=set_id, table_id=int(t.id), table_name=str(t.name), field=f.name, unit=f.unit,
                 domain=_domain(conn, set_id, t, body.get("domain")),
                 weights=_weights(conn, int(t.id), body.get("weights")),
-                transform=choice(body.get("transform"), TRANSFORMS, "none", "Преобразование", "transform"))  # fmt: skip
+                transform=parse_transform(body.get("transform"), body.get("threshold")))  # fmt: skip
 
 
 # --- defaults --------------------------------------------------------------------------------------------

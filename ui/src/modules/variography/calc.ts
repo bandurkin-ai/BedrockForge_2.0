@@ -12,7 +12,7 @@ import { errorText } from "../../shell/props";
 import type { VariogramSeries } from "../../charts/variogram/VariogramChart";
 import { curveDirection } from "../../charts/variogram/scale";
 import type { Started } from "../composites/api";
-import { readCalc, readCounts, sampledText, type CalcResult, type Counts, type DirectionCurve } from "./api";
+import { readCalc, readCounts, sampledText, type CalcResult, type Counts, type DirectionCurve, type Transform } from "./api";
 import type { ModelType, VModel } from "./model";
 import type { AxesAngles } from "./state";
 
@@ -119,7 +119,7 @@ export function axesOf(m: Pick<VModel, "structures">): AxesAngles {
 }
 
 /** The type the charts plot: the model's, normal scores with that transform. */
-export const chartType = (m: Pick<VModel, "type">, transform: "none" | "nscore"): ModelType => (transform === "nscore" ? "nscore" : m.type === "nscore" ? "semivariogram" : m.type);
+export const chartType = (m: Pick<VModel, "type">, transform: Transform): ModelType => (transform === "nscore" ? "nscore" : m.type === "nscore" ? "semivariogram" : m.type);
 
 const deg = (x: number) => `${x.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}°`;
 

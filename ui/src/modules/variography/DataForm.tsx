@@ -1,7 +1,7 @@
 /**
  * The data of a calculation of the window «Вариография» (ТЗ 8.6.4; ADR 0022 §15, left panel): the set, the interval
  * table (samples, composites), the numeric field, the domain (a field of the same or another interval table and its
- * values), the weights (DECL_W when the table has it, none, or a field), the transform (none / normal scores). Once
+ * values), the weights (DECL_W when the table has it, none, or a field), the transform (none / normal scores / the indicator of a threshold t). Once
  * the data is complete, `GET /variography/defaults` is read (the newest read only) and given to `onDefaults`: the
  * counts of points, σ², the median length and the defaults of the form. Tables named by the assistant become keys
  * once the list is read.
@@ -12,7 +12,7 @@ import css from "../../shell/PropsParts.module.css";
 import own from "../composites/Composites.module.css";
 import { loadFields, loadSets, loadTables, resolveTable, type FieldRow, type SetRow, type TableRow } from "../composites/api";
 import { loadCodes, type CodeList } from "../intercepts/api";
-import { loadDefaults, type DefaultsAnswer } from "./api";
+import { INDICATOR, isIndicator, loadDefaults, type DefaultsAnswer } from "./api";
 import { dataBody, type DataState, type WeightsChoice } from "./state";
 
 /** The pause before `/defaults` after a change (the field list is typed through quickly). */
@@ -51,12 +51,19 @@ export function countsText(d: DefaultsAnswer): string {
   return `Точек: ${f(c.used)} из ${f(c.rows)}${parts.length ? ` (${parts.join(", ")})` : ""}`;
 }
 
+const unitOf = (d: DefaultsAnswer | null) => d?.unit ?? "";
+
+/** «Индикатор: порог 0,5, доля z ≤ t — 0,42»; "" — not an indicator. */
+export function indicatorText(d: DefaultsAnswer): string {
+  return d.indicator ? `индикатор: порог ${g(d.indicator.threshold)}, доля точек z ≤ t — ${g(d.indicator.p)}` : "";
+}
+
 /** σ², the median length, the weights — one line under the form. */
 export function summaryText(d: DefaultsAnswer): string {
   const unit = d.unit ? ` (${d.unit})²` : "";
   const s2 = d.sigma2_z !== null && d.sigma2 !== d.sigma2_z ? `σ² = ${g(d.sigma2)}, σ²(Z) = ${g(d.sigma2_z)}${unit}` : `σ² = ${g(d.sigma2)}${unit}`;
   const med = d.median_length === null ? "медиана длин не определена" : `медиана длин ${g(d.median_length)} м`;
-  return `${s2}; ${med}; веса: ${d.weights ?? "нет"}`;
+  return `${[s2, indicatorText(d), med].filter(Boolean).join("; ")}; веса: ${d.weights ?? "нет"}`;
 }
 
 export function DataForm({ value, onChange, onDefaults, activeSet }: { value: DataState; onChange: (d: DataState) => void; onDefaults?: (d: DefaultsAnswer | null) => void; activeSet?: number | null }) {
@@ -225,11 +232,18 @@ export function DataForm({ value, onChange, onDefaults, activeSet }: { value: Da
       </label>
       <label className={css.formRow}>
         <span>Преобразование</span>
-        <select className={css.input} aria-label="Преобразование" value={value.transform} onChange={(e) => set({ transform: e.target.value === "nscore" ? "nscore" : "none" })}>
+        <select className={css.input} aria-label="Преобразование" value={isIndicator(value.transform) ? "indicator" : value.transform} onChange={(e) => set({ transform: e.target.value === "nscore" ? "nscore" : e.target.value === "indicator" ? `${INDICATOR}${isIndicator(value.transform) ? value.transform.slice(INDICATOR.length) : ""}` : "none" })}>
           <option value="none">без преобразования</option>
           <option value="nscore">нормальные оценки</option>
+          <option value="indicator">Индикатор (порог t)</option>
         </select>
       </label>
+      {isIndicator(value.transform) && (
+        <label className={css.formRow}>
+          <span>Порог t{unitOf(defaults) ? `, ${unitOf(defaults)}` : ""}</span>
+          <input className={css.input} aria-label="Порог индикатора" inputMode="decimal" placeholder="i = 1, если z ≤ t" value={value.transform.slice(INDICATOR.length)} onChange={(e) => set({ transform: `${INDICATOR}${e.target.value}` })} />
+        </label>
+      )}
       {defaults && (
         <p className={css.note} data-testid="variography-counts">
           {countsText(defaults)}. {summaryText(defaults)}

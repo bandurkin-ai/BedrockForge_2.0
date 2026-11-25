@@ -8,6 +8,7 @@
  */
 import { useEffect, useState } from "react";
 import css from "../../shell/PropsParts.module.css";
+import type { Transform } from "./api";
 import { parseNumber } from "../composites/params";
 import { MAX_STRUCTURES, MODEL_TITLES, newStructure, sill, sillWarning, STRUCTURE_TITLES, STRUCTURE_TYPES, type ModelType, type Structure, type StructureType, type VModel } from "./model";
 import { checkValue, markEdit } from "./state";
@@ -74,7 +75,7 @@ export interface ModelTableProps {
   sigma2: number | null;
   /** σ² of Z for normal scores */
   sigma2Z?: number | null;
-  transform: "none" | "nscore";
+  transform: Transform;
   fix: readonly string[];
   onChange: (m: VModel) => void;
   onFix: (fix: string[]) => void;
