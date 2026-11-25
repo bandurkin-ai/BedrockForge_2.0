@@ -176,10 +176,13 @@ def _main(conn: Connection, queue_name: str) -> None:
             ctx.tick(0.0)
             result = spec.run(ctx) or {}
             send(("done", job["id"], result))
-        except JobCancelled:
-            send(("cancelled", job["id"]))
+        except JobCancelled as exc:
+            send(("cancelled", job["id"], exc.events))
         except JobError as exc:
-            send(("error", job["id"], {"code": exc.code, "message": exc.message, "hint": exc.hint}, exc.retry))
+            err: dict[str, Any] = {"code": exc.code, "message": exc.message, "hint": exc.hint}
+            if exc.events:
+                err["events"] = exc.events  # the scheduler takes them out before it stores the error
+            send(("error", job["id"], err, exc.retry))
         except MemoryError:
             send(("error", job["id"], _memory_error(job), False))
             break  # a worker after MemoryError is restarted (ADR 0002 §4)

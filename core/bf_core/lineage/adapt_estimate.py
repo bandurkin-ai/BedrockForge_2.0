@@ -20,7 +20,7 @@ from .providers import Ctx, Direct, Info, Key, Provider, register
 
 
 def fingerprint(meta: Mapping[str, Any], version: int) -> str:
-    """`p:` + the hash of the parameters and of the fingerprints of the inputs; a row that does not parse — its version."""
+    """`p:` + the hash of the parameters and of the inputs' fingerprints; a row that does not parse: its version."""
     from bf_core.geostat.estimate import store_base as sb
 
     try:
