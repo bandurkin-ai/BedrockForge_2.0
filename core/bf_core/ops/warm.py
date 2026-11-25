@@ -68,14 +68,14 @@ OPS = tuple(STEPS)
 #: the checks), the section and the click of the view (`view`)
 OTHER = (
     "checks", "check", "levels", "preview", "view", "composites", "intercepts", "stats", "geostat", "blocks",
-    "estimate",
+    "estimate", "simulate",
 )  # fmt: skip
 #: The quick worker: the checks of a body, then the operations — the stitch first; the heavy one meanwhile the strips
 #: of a stitch (`preview`), so that on a cold cache the first stitch has its two halves compiled at once (~5 s, not
 #: ~8 s), then what follows an operation and what the process of the API needs, then the operations backwards.
 QUICK = (
     "checks", *OPS, "levels", "preview", "view", "check", "composites", "intercepts", "stats", "geostat", "blocks",
-    "estimate",
+    "estimate", "simulate",
 )  # fmt: skip
 HEAVY = (
     "preview",
@@ -83,6 +83,7 @@ HEAVY = (
     "levels",
     "view",
     "estimate",  # the kernels of estimation compile ~20 s: the heavy worker takes them early (ADR 0024)
+    "simulate",  # SGS, SIS, co-SGS (~15 s each cold; Э18б)
     *reversed(OPS),
     "checks",
     "composites",
@@ -342,6 +343,14 @@ def warm(order: Iterable[str] = QUICK, *, busy: Callable[[], bool] | None = None
                     from bf_core.blocks.warm import warm as warm_blocks
 
                     warm_blocks()
+                elif name == "simulate":
+                    from bf_core.geostat.simulation.cosgs import warm_cosgs
+                    from bf_core.geostat.simulation.sgs import warm_sgs
+                    from bf_core.geostat.simulation.sis import warm_sis
+
+                    warm_sgs()
+                    warm_sis()
+                    warm_cosgs()
                 elif name == "estimate":
                     from bf_core.geostat.estimate.warm import warm as warm_estimate
 

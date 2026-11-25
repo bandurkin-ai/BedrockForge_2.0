@@ -66,6 +66,7 @@ import { renderFieldsWindow } from "../modules/blocks/fields/bind";
 import { renderVariographyWindow } from "../modules/variography/VariographyWindow";
 import { renderEstimationWindow } from "../modules/estimation/bind";
 import { renderLineageWindow } from "../modules/lineage/bind";
+import { renderSimulationWindow } from "../modules/simulation/bind";
 
 const renderWindow: WindowRenderer = (w) => {
   switch (w.kind) {
@@ -114,7 +115,7 @@ const renderWindow: WindowRenderer = (w) => {
     case "model-report":
       return <ReportWindow winId={w.id} {...(w.props as unknown as ReportProps)} />;
     default:
-      return renderSeriesWindow(w) ?? renderLinesWindow(w) ?? renderDataManagerWindow(w) ?? renderCompositesWindow(w) ?? renderChartsWindow(w) ?? renderSwathWindow(w) ?? renderQaqcSetupWindow(w) ?? renderInterceptsWindow(w) ?? renderVariographyWindow(w) ?? renderEstimationWindow(w) ?? renderLineageWindow(w) ?? renderTrendWindow(w) ?? renderFiltersWindow(w) ?? renderReportWindow(w) ?? renderBuildWindow(w) ?? renderExportWindow(w) ?? renderModelWindow(w) ?? renderFieldsWindow(w);
+      return renderSeriesWindow(w) ?? renderLinesWindow(w) ?? renderDataManagerWindow(w) ?? renderCompositesWindow(w) ?? renderChartsWindow(w) ?? renderSwathWindow(w) ?? renderQaqcSetupWindow(w) ?? renderInterceptsWindow(w) ?? renderVariographyWindow(w) ?? renderEstimationWindow(w) ?? renderSimulationWindow(w) ?? renderLineageWindow(w) ?? renderTrendWindow(w) ?? renderFiltersWindow(w) ?? renderReportWindow(w) ?? renderBuildWindow(w) ?? renderExportWindow(w) ?? renderModelWindow(w) ?? renderFieldsWindow(w);
   }
 };
 
