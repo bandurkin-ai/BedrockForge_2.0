@@ -83,6 +83,32 @@ BF_REGEN_SIMULATE=1  uv run pytest -q tests/test_simulation_api.py
 
 Без флага тест сравнивает ответы ядра с файлом: расхождение значения, формы или набора ключей — отказ. Порядок: ядро → перегенерация → vitest (`simulation/*`); если форма ответа изменилась, правят и клиент (`ui/src/modules/simulation/api.ts`), и `docs/progress/e18-api.md` §9. Реализации хранятся в файле Parquet, в `answers.json` их нет: только сводки и итоги заданий.
 
+## Неявное моделирование (`tests/fixtures/implicit/`, `core/tests/data/implicit/`)
+
+Фикстуры Э19 (ADR 0026, `docs/progress/e19-api.md` §13). Исходные данные — синтетика, не реальные файлы: `tests/fixtures/implicit/` лежит в `tests/fixtures/` (не в `tests/data/`, где только реальные и эталонные данные); ответы ядра для интерфейса — рядом с тестами ядра, как у Э17–Э18б.
+
+| Файл | Что | Откуда | Читает |
+|---|---|---|---|
+| `tests/fixtures/implicit/collars.csv` | `HOLE,X,Y,Z,TD,AZIMUTH,DIP`: 100 прямых скважин на сетке 10 × 10 с шагом 40 м (устья около 300 м, длина ≈ 120–135 м) | `tools/gen/implicit.py`, зерно 12345 | `core/tests/modapi_world.py` (маршруты, задания, Д-32…Д-34), `test_model_{data,bodies,veins,job}.py`, `app/e2e/implicitWorld.ts`, `bench/scenarios/implicit_compile.py` |
+| `tests/fixtures/implicit/lithology.csv` | `HOLE,FROM,TO,CODE`: порода каждого интервала; границы — точные контакты (поиск делением пополам по аналитической геологии), две цифры после запятой. Коды ALV (над волнистой поверхностью), SS, SH, GR (снизу), INT (сфера-интрузия R = 55 м в (200, 200, 200)), VN (плита-жила 3 м, нормаль (0,8; 0; 0,6)) | то же | то же |
+| `tests/fixtures/implicit/assays.csv` | `HOLE,FROM,TO,AU`: пробы по 5 м; AU по породе (INT и VN богатые), часть значений пропущена (не 0) | то же | оболочки содержаний, E2E |
+| `tests/fixtures/implicit/strings.csv` | `LAYER,LINE,CLOSED,X,Y,Z`: ручные данные — контакт SS/SH в трёх сечениях, замкнутое кольцо в интрузии, точки вне интрузии | то же | `data_manual`, E2E |
+| `core/tests/data/implicit/params.json` | Модели `domains`, `shells_auto`, `vein_expand`, `stack_b` (Э19б): `body` → каноническая форма (`spec.parse_model(body).canonical()`) | `test_implicit_spec.py` · `BF_REGEN_IMPLICIT` (переписывает `canonical`) | vitest `implicit/props`, `implicit/harness` (`real.ts`) |
+| `core/tests/data/implicit/contract_answers.json` | Ответы маршрутов Э19 в форме `{status, body}`: `defaults`, `bad_param`, `refusals` (пишет `test_implicit_spec.py`), модели, группы, предпросмотр точек, `build_*`, `update_*`, `to_wireframe`, `check`, `check_csv`, `support*`, `compare_holes`, `from_model_*`, отказы и 409 (пишет `test_implicit_contract.py`); образцы форм (Э19б, структурный тренд): `trend_*`, `build_iso_error`, `*_b` | `test_implicit_contract.py` · `BF_REGEN_IMPLICIT` (сцена `core/tests/modapi_world.py`: 100 скважин, домены INT и SS; времена, отпечатки, версии библиотек и невязки из сравнения исключены, числа — до 1e−7) | vitest `implicit/*` (`harness.ts`, `checkHarness.ts`, `groupsHarness.ts`) |
+
+Данные для замеров (50 тыс. скважин, 6 кодов) строит `tools/gen/implicit.holes_arrays(holes, seed)` без файлов; сценарии `bench/scenarios/implicit_*.py` — `implicit_common.py`.
+
+Воссоздать CSV (после изменения генератора; тесты Э19 сравнивают числа с файлами, перегенерация меняет их — затем `BF_REGEN_IMPLICIT=1`):
+
+```bash
+python tools/gen/implicit.py --out tests/fixtures/implicit
+cd core
+BF_REGEN_IMPLICIT=1 uv run pytest -q tests/test_implicit_spec.py
+BF_REGEN_IMPLICIT=1 uv run pytest -q tests/test_implicit_contract.py
+```
+
+Без флага те же тесты сравнивают сохранённые файлы с ответами ядра и падают при расхождении. Порядок: генератор → ядро → перегенерация → vitest (`npm test -- implicit`); если форма ответа изменилась, правят и клиент (`ui/src/modules/implicit/api.ts`), и `docs/progress/e19-api.md`. Ключ `defaults` и `bad_param` пишет `test_implicit_spec.py`, остальное — `test_implicit_contract.py` (его ключи заменяют образцы, чужие ключи файла остаются).
+
 ## Эталоны вариографии (`core/tests/data/variography/`)
 
 Эталоны Э16 лежат рядом с тестами ядра и общие для ядра и интерфейса (ADR 0022; интерфейс сверяет формы с настоящими ответами ядра).
