@@ -55,6 +55,17 @@ def test_the_estimation_and_the_graph_are_limited_too(pclient) -> None:  # type:
         assert r.status_code == 422 and r.json()["code"] == "bad_request", (url, r.status_code)
 
 
+def test_the_simulation_is_limited_too(pclient) -> None:  # type: ignore[no-untyped-def]
+    pad = b'{"pad": "' + b"x" * bl.BODY_LIMIT + b'"}'
+    deep = b'{"pad": ' + b"[" * 5000 + b"]" * 5000 + b"}"
+    for url in (f"{API}/geostat/simulations", f"{API}/geostat/simulate/run", f"{API}/geostat/simulate/post",
+                f"{API}/geostat/simulations/1/post"):
+        r = post(pclient, url, pad)
+        assert r.status_code == 413 and r.json()["code"] == "request_too_large", (url, r.status_code)
+        r = post(pclient, url, deep)
+        assert r.status_code == 422 and r.json()["code"] == "bad_request", (url, r.status_code)
+
+
 def test_deep_nesting_is_422_not_500(demo) -> None:  # type: ignore[no-untyped-def]
     c, set_id = demo
     for depth in (65, 5000, 100_000):
