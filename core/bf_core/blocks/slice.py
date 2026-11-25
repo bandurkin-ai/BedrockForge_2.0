@@ -536,8 +536,12 @@ def warm() -> None:
     p = np.zeros(1, dtype=np.uint64)
     s, w = np.zeros((1, 3), dtype=np.uint8), np.full((1, 3), 2, dtype=np.uint8)
     ok = np.ones(1, dtype=np.bool_)
+    # the columns of the cache of a model are read-only: numba compiles a kernel anew for a read-only array (17.39b)
+    num, cat = np.zeros(1), np.zeros(1, dtype=np.int32)
+    for a in (s, w, num, cat):
+        a.setflags(write=False)
     for normal in ((0.0, 0.0, 1.0), (1.0, 2.0, 3.0)):
         pl = plane_of(grid, (0.5, 0.5, 0.5), normal)
-        for values, kind in ((np.zeros(1), NUMBER), (np.zeros(1, dtype=np.int32), CATEGORY), (None, None)):
+        for values, kind in ((num, NUMBER), (cat, CATEGORY), (None, None)):
             slice_rows(grid, pl, p, s, w, ok, values, kind)
         section_polygons(grid, pl, p, s, w, ok)

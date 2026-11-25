@@ -43,16 +43,20 @@ def _data() -> dict[str, Any]:
     w = np.full((n, 3), 2, np.uint8)
     s[1], w[1] = (1, 0, 1), (1, 2, 1)  # a row of sub-blocks: the rows of a parent go by (sz, sy, sx)
     s[2], w[2] = (0, 0, 0), (1, 2, 2)
-    return {"grid": grid, "p": p, "s": s, "w": w, "ok": np.ones(n, dtype=np.bool_), "klass": klass,
-            "values": np.linspace(0.0, 1.0, n)}  # fmt: skip
+    s_rw, w_rw = s.copy(), w.copy()
+    s.setflags(write=False)  # the columns of the cache of a model are read-only: numba compiles a kernel anew for
+    w.setflags(write=False)  # a read-only array (the first display of a model took 1 s for it, 17.39b)
+    return {"s_rw": s_rw, "w_rw": w_rw, "grid": grid, "p": p, "s": s, "w": w, "ok": np.ones(n, dtype=np.bool_),
+            "klass": klass, "values": np.linspace(0.0, 1.0, n)}  # fmt: skip
 
 
 def _shell(d: dict[str, Any]) -> None:
     from . import shell
 
     g, p, s, w, ok, k = d["grid"], d["p"], d["s"], d["w"], d["ok"], d["klass"]
-    shell.exposed(g, p, s, w, ok, k, shell=True, threads=2)
+    shell.exposed(g, p, s, w, ok, k, shell=True, threads=2)  # read-only s, w: what the display passes
     shell.exposed(g, p, s, w, ok, None, shell=False)
+    shell.exposed(g, p, d["s_rw"], d["w_rw"], ok, k, shell=True)  # writable ones (`faces_of_block`, the tests)
     shell.exposed(g, p, None, None, ok, k, shell=True)  # whole parents
     shell.exposed(g, p[::-1].copy(), None, None, ok, None, shell=True)  # unsorted input: the order is restored
     shell.count_faces(shell.face_mask(g, p, s, w, ok, shell=True))

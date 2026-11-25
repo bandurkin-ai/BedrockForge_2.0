@@ -238,15 +238,21 @@ def warm() -> dict[str, float]:
             store = BlobStore(Path(d))
             grid = bs.GridV2.of({"corner": [0.0, 0.0, 0.0], "counts": [2, 2, 2], "size": [1.0, 1.0, 1.0]})
             fields: list[dict[str, Any]] = [{"name": "A", "dtype": "f8", "role": "grade"},
+                                            {"name": "D", "dtype": "f8", "role": "density"},
                                             {"name": "C", "dtype": "cat", "labels": ["a", "b"]}]  # fmt: skip
             with bm.CellsWriterV2(store, grid, fields) as w:
-                w.write(np.arange(8, dtype=np.uint64), {"A": np.linspace(0.5, 4.0, 8),
+                w.write(np.arange(8, dtype=np.uint64), {"A": np.linspace(0.5, 4.0, 8), "D": np.full(8, 2.7),
                                                         "C": (np.arange(8) % 2).astype(np.int32)})  # fmt: skip
                 staged = w.finish()
             with dialect.write_tx(engine) as conn:
                 mid = bm.commit_block_model(conn, store, staged, name="warm")
             staged.discard()
             run_regularize(engine, d, {"model_id": mid, "size": [2.0, 2.0, 2.0]}, threads=1)
+            # a density field and the categories, no FRAC: the arguments of the kernels differ in being read-only
+            # (the columns of the file) — a specialization of its own (17.39b)
+            run_regularize(engine, d, {"model_id": mid, "size": [2.0, 2.0, 2.0], "density": "D",
+                                       "grades": [{"field": "A", "weight": "tonnes"}], "categories": ["C"]},
+                           threads=1)  # fmt: skip
         finally:
             engine.dispose()
     return {"regularize": time.perf_counter() - t0}

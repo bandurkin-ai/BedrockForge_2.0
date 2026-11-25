@@ -213,7 +213,9 @@ def portions(model: Any, names: Sequence[str], size: int = PORTION) -> Iterator[
 
 def warm() -> None:
     """The kernels of the block models compiled or loaded from NUMBA_CACHE_DIR (`load` of a scenario, not timed):
-    the step `blocks` of the warm-up of the workers."""
+    the whole step `blocks` of the warm-up of the workers (`bf_core.blocks.warm.warm`, what `ops/warm.py` runs), not
+    a part of it: a kernel the product does not warm is compiled inside the timed run, and the bench shows it
+    (17.39b). `blocks_compile` measures the cold start itself."""
     from bf_core.blocks.warm import warm as warm_blocks
 
     warm_blocks()

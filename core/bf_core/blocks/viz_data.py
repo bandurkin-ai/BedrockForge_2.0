@@ -421,6 +421,8 @@ def warm() -> None:
                       "rotation": 0.0, "order": "F"})  # fmt: skip
     p = np.arange(8, dtype=np.uint64)
     s, w = np.zeros((8, 3), dtype=np.uint8), np.full((8, 3), 2, dtype=np.uint8)
+    s.setflags(write=False)  # the columns of the cache of a model are read-only: another specialization of the kernels
+    w.setflags(write=False)
     ok = np.ones(8, dtype=np.bool_)
     k = scale_class(np.arange(8.0), 0.0, 8.0)
     for shell in (True, False):
