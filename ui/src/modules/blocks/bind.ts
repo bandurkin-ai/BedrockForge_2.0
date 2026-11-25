@@ -8,6 +8,7 @@
 import type { App } from "../../shell/app";
 import { onCoreEvent, onJobFinished } from "../jobs/state";
 import { projectStore } from "../projects/state";
+import { bindCheck } from "./check";
 import { bindShow } from "./showCommands";
 import { bindSlice } from "./sliceCommands";
 import { blockById, blocksStore, clearBlocks, isBlocksEvent, loadBlocks } from "./state";
@@ -22,6 +23,7 @@ export function bindBlocks(app: App): void {
   unbind.push(
     bindShow(app), // the display in 3D: `blocks.show`, `.filter`, `.quick`, `.style`, `.pick` and the layers of the scene
     bindSlice(app), // the slice by a plane, «Срез на разрезе»: `blocks.slice` and its layer
+    bindCheck(app), // «Перепроверить»: `blocks.check` (the job of the core, the checks of «Свойства»)
     projectStore.subscribe(() => {
       const cur = projectStore.get().current?.uid ?? null;
       if (cur === uid) return;

@@ -1,13 +1,14 @@
 /**
  * The tab «Свойства» of the window «Блочная модель · …» (ТЗ 7.31, 8.7.6; ADR 0023 §2, §5): the grid (cells, step, corner,
  * extent), the turn about +Z, the sub-blocks (the division of a parent, the levels), the rows and the parents, the fields
- * with their roles and statistics (a missing value is «—», never 0), the findings of the checks of the import, a model that
+ * with their roles and statistics (a missing value is «—», never 0), the findings of the checks of the import with «Перепроверить» (`blocks.check`), a model that
  * is out of date, the source, what the import did not carry over, the block of the last click («Выбранный блок») and the
  * way to the window «Свойства полей» (`blocks.field.props`, when the command exists). Read from `GET /blocks/{id}`.
  */
 import { useApp } from "../../../shell/AppContext";
 import { Facts } from "../../../shell/PropsParts";
 import css from "../../../shell/PropsParts.module.css";
+import { CheckControl } from "../checkButton";
 import { pickedFacts } from "../display";
 import { fieldRow, sourceFacts } from "../props";
 import mod from "./Window.module.css";
@@ -107,6 +108,7 @@ export function PropsPanel({ id }: { id: number }) {
 
       <fieldset className={css.group} data-testid="props-checks">
         <legend>Проверки</legend>
+        <CheckControl id={id} />
         {!checks && <p className={css.note}>Проверки ещё не выполнялись.</p>}
         {checks?.clean && <p className={css.note}>Замечаний нет: повторов, перекрытий, пустых и постоянных полей не найдено.</p>}
         {checks && !checks.clean && (
