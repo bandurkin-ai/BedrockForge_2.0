@@ -1,0 +1,45 @@
+/* The windows of the building of a block model (ТЗ 8.7.3, 8.7.5; ADR 0023 §6, §9): the form on the left, the run and the result on the right; the theme tokens of the brand (docs/brand, ADR 0006). */
+.window { display: flex; flex-direction: column; height: 100%; min-height: 0; font-size: 13px; }
+.layout { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 10px; flex: 1; min-height: 0; padding: 8px 12px; overflow: hidden; }
+.form, .result { display: flex; flex-direction: column; gap: 8px; min-height: 0; min-width: 0; overflow: auto; }
+.form fieldset { margin: 0; }
+.row3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.row3 label { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.row3 label > span { color: var(--text-dim); }
+.radios { display: flex; flex-direction: column; gap: 4px; }
+.radios label { display: flex; align-items: center; gap: 6px; }
+.list { display: flex; flex-direction: column; gap: 1px; max-height: 150px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); padding: 2px 4px; }
+.list label { display: flex; align-items: center; gap: 6px; padding: 1px 0; min-width: 0; }
+.list label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.unit { color: var(--text-faint); }
+.wires { display: flex; flex-direction: column; gap: 4px; }
+.wire { display: grid; grid-template-columns: minmax(0, 1fr) 84px 52px auto; gap: 4px; align-items: center; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); }
+.wire[aria-invalid="true"] { border-color: var(--danger); }
+.wire > p { grid-column: 1 / -1; margin: 0; }
+.objects { max-height: 170px; }
+.wire .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wire .open { color: var(--danger); }
+.tools { display: flex; gap: 2px; }
+.tools button { border: 1px solid var(--border); background: transparent; color: var(--text-dim); border-radius: var(--radius); cursor: pointer; padding: 0 5px; font: inherit; }
+.tools button:disabled { opacity: 0.4; cursor: default; }
+.footer { display: flex; gap: 8px; align-items: center; flex: none; padding: 8px 12px 10px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.grow { flex: 1; min-width: 0; }
+.progress { width: 100%; max-width: 360px; height: 6px; background: var(--bg-hover); border-radius: 3px; overflow: hidden; }
+.progress > div { height: 100%; background: var(--accent); }
+.stages { margin: 4px 0; padding-left: 18px; color: var(--text-faint); }
+.stages li[aria-current="step"] { color: var(--text); font-weight: 600; }
+.stages li[data-done="true"] { color: var(--text-dim); }
+.head { margin: 0; font-family: var(--font-brand); font-weight: 600; }
+.empty { color: var(--text-faint); margin: 24px 8px; text-align: center; }
+.facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 12px; margin: 0; font-variant-numeric: tabular-nums; }
+.facts dt { color: var(--text-dim); }
+.facts dd { margin: 0; text-align: right; }
+.over { color: var(--danger); font-weight: 600; }
+.table { border-collapse: collapse; font-variant-numeric: tabular-nums; min-width: 100%; }
+.table th { background: var(--bg-hover); color: var(--text-dim); font-family: var(--font-brand); font-weight: 600; padding: 2px 8px; border-bottom: 1px solid var(--border-strong); white-space: nowrap; text-align: right; }
+.table td { padding: 2px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; text-align: right; }
+.table th.left, .table td.left { text-align: left; }
+.table tr.differs td { color: var(--danger); }
+.tableWrap { overflow: auto; max-height: 300px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); }
+.warn { margin: 0; padding-left: 18px; color: var(--warning, var(--text-dim)); }
+.reread { margin-left: 8px; }
