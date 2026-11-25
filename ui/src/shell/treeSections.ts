@@ -16,6 +16,7 @@ const ACTIONS: Partial<Record<TreeSection, SectionAction[]>> = {
   variograms: [{ label: "Новое окно «Вариография»", command: "variography.open" }],
   estimation: [{ label: "Новая оценка (мастер)…", command: "estimate.open" }, { label: "План оценки…", command: "estimate.plan" }],
   simulation: [{ label: "SGS…", command: "simulate.sgs" }, { label: "SIS…", command: "simulate.sis" }, { label: "Ко-SGS…", command: "simulate.cosgs" }, { label: "Сводка реализаций…", command: "simulate.summary" }],
+  implicit: [{ label: "Новая модель…", command: "implicit.new" }, { label: "Домены литологии…", command: "implicit.domains" }],
   views: [{ label: "Сохранить текущий вид", command: "views.save" }],
   series: [{ label: "Новая серия…", command: "series.new" }, { label: "Менеджер серий…", command: "series.manager" }],
   holes: [
@@ -56,6 +57,7 @@ const PLUS: Partial<Record<TreeSection, SectionPlus>> = {
   variograms: { command: "variography.open", title: "Новое окно «Вариография»" },
   estimation: { command: "estimate.open", title: "Новая оценка (мастер)" },
   simulation: { command: "simulate.open", title: "Новое моделирование (мастер)" },
+  implicit: { command: "implicit.new", title: "Новая неявная модель (мастер)" },
   views: { command: "views.save", title: "Сохранить текущий вид" },
   series: { command: "series.new", title: "Новая серия разрезов" },
   holes: { title: "Новый набор, импорт скважин, импорт канав" },
