@@ -32,6 +32,7 @@ so every kernel has one compiled signature (lesson 17.39б); `warm_search()` com
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -205,6 +206,17 @@ class Searcher:
                     for p in self.passes]  # fmt: skip
         self._ip = [np.array([_hy_mode(p.hy), p.n_max, p.n_hole, p.n_oct, p.n_min, p.k_oct, p.n_holes_min],
                              dtype=np.int64) for p in self.passes]  # fmt: skip
+
+    def with_passes(self, passes: Sequence[Pass]) -> Searcher:
+        """The same tree (the costly part of a `Searcher`) with other passes: what `__init__` derives from the passes is
+        rebuilt. Bit for bit what a new `Searcher` of these passes gives (the test compares them)."""
+        new = copy.copy(self)
+        new.passes = tuple(passes)
+        new._fp = [np.array([self.ell.radii[0] * p.factor, self.soft, p.hy.t if p.hy else 0.0, p.hy.q if p.hy else 0.0])
+                   for p in new.passes]  # fmt: skip
+        new._ip = [np.array([_hy_mode(p.hy), p.n_max, p.n_hole, p.n_oct, p.n_min, p.k_oct, p.n_holes_min],
+                            dtype=np.int64) for p in new.passes]  # fmt: skip
+        return new
 
     @property
     def n_passes(self) -> int:

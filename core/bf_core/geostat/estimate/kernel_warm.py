@@ -54,4 +54,4 @@ def warm_kernel() -> None:
                 estimate(rk, centres, active=np.arange(8) != 3)
                 estimate(rk, centres[:2], sizes=np.array([[4.0, 4.0, 2.0], [2.0, 2.0, 1.0]]),
                          exclude=("sample", np.array([0, 1])))  # fmt: skip
-                estimate_block(rk, centres[0], pool=s)
+                estimate_block(rk, centres[0])

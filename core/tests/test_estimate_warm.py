@@ -106,7 +106,7 @@ def battery():
                         pass
                     for _ in run(rk, (p.centres for p in portions), threads=1):
                         pass
-                    kernel_block.estimate_block(rk, cache_xyz[5], pool=s)
+                    kernel_block.estimate_block(rk, cache_xyz[5])
 
 
 t0 = time.perf_counter()

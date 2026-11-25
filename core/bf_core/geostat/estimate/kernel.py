@@ -5,7 +5,7 @@ answers the job (`estimate`, `run`), the cross-validation (`exclude`), the previ
     rk = compile_row(spec, samples, block_size=(dx, dy, dz), rotation_deg=φ, blockcov=…)     a row, compiled once
     res = estimate(rk, centres [m, 3], sizes=None, active=None, exclude=None, local=False)    one portion
     for res in run(rk, chunks, threads=4, tick=tick): …                                        the portions in order
-    d = estimate_block(rk, centre, size=None, pool=None)                                       one block in detail
+    d = estimate_block(rk, centre, size=None)                                                   one block in detail
 
 `centres` are the centres of the blocks in the coordinates of the PROJECT; the kernel subtracts `samples.origin`
 (8.0.1: the kernels count in the local ones; `local=True` — the centres are local already). `sizes` [m, 3] — the size

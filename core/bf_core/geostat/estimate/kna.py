@@ -34,7 +34,6 @@ The recommendation (8.8.5): the smallest `n_max` of the series whose SLOPE is at
 
 from __future__ import annotations
 
-import copy
 import dataclasses
 import math
 import threading
@@ -50,7 +49,6 @@ from bf_core.jobs.registry import handler
 from . import kernel as kn
 from . import samples as sm
 from .kna_blocks import BlockAt, Blocks, Targets
-from .search import Searcher, _hy_mode
 from .spec import EstimationSpec, parse_at, parse_estimation
 
 KIND = "estimate.kna"
@@ -87,19 +85,6 @@ def _f(x: Any) -> float | None:
 # --- the variants of a compiled row ----------------------------------------------------------------------------------
 
 
-def _reshaped(searcher: Searcher, passes: Sequence[Any]) -> Searcher:
-    """The same tree (it is the costly part of a `Searcher`) with other passes: what `Searcher.__init__` derives from
-    the passes is rebuilt. Bit for bit what a new `Searcher` of these passes gives (the test compares them)."""
-    new = copy.copy(searcher)
-    new.passes = tuple(passes)
-    r1 = searcher.ell.radii[0]
-    new._fp = [np.array([r1 * p.factor, searcher.soft, p.hy.t if p.hy else 0.0, p.hy.q if p.hy else 0.0])
-               for p in new.passes]  # fmt: skip
-    new._ip = [np.array([_hy_mode(p.hy), p.n_max, p.n_hole, p.n_oct, p.n_min, p.k_oct, p.n_holes_min], dtype=np.int64)
-               for p in new.passes]  # fmt: skip
-    return new
-
-
 def _fresh(rk: kn.RowKernel, **change: Any) -> kn.RowKernel:
     """A row with other fields; its own cache of the geometry of the blocks (it depends on the discretization)."""
     return dataclasses.replace(rk, _geo={}, _lock=threading.Lock(), **change)
@@ -113,7 +98,7 @@ def _with_passes(rk: kn.RowKernel, *, n_max: int | None = None, scale: float | N
         if scale is not None:
             p = dataclasses.replace(p, factor=p.factor * float(scale))
         passes.append(p)
-    return _fresh(rk, searcher=_reshaped(rk.searcher, passes))
+    return _fresh(rk, searcher=rk.searcher.with_passes(passes))
 
 
 def _with_disc(rk: kn.RowKernel, d: int) -> kn.RowKernel:

@@ -190,6 +190,23 @@ def test_selection_with_exclusion_of_a_sample_or_a_hole():
                     assert not (s.hole[got] == s.hole[pick[b]]).any()
 
 
+@pytest.mark.parametrize("name", ["plain", "limits", "hy_cap"])
+def test_with_passes_is_a_searcher_of_those_passes_on_the_same_tree(name):
+    s, rng = random_row(5)
+    passes, soft = CONFIGS[name]
+    other, _ = CONFIGS["limits"] if name != "limits" else CONFIGS["soft"]
+    base = se.Searcher(s, ELL, passes, soft)
+    shaped = base.with_passes(other)
+    assert shaped._tree is base._tree and shaped.passes == tuple(other) and base.passes == tuple(passes)  # noqa: SLF001
+    ref = se.Searcher(s, ELL, other, soft)
+    centres = rng.uniform(-30.0, 230.0, (80, 3))
+    for k in range(len(other)):
+        a, b = shaped.gather(centres, k), ref.gather(centres, k)
+        for f in ("n", "idx", "h", "z"):
+            np.testing.assert_array_equal(getattr(a, f), getattr(b, f))
+        assert np.array_equal(shaped.fp_of(k), ref.fp_of(k))
+
+
 @pytest.mark.parametrize("name", ["plain", "limits", "soft", "hy_cap"])
 def test_equality_on_k_c(name):
     """A repeat with a larger k_c gives the answer of the full enumeration whatever the first k_c was."""
