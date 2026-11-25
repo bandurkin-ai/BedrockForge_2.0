@@ -38,6 +38,34 @@ GEOSTATSPY_WHEEL=/tmp/ref079-wheel/geostatspy-0.0.79-py3-none-any.whl /tmp/ref07
 
 Повторный запуск даёт те же sha256. Разделы 0.0.46 (`geostatspy_reference.json`, `manifest.json`) не меняются. Тест целостности — `core/tests/test_ref_geostatspy_079.py`.
 
+Читают: `core/tests/test_estimate_reference.py` (Т8.8-4 — `kb2d` точечный OK и SK, 1e−6 отн., получено 4e−10; Т8.8-5 — блочный 4 × 4 по `kb2d_fixed.py`, 6,7e−10; Т8.8-6 — `kb3d`, 1,7e−15; ТД38-1, ТД38-2), `core/tests/test_ref_geostatspy_079.py` (целостность по `manifest_079.json`). Т8.8-7 (3D-блок, ang3 ≠ 0, 3 структуры, октанты, лимит скважины) сверяется не с GeostatsPy, а с независимой реализацией на NumPy `core/tests/reference/krige3d_numpy.py` (перебор вместо дерева, `numpy.linalg.solve`; отбор совпал точно, EST 5e−13, KV 1,1e−11). Координаты 0.0.79: x на восток, y на север, z вверх, азимут по часовой от севера, положительное падение поднимает большую ось (как `ang2` в BF2); π в `setup_rotmat` 0.0.79 равно 3.14159265, поэтому двумерные ответы отличаются от расчёта с точным π на ≈ 6e−10. Блочный режим 0.0.79 неработоспособен (`kb2d`: неопределённая `real`, строки `if i == j` вне внутреннего цикла C̄_VV; `kb3d`: дискретизация без `nzdis`) — не эталон.
+
+## Оценка содержаний и граф зависимостей (`core/tests/data/estimate/`, `lineage/`, `stats/`)
+
+Фикстуры Э18 лежат рядом с тестами ядра и общие для ядра и интерфейса (ADR 0024, ADR 0025; урок Э14–Э15): интерфейс сверяет формы с настоящими ответами ядра на синтетическом проекте. Файл — запись ответов, которые пишет тест ядра из настоящих маршрутов и заданий (`core/tests/estapi_world.py`: 25 скважин, блочная модель из трёх доменов, модель вариограммы; `estinspect.py` — наборы для инспектора); vitest читает его. Руками не править. Времена, отпечатки, `versions`, `stages`, `token` в файл не пишутся, числа сравниваются до 1e−7 (на другой машине последние цифры могут отличаться); без флага тест сравнивает файл с ответами ядра и падает при расхождении.
+
+| Файл | Что | Тест ядра (`core/tests/`) · флаг | Читает vitest (`ui/test/`) |
+|---|---|---|---|
+| `estimate/params.json` | 5 строк «Параметров оценки» (`idw`, `ok_point`, `sk`, `ik`, `ok_block_passes`): тело → каноническая форма и колонки | `test_estimate_spec.py` · `BF_REGEN_ESTIMATE` (переписывает `canonical` и `columns`) | `estimation/form` (и `estimation/harness.ts`) |
+| `estimate/contract_answers.json` | Настоящие ответы маршрутов Э18: `defaults`, `estimations`, `estimation`, `estimation_post`, `estimation_put_conflict`, `bad_param`, `variogram_scale`, `plan`, `run_submit`, `run_field_exists`, `run_result`, `preview`, `xval_submit`, `xval_result`, `xval`, `kna`, `global`, `qq`, `swath`. Ключи `simulation`, `simulate_result`, `simulate_post_result` — образцы контракта Э18б, `inspect` — старый образец; тест их не трогает | `test_estimate_api_answers.py` · `BF_REGEN_ESTIMATE` | `estimation/*` (общая обвязка — `estimation/harness.ts`) |
+| `estimate/inspect_answers.json` | Инспектор блока: `answers` (`pass_1`, `pass_3`, `few_samples`, `out_of_domain`, `changed`), `errors` (`no_block`, `no_model`, `no_params`, `no_such_row`), `rows` | `test_estimate_inspect_route.py` (`test_the_answers_the_window_is_read_against`) · `BF_REGEN_INSPECT` | `estimation/inspect`, `inspect-review`, `inspect-scene` |
+| `lineage/answers.json` | Граф зависимостей: `status`, `impact`, `origin`, `pin`, `rebuild` (план и запуск) и отказы — по цепочке заглушек (`stub`), по настоящим результатам (`real`: композиты → модель вариограммы) и правилам (`rules`) | `test_lineage_window_answers.py` · `BF_REGEN_LINEAGE` | `lineage/*` (`lineage/harness.ts`) |
+| `stats/contact_blocks_answers.json` | `POST /stats/contact` с `blocks`: профиль блоков у контакта для домена из каркаса (`wireframe`) и из поля модели (`domain`) | `test_stats_contact_blocks.py` · `BF_REGEN_CONTACT_BLOCKS` | `contact-blocks` |
+| `ref/geostatspy/*_079.json`, `manifest_079.json` | Эталоны GeostatsPy 0.0.79 (раздел выше) | `tools/gen/ref_geostatspy.py --079`; тест — `test_ref_geostatspy_079.py` | — |
+
+Пересоздать (из папки `core`; затем `npm test -- <файл vitest>` из корня):
+
+```bash
+cd core
+BF_REGEN_ESTIMATE=1        uv run pytest -q tests/test_estimate_spec.py
+BF_REGEN_ESTIMATE=1        uv run pytest -q tests/test_estimate_api_answers.py
+BF_REGEN_INSPECT=1         uv run pytest -q tests/test_estimate_inspect_route.py -k the_answers_the_window
+BF_REGEN_LINEAGE=1         uv run pytest -q tests/test_lineage_window_answers.py
+BF_REGEN_CONTACT_BLOCKS=1  uv run pytest -q tests/test_stats_contact_blocks.py
+```
+
+Один флаг `BF_REGEN_ESTIMATE` относится к двум тестам: `test_estimate_spec.py` пишет `params.json`, `test_estimate_api_answers.py` — `contract_answers.json` (только ключи этого теста, остальные остаются). Порядок: ядро → перегенерация → vitest (`estimation/*`, `lineage/*`, `contact-blocks`); если форма ответа изменилась, правят и клиент, и `docs/progress/e18-api.md`. После изменения полей оценки, проходов или формы ответа инспектора перегенерируйте `contract_answers.json` и `inspect_answers.json`.
+
 ## Эталоны вариографии (`core/tests/data/variography/`)
 
 Эталоны Э16 лежат рядом с тестами ядра и общие для ядра и интерфейса (ADR 0022; интерфейс сверяет формы с настоящими ответами ядра).
