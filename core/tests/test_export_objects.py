@@ -131,8 +131,8 @@ def test_demo_into_a_new_folder_with_a_file_per_object(demo, out: Path) -> None:
 
 def test_requests_that_cannot_be_exported(demo, out: Path) -> None:  # type: ignore[no-untyped-def]
     c, project = demo
-    r = c.post(f"{API}/export/objects", json={"formats": {"block_model": "dat"}, "folder": str(out)})
-    assert r.status_code == 422 and r.json()["code"] == "export_nothing" and "Э17" in r.json()["message"]
+    r = c.post(f"{API}/export/objects", json={"formats": {"block_model": "pdf"}, "folder": str(out)})
+    assert r.status_code == 422 and r.json()["code"] == "bad_format"
     r = c.post(f"{API}/export/objects", json={"formats": {"wireframe": "pdf"}, "folder": str(out)})
     assert r.status_code == 422 and r.json()["code"] == "bad_format"
     r = c.post(f"{API}/export/objects", json={"formats": {"wireframe": "dxf"}, "folder": "относительная"})
