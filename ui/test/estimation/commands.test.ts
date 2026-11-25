@@ -61,8 +61,8 @@ describe("the declarations", () => {
   });
   it("the commands whose window is not ready say so; the bound ones (the wizard, the run, the deletion, the plan) are available", () => {
     const reason = (id: string) => app.registry.reason(id, { hasProject: true, hasSet: true, hasHole: false, hasObject: false, hasSection: false, editing: false, coreOnline: true });
-    for (const id of ["estimate.ellipsoid", "estimate.inspect", "estimate.xval", "estimate.kna", "estimate.global", "estimate.qq", "estimate.swath"]) expect(reason(id)).toMatch(/появится на этапе Э18/);
-    for (const id of ["estimate.open", "estimate.run", "estimate.delete", "estimate.plan", "estimate.plan_delete"]) expect(reason(id)).toBeNull();
+    for (const id of ["estimate.ellipsoid", "estimate.inspect", "estimate.xval"]) expect(reason(id)).toMatch(/появится на этапе Э18/);
+    for (const id of ["estimate.open", "estimate.run", "estimate.delete", "estimate.plan", "estimate.plan_delete", "estimate.kna", "estimate.global", "estimate.qq", "estimate.swath"]) expect(reason(id)).toBeNull();
   });
   it("without a project the wizard is not available, with the reason", () => {
     expect(app.registry.reason("estimate.open", { hasProject: false, hasSet: false, hasHole: false, hasObject: false, hasSection: false, editing: false, coreOnline: true })).toBe("Откройте или создайте проект");
