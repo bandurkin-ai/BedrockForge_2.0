@@ -1,0 +1,1730 @@
+{
+ "_note": "Образцы ответов контракта Э18 (18.1, docs/progress/e18-api.md); интерфейс работает на них до готовности ядра. Числа preview/inspect — эталон Э-ОК-1 (Т8.8-1). Заменяются настоящими ответами: BF_REGEN_ESTIMATE=1 (18.13, 18.14–18.16, 18.32).",
+ "defaults": {
+  "status": 200,
+  "body": {
+   "model": {
+    "id": 7,
+    "name": "Модель",
+    "version": 4,
+    "rows": 1200,
+    "parents": 1000,
+    "sub": true,
+    "regular": true,
+    "rotation": 0.0,
+    "size": [
+     10.0,
+     10.0,
+     5.0
+    ],
+    "domain_fields": [
+     {
+      "name": "ZONE",
+      "kind": "category",
+      "labels": [
+       "окисл",
+       "перех",
+       "перв"
+      ]
+     }
+    ]
+   },
+   "samples": {
+    "set_id": 3,
+    "table": "12",
+    "table_name": "Композиты",
+    "field": "AU",
+    "unit": "г/т",
+    "weights": "DECL_W",
+    "counts": {
+     "rows": 1196,
+     "missing": 4,
+     "no_position": 0,
+     "outside_domain": 0,
+     "used": 1192
+    },
+    "mean": {
+     "naive": 1.84,
+     "declus": 1.62
+    },
+    "domain": {
+     "table": "14",
+     "field": "ZONE",
+     "values": [
+      {
+       "value": "окисл",
+       "n": 880,
+       "naive": 2.01,
+       "declus": 1.77
+      },
+      {
+       "value": "перех",
+       "n": 200,
+       "naive": 1.3,
+       "declus": 1.21
+      },
+      {
+       "value": "перв",
+       "n": 112,
+       "naive": 0.9,
+       "declus": null
+      }
+     ]
+    }
+   },
+   "mapping": {
+    "окисл": [
+     "окисл"
+    ],
+    "перех": [
+     "перех"
+    ],
+    "перв": [
+     "перв"
+    ]
+   },
+   "variogram": {
+    "id": 21,
+    "name": "AU · окисл",
+    "scale": "z",
+    "share": null,
+    "warnings": [],
+    "snapshot": {
+     "type": "semivariogram",
+     "c0": 0.1,
+     "structures": [
+      {
+       "type": "spherical",
+       "c": 0.9,
+       "ang1": 0.0,
+       "ang2": 0.0,
+       "ang3": 0.0,
+       "a1": 30.0,
+       "a2": 30.0,
+       "a3": 30.0
+      }
+     ],
+     "common_axes": true
+    },
+    "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "search": {
+    "from": "model",
+    "ang1": 0.0,
+    "ang2": 0.0,
+    "ang3": 0.0,
+    "r1": 30.0,
+    "r2": 30.0,
+    "r3": 30.0
+   },
+   "params": {
+    "sub": "parent",
+    "disc": [
+     4,
+     4,
+     2
+    ],
+    "method": {
+     "kind": "ok",
+     "power": 2.0,
+     "mean": {
+      "mode": "declus",
+      "value": null
+     },
+     "ik": {
+      "models": "per",
+      "class_means": "declus"
+     }
+    },
+    "search": {
+     "from": "model",
+     "passes": [
+      {
+       "factor": 1.0,
+       "n_min": 4,
+       "n_max": 24,
+       "n_hole": 0,
+       "n_oct": 0,
+       "k_oct": 0,
+       "n_holes_min": 0,
+       "hy": null
+      },
+      {
+       "factor": 2.0,
+       "n_min": 4,
+       "n_max": 24,
+       "n_hole": 0,
+       "n_oct": 0,
+       "k_oct": 0,
+       "n_holes_min": 0,
+       "hy": null
+      },
+      {
+       "factor": 3.0,
+       "n_min": 4,
+       "n_max": 24,
+       "n_hole": 0,
+       "n_oct": 0,
+       "k_oct": 0,
+       "n_holes_min": 0,
+       "hy": null
+      }
+     ],
+     "order": [
+      "ellipsoid",
+      "hy",
+      "sort_hs",
+      "n_max_hole_octants",
+      "n_min"
+     ]
+    },
+    "outputs": {
+     "fields": {
+      "nn": [
+       "STATUS",
+       "EST",
+       "DMIN",
+       "PASS"
+      ],
+      "idw": [
+       "STATUS",
+       "EST",
+       "NS",
+       "AD",
+       "PASS"
+      ],
+      "sk": [
+       "STATUS",
+       "EST",
+       "KV",
+       "NS",
+       "NH",
+       "AD",
+       "PASS",
+       "SLOPE"
+      ],
+      "ok": [
+       "STATUS",
+       "EST",
+       "KV",
+       "NS",
+       "NH",
+       "AD",
+       "PASS",
+       "SLOPE",
+       "KE"
+      ],
+      "ik": [
+       "STATUS",
+       "NS",
+       "PASS",
+       "P",
+       "ETYPE"
+      ]
+     },
+     "allowed": {
+      "nn": [
+       "STATUS",
+       "EST",
+       "NS",
+       "NH",
+       "NHY",
+       "AD",
+       "DMIN",
+       "PASS",
+       "NOCT"
+      ],
+      "idw": [
+       "STATUS",
+       "EST",
+       "NS",
+       "NH",
+       "NHY",
+       "AD",
+       "DMIN",
+       "PASS",
+       "NOCT"
+      ],
+      "sk": [
+       "STATUS",
+       "EST",
+       "KV",
+       "NS",
+       "NH",
+       "NHY",
+       "AD",
+       "DMIN",
+       "PASS",
+       "SLOPE",
+       "KE",
+       "SNW",
+       "NOCT"
+      ],
+      "ok": [
+       "STATUS",
+       "EST",
+       "KV",
+       "NS",
+       "NH",
+       "NHY",
+       "AD",
+       "DMIN",
+       "PASS",
+       "SLOPE",
+       "KE",
+       "LAGR",
+       "SNW",
+       "NOCT"
+      ],
+      "ik": [
+       "STATUS",
+       "NS",
+       "NH",
+       "NHY",
+       "AD",
+       "DMIN",
+       "PASS",
+       "NOCT",
+       "P",
+       "ETYPE"
+      ]
+     },
+     "dtypes": {
+      "STATUS": "i1",
+      "EST": "f8",
+      "KV": "f4",
+      "NS": "i2",
+      "NH": "i2",
+      "NHY": "i2",
+      "AD": "f4",
+      "DMIN": "f4",
+      "PASS": "i1",
+      "SLOPE": "f4",
+      "KE": "f4",
+      "LAGR": "f4",
+      "SNW": "f4",
+      "NOCT": "i1",
+      "P": "f4",
+      "ETYPE": "f8"
+     },
+     "status": [
+      "оценён",
+      "вне домена",
+      "мало проб",
+      "вырожденная система"
+     ]
+    },
+    "limits": {
+     "passes": 5,
+     "thresholds": 20,
+     "prefix": 40,
+     "domain_values": 1000,
+     "plan_items": 100
+    }
+   },
+   "ranges": {
+    "power": {
+     "lo": 0.5,
+     "hi": 5.0,
+     "lo_open": false,
+     "integer": false,
+     "unit": ""
+    },
+    "disc": {
+     "lo": 1,
+     "hi": 10,
+     "lo_open": false,
+     "integer": true,
+     "unit": ""
+    },
+    "factor": {
+     "lo": 0.0,
+     "hi": 100.0,
+     "lo_open": true,
+     "integer": false,
+     "unit": ""
+    },
+    "n_min": {
+     "lo": 1,
+     "hi": 128,
+     "lo_open": false,
+     "integer": true,
+     "unit": ""
+    },
+    "n_max": {
+     "lo": 1,
+     "hi": 128,
+     "lo_open": false,
+     "integer": true,
+     "unit": ""
+    },
+    "n_hole": {
+     "lo": 0,
+     "hi": 64,
+     "lo_open": false,
+     "integer": true,
+     "unit": ""
+    },
+    "n_oct": {
+     "lo": 0,
+     "hi": 16,
+     "lo_open": false,
+     "integer": true,
+     "unit": ""
+    },
+    "k_oct": {
+     "lo": 0,
+     "hi": 8,
+     "lo_open": false,
+     "integer": true,
+     "unit": ""
+    },
+    "n_holes_min": {
+     "lo": 0,
+     "hi": 128,
+     "lo_open": false,
+     "integer": true,
+     "unit": ""
+    },
+    "r1": {
+     "lo": 0.0,
+     "hi": 100000.0,
+     "lo_open": true,
+     "integer": false,
+     "unit": "м"
+    },
+    "r2": {
+     "lo": 0.0,
+     "hi": 100000.0,
+     "lo_open": true,
+     "integer": false,
+     "unit": "м"
+    },
+    "r3": {
+     "lo": 0.0,
+     "hi": 100000.0,
+     "lo_open": true,
+     "integer": false,
+     "unit": "м"
+    },
+    "ang1": {
+     "lo": 0.0,
+     "hi": 360.0,
+     "lo_open": false,
+     "integer": false,
+     "unit": "°"
+    },
+    "ang2": {
+     "lo": -90.0,
+     "hi": 90.0,
+     "lo_open": false,
+     "integer": false,
+     "unit": "°"
+    },
+    "ang3": {
+     "lo": -180.0,
+     "hi": 180.0,
+     "lo_open": false,
+     "integer": false,
+     "unit": "°"
+    },
+    "soft_dist": {
+     "lo": 0.0,
+     "hi": 100000.0,
+     "lo_open": false,
+     "integer": false,
+     "unit": "м"
+    },
+    "topcut": {
+     "lo": null,
+     "hi": null,
+     "lo_open": false,
+     "integer": false,
+     "unit": ""
+    },
+    "mean": {
+     "lo": null,
+     "hi": null,
+     "lo_open": false,
+     "integer": false,
+     "unit": ""
+    },
+    "threshold": {
+     "lo": null,
+     "hi": null,
+     "lo_open": false,
+     "integer": false,
+     "unit": ""
+    },
+    "hy_t": {
+     "lo": null,
+     "hi": null,
+     "lo_open": false,
+     "integer": false,
+     "unit": ""
+    },
+    "hy_q": {
+     "lo": 0.0,
+     "hi": 1.0,
+     "lo_open": true,
+     "integer": false,
+     "unit": ""
+    }
+   }
+  }
+ },
+ "estimations": {
+  "status": 200,
+  "body": {
+   "estimations": [
+    {
+     "id": 41,
+     "name": "AU · OK · окисл",
+     "model_id": 7,
+     "method": "ok",
+     "prefix": "AU_OK_",
+     "label": "окисл",
+     "version": 2,
+     "stale": false,
+     "stale_reason": null,
+     "source_lost": false,
+     "plans": [
+      51
+     ],
+     "last_run": {
+      "at": "2026-11-25T10:00:00+00:00",
+      "by_status": [
+       1100,
+       60,
+       35,
+       5
+      ]
+     },
+     "created_at": "2026-11-25T10:00:00+00:00",
+     "updated_at": "2026-11-25T10:00:00+00:00"
+    }
+   ]
+  }
+ },
+ "estimation": {
+  "status": 200,
+  "body": {
+   "id": 41,
+   "name": "AU · OK · окисл",
+   "version": 2,
+   "meta": {
+    "v": 1,
+    "name": "AU · OK · окисл",
+    "model_id": 7,
+    "target": {
+     "domain_field": "ZONE",
+     "label": "окисл",
+     "filter_id": null,
+     "rules": null
+    },
+    "sub": "parent",
+    "disc": [
+     1,
+     1,
+     1
+    ],
+    "samples": {
+     "set_id": 3,
+     "table": "12",
+     "field": "AU",
+     "unit": "г/т",
+     "domain": {
+      "table": "14",
+      "field": "ZONE",
+      "values": [
+       "окисл"
+      ]
+     },
+     "soft": null,
+     "topcut": null,
+     "weights": null
+    },
+    "method": {
+     "kind": "ok",
+     "power": 2.0,
+     "mean": {
+      "mode": "declus",
+      "value": null
+     },
+     "ik": null
+    },
+    "variogram": {
+     "model_id": 21,
+     "snapshot": {
+      "type": "semivariogram",
+      "c0": 0.1,
+      "structures": [
+       {
+        "type": "spherical",
+        "c": 0.9,
+        "ang1": 0.0,
+        "ang2": 0.0,
+        "ang3": 0.0,
+        "a1": 30.0,
+        "a2": 30.0,
+        "a3": 30.0
+       }
+      ],
+      "common_axes": true
+     },
+     "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "scale": "z",
+     "share": null
+    },
+    "variograms": null,
+    "trend_id": null,
+    "search": {
+     "from": "model",
+     "ang1": 0.0,
+     "ang2": 0.0,
+     "ang3": 0.0,
+     "r1": 30.0,
+     "r2": 30.0,
+     "r3": 30.0,
+     "passes": [
+      {
+       "factor": 1.0,
+       "n_min": 4,
+       "n_max": 24,
+       "n_hole": 0,
+       "n_oct": 0,
+       "k_oct": 0,
+       "n_holes_min": 0,
+       "hy": null
+      },
+      {
+       "factor": 2.0,
+       "n_min": 4,
+       "n_max": 24,
+       "n_hole": 0,
+       "n_oct": 0,
+       "k_oct": 0,
+       "n_holes_min": 0,
+       "hy": null
+      },
+      {
+       "factor": 3.0,
+       "n_min": 4,
+       "n_max": 24,
+       "n_hole": 0,
+       "n_oct": 0,
+       "k_oct": 0,
+       "n_holes_min": 0,
+       "hy": null
+      }
+     ]
+    },
+    "outputs": {
+     "prefix": "AU_OK_",
+     "fields": [
+      "STATUS",
+      "EST",
+      "KV",
+      "NS",
+      "NH",
+      "AD",
+      "PASS",
+      "SLOPE",
+      "KE"
+     ]
+    },
+    "origin": [
+     7.0,
+     6.0,
+     0.0
+    ],
+    "inputs": [
+     {
+      "kind": "dh_table",
+      "id": 12,
+      "fp": "tok-12:5",
+      "name": "Композиты"
+     },
+     {
+      "kind": "dh_table",
+      "id": 14,
+      "fp": "tok-14:2",
+      "name": "Литология"
+     },
+     {
+      "kind": "dh_set",
+      "id": 3,
+      "fp": "traj:9f2c",
+      "name": "Скважины"
+     },
+     {
+      "kind": "object:variogram_model",
+      "id": 21,
+      "fp": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "name": "AU · окисл"
+     },
+     {
+      "kind": "object:block_model",
+      "id": 7,
+      "fp": "cells:1111111111111111111111111111111111111111111111111111111111111111",
+      "name": "Модель"
+     },
+     {
+      "kind": "bm_field",
+      "id": "7:ZONE",
+      "fp": "cells:1111111111111111111111111111111111111111111111111111111111111111",
+      "name": "Модель · ZONE"
+     }
+    ],
+    "algo": "est-1",
+    "versions": {
+     "numpy": "2.1.3",
+     "scipy": "1.14.1",
+     "numba": "0.60.0"
+    },
+    "last_run": {
+     "at": "2026-11-25T10:00:00+00:00",
+     "job": "j-0001",
+     "version": 4,
+     "counts": {
+      "targets": 1200,
+      "by_status": [
+       1100,
+       60,
+       35,
+       5
+      ],
+      "by_pass": [
+       990,
+       90,
+       20
+      ],
+      "singular": [
+       3,
+       1,
+       5
+      ],
+      "samples": {
+       "rows": 1196,
+       "missing": 4,
+       "no_position": 0,
+       "outside_domain": 310,
+       "used": 880,
+       "merged": 2,
+       "topcut": 0,
+       "soft": 0,
+       "no_weight": 0
+      }
+     },
+     "merged": null,
+     "class_means": null
+    },
+    "created_at": "2026-11-25T10:00:00+00:00"
+   },
+   "columns": [
+    {
+     "name": "AU_OK_STATUS",
+     "key": "STATUS",
+     "dtype": "i1",
+     "role": null,
+     "unit": null,
+     "description": "0 — оценён; 1 — вне домена; 2 — мало проб; 3 — вырожденная система"
+    },
+    {
+     "name": "AU_OK_EST",
+     "key": "EST",
+     "dtype": "f8",
+     "role": "grade",
+     "unit": "г/т",
+     "description": null
+    },
+    {
+     "name": "AU_OK_KV",
+     "key": "KV",
+     "dtype": "f4",
+     "role": null,
+     "unit": null,
+     "description": null
+    },
+    {
+     "name": "AU_OK_NS",
+     "key": "NS",
+     "dtype": "i2",
+     "role": null,
+     "unit": null,
+     "description": null
+    },
+    {
+     "name": "AU_OK_NH",
+     "key": "NH",
+     "dtype": "i2",
+     "role": null,
+     "unit": null,
+     "description": null
+    },
+    {
+     "name": "AU_OK_AD",
+     "key": "AD",
+     "dtype": "f4",
+     "role": null,
+     "unit": "м",
+     "description": null
+    },
+    {
+     "name": "AU_OK_PASS",
+     "key": "PASS",
+     "dtype": "i1",
+     "role": null,
+     "unit": null,
+     "description": null
+    },
+    {
+     "name": "AU_OK_SLOPE",
+     "key": "SLOPE",
+     "dtype": "f4",
+     "role": null,
+     "unit": null,
+     "description": null
+    },
+    {
+     "name": "AU_OK_KE",
+     "key": "KE",
+     "dtype": "f4",
+     "role": null,
+     "unit": null,
+     "description": null
+    }
+   ],
+   "fields_exist": [
+    "AU_OK_EST"
+   ],
+   "stale": false,
+   "stale_reason": null,
+   "source_lost": false,
+   "plans": [
+    51
+   ],
+   "created_at": "2026-11-25T10:00:00+00:00",
+   "updated_at": "2026-11-25T10:00:00+00:00"
+  }
+ },
+ "estimation_post": {
+  "status": 200,
+  "body": {
+   "id": 41,
+   "name": "AU · OK · окисл",
+   "version": 1
+  }
+ },
+ "estimation_put_conflict": {
+  "status": 409,
+  "body": {
+   "version": 3,
+   "code": "version_conflict",
+   "message": "Параметры оценки изменены в другом окне.",
+   "hint": "Перечитайте параметры или сохраните как новые."
+  }
+ },
+ "bad_param": {
+  "status": 422,
+  "body": {
+   "param": "search.passes.1.n_max",
+   "code": "bad_param",
+   "message": "Наибольшее число проб n_max: значение вне диапазона от 1 до 128.",
+   "hint": "Задайте от 1 до 128."
+  }
+ },
+ "variogram_scale": {
+  "status": 422,
+  "body": {
+   "param": "variogram.model_id",
+   "code": "variogram_scale",
+   "message": "Модель построена в нормальных оценках",
+   "hint": "Выполните обратное преобразование модели или выберите модель в исходных единицах"
+  }
+ },
+ "plan": {
+  "status": 200,
+  "body": {
+   "id": 51,
+   "name": "План · Модель",
+   "model_id": 7,
+   "version": 1,
+   "items": [
+    {
+     "id": 41,
+     "name": "AU · OK · окисл",
+     "method": "ok",
+     "prefix": "AU_OK_",
+     "label": "окисл",
+     "stale": false
+    },
+    {
+     "id": 42,
+     "name": "AU · OK · перех",
+     "method": "ok",
+     "prefix": "AU_OK_",
+     "label": "перех",
+     "stale": true
+    }
+   ],
+   "created_at": "2026-11-25T10:00:00+00:00",
+   "updated_at": "2026-11-25T10:00:00+00:00"
+  }
+ },
+ "run_submit": {
+  "status": 200,
+  "body": {
+   "source": "jobs",
+   "id": "j-0001"
+  }
+ },
+ "run_field_exists": {
+  "status": 409,
+  "body": {
+   "field": "AU_OK_EST",
+   "code": "field_exists",
+   "message": "Поле «AU_OK_EST» уже есть в модели.",
+   "hint": "Подтвердите замену полей или задайте другой префикс."
+  }
+ },
+ "run_result": {
+  "status": 200,
+  "body": {
+   "model_id": 7,
+   "version": 5,
+   "plan_id": 51,
+   "fields": [
+    "AU_OK_STATUS",
+    "AU_OK_EST",
+    "AU_OK_KV",
+    "AU_OK_NS",
+    "AU_OK_NH",
+    "AU_OK_AD",
+    "AU_OK_PASS",
+    "AU_OK_SLOPE",
+    "AU_OK_KE"
+   ],
+   "rows": [
+    {
+     "estimation_id": 41,
+     "prefix": "AU_OK_",
+     "label": "окисл",
+     "counts": {
+      "targets": 1200,
+      "by_status": [
+       1100,
+       60,
+       35,
+       5
+      ],
+      "by_pass": [
+       990,
+       90,
+       20
+      ],
+      "singular": [
+       3,
+       1,
+       5
+      ],
+      "samples": {
+       "rows": 1196,
+       "missing": 4,
+       "no_position": 0,
+       "outside_domain": 310,
+       "used": 880,
+       "merged": 2,
+       "topcut": 0,
+       "soft": 0,
+       "no_weight": 0
+      }
+     }
+    },
+    {
+     "estimation_id": 42,
+     "prefix": "AU_OK_",
+     "label": "перех",
+     "counts": {
+      "targets": 1200,
+      "by_status": [
+       180,
+       1020,
+       0,
+       0
+      ],
+      "by_pass": [
+       990,
+       90,
+       20
+      ],
+      "singular": [
+       3,
+       1,
+       5
+      ],
+      "samples": {
+       "rows": 1196,
+       "missing": 4,
+       "no_position": 0,
+       "outside_domain": 310,
+       "used": 880,
+       "merged": 2,
+       "topcut": 0,
+       "soft": 0,
+       "no_weight": 0
+      }
+     }
+    }
+   ],
+   "merged": [
+    {
+     "prefix": "AU_OK_",
+     "estimation_ids": [
+      41,
+      42
+     ]
+    }
+   ],
+   "log": [
+    "Проход 1: 3 блока — вырожденная система, переход к проходу 2."
+   ],
+   "events": [
+    [
+     "objects.changed",
+     {
+      "kind": "block_model",
+      "id": 7
+     }
+    ],
+    [
+     "geostat.changed",
+     {
+      "kind": "estimation",
+      "id": 41
+     }
+    ],
+    [
+     "geostat.changed",
+     {
+      "kind": "estimation",
+      "id": 42
+     }
+    ]
+   ]
+  }
+ },
+ "preview": {
+  "status": 200,
+  "body": {
+   "at": {
+    "row": 0,
+    "p": 0,
+    "ijk": [
+     0,
+     0,
+     0
+    ]
+   },
+   "centre": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "size": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "label": "окисл",
+   "status": 0,
+   "pass": 1,
+   "values": {
+    "EST": 1.99288,
+    "KV": 0.544418,
+    "NS": 4,
+    "NH": 4,
+    "AD": 14.571067811865476,
+    "PASS": 1,
+    "SLOPE": 0.954774,
+    "KE": 0.455582
+   },
+   "mu": -0.022653,
+   "samples": [
+    {
+     "i": 0,
+     "row_id": 101,
+     "hole": "A-1",
+     "from": 9.0,
+     "to": 11.0,
+     "xyz": [
+      0.0,
+      10.0,
+      0.0
+     ],
+     "z_raw": 1.0,
+     "z": 1.0,
+     "h": 10.0,
+     "dist": 10.0,
+     "octant": 3,
+     "lambda": 0.33289,
+     "reason": "selected"
+    },
+    {
+     "i": 1,
+     "row_id": 102,
+     "hole": "B-2",
+     "from": 9.0,
+     "to": 11.0,
+     "xyz": [
+      10.0,
+      0.0,
+      0.0
+     ],
+     "z_raw": 2.0,
+     "z": 2.0,
+     "h": 10.0,
+     "dist": 10.0,
+     "octant": 1,
+     "lambda": 0.316318,
+     "reason": "selected"
+    },
+    {
+     "i": 2,
+     "row_id": 103,
+     "hole": "C-3",
+     "from": 9.0,
+     "to": 11.0,
+     "xyz": [
+      -6.0,
+      -8.0,
+      0.0
+     ],
+     "z_raw": 3.0,
+     "z": 3.0,
+     "h": 10.0,
+     "dist": 10.0,
+     "octant": 4,
+     "lambda": 0.375815,
+     "reason": "selected"
+    },
+    {
+     "i": 3,
+     "row_id": 104,
+     "hole": "D-4",
+     "from": 9.0,
+     "to": 11.0,
+     "xyz": [
+      20.0,
+      20.0,
+      0.0
+     ],
+     "z_raw": 4.0,
+     "z": 4.0,
+     "h": 28.284271247461902,
+     "dist": 28.284271247461902,
+     "octant": 3,
+     "lambda": -0.025022,
+     "reason": "selected"
+    }
+   ],
+   "ellipsoid": {
+    "centre": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "ang1": 0.0,
+    "ang2": 0.0,
+    "ang3": 0.0,
+    "r1": 30.0,
+    "r2": 30.0,
+    "r3": 30.0,
+    "pass": 1
+   },
+   "passes": [
+    {
+     "pass": 1,
+     "ok": true,
+     "n": 4,
+     "reason": null
+    }
+   ],
+   "origin": [
+    7.0,
+    6.0,
+    0.0
+   ],
+   "counts": {
+    "candidates": 4,
+    "selected": 4
+   }
+  }
+ },
+ "inspect": {
+  "status": 200,
+  "body": {
+   "model_id": 7,
+   "block": {
+    "ijk": [
+     0,
+     0,
+     0
+    ],
+    "p": 0,
+    "rows": [
+     0
+    ],
+    "centre": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "size": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   },
+   "label": "окисл",
+   "results": [
+    {
+     "estimation_id": 41,
+     "name": "AU · OK · окисл",
+     "prefix": "AU_OK_",
+     "method": "ok",
+     "status": 0,
+     "pass": 1,
+     "values": {
+      "EST": 1.99288,
+      "KV": 0.544418,
+      "NS": 4,
+      "NH": 4,
+      "AD": 14.571067811865476,
+      "PASS": 1,
+      "SLOPE": 0.954774,
+      "KE": 0.455582
+     },
+     "stored": {
+      "EST": 1.99288,
+      "KV": 0.544418,
+      "NS": 4,
+      "NH": 4,
+      "AD": 14.571067811865476,
+      "PASS": 1,
+      "SLOPE": 0.954774,
+      "KE": 0.455582
+     },
+     "same": true,
+     "changed": false,
+     "warning": null,
+     "mu": -0.022653,
+     "samples": [
+      {
+       "i": 0,
+       "row_id": 101,
+       "hole": "A-1",
+       "from": 9.0,
+       "to": 11.0,
+       "xyz": [
+        0.0,
+        10.0,
+        0.0
+       ],
+       "z_raw": 1.0,
+       "z": 1.0,
+       "h": 10.0,
+       "dist": 10.0,
+       "octant": 3,
+       "lambda": 0.33289,
+       "reason": "selected"
+      },
+      {
+       "i": 1,
+       "row_id": 102,
+       "hole": "B-2",
+       "from": 9.0,
+       "to": 11.0,
+       "xyz": [
+        10.0,
+        0.0,
+        0.0
+       ],
+       "z_raw": 2.0,
+       "z": 2.0,
+       "h": 10.0,
+       "dist": 10.0,
+       "octant": 1,
+       "lambda": 0.316318,
+       "reason": "selected"
+      },
+      {
+       "i": 2,
+       "row_id": 103,
+       "hole": "C-3",
+       "from": 9.0,
+       "to": 11.0,
+       "xyz": [
+        -6.0,
+        -8.0,
+        0.0
+       ],
+       "z_raw": 3.0,
+       "z": 3.0,
+       "h": 10.0,
+       "dist": 10.0,
+       "octant": 4,
+       "lambda": 0.375815,
+       "reason": "selected"
+      },
+      {
+       "i": 3,
+       "row_id": 104,
+       "hole": "D-4",
+       "from": 9.0,
+       "to": 11.0,
+       "xyz": [
+        20.0,
+        20.0,
+        0.0
+       ],
+       "z_raw": 4.0,
+       "z": 4.0,
+       "h": 28.284271247461902,
+       "dist": 28.284271247461902,
+       "octant": 3,
+       "lambda": -0.025022,
+       "reason": "selected"
+      }
+     ],
+     "ellipsoid": {
+      "centre": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "ang1": 0.0,
+      "ang2": 0.0,
+      "ang3": 0.0,
+      "r1": 30.0,
+      "r2": 30.0,
+      "r3": 30.0,
+      "pass": 1
+     },
+     "passes": [
+      {
+       "pass": 1,
+       "ok": true,
+       "n": 4,
+       "reason": null
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "xval_submit": {
+  "status": 200,
+  "body": {
+   "source": "jobs",
+   "id": "j-0002"
+  }
+ },
+ "xval": {
+  "status": 200,
+  "body": {
+   "estimation_id": 41,
+   "by": "hole",
+   "at": "2026-11-25T10:00:00+00:00",
+   "stale": false,
+   "total": 4,
+   "page": 1,
+   "pages": 1,
+   "size": 500,
+   "rows": [
+    {
+     "i": 0,
+     "row_id": 101,
+     "hole": "A-1",
+     "from": 9.0,
+     "to": 11.0,
+     "x": 0.0,
+     "y": 10.0,
+     "z": 0.0,
+     "true": 1.0,
+     "est": 2.31,
+     "error": 1.31,
+     "kv": 0.71,
+     "z_error": 1.5547,
+     "pass": 1,
+     "ns": 3,
+     "status": 0
+    }
+   ],
+   "summary": {
+    "n": 4,
+    "mean_error": 0.12,
+    "std_error": 0.98,
+    "mae": 0.81,
+    "r": 0.42,
+    "slope": 0.77,
+    "mean_ratio": 1.08
+   },
+   "histogram": {
+    "edges": [
+     -2.0,
+     -1.0,
+     0.0,
+     1.0,
+     2.0
+    ],
+    "counts": [
+     1,
+     1,
+     1,
+     1
+    ]
+   }
+  }
+ },
+ "kna": {
+  "status": 200,
+  "body": {
+   "estimation_id": 41,
+   "blocks": [
+    {
+     "at": {
+      "row": 10,
+      "p": 10,
+      "ijk": [
+       0,
+       1,
+       0
+      ]
+     },
+     "centre": [
+      5.0,
+      15.0,
+      2.5
+     ],
+     "n_r1": 41,
+     "auto": "много",
+     "base": {
+      "KE": 0.61,
+      "SLOPE": 0.93,
+      "KV": 0.32,
+      "SNW": -0.04,
+      "w_far": 0.01,
+      "LAGR": -0.02,
+      "NS": 24
+     },
+     "vary": {
+      "n_max": [
+       {
+        "value": 4,
+        "KE": 0.41,
+        "SLOPE": 0.71,
+        "KV": 0.47,
+        "SNW": 0.0,
+        "w_far": 0.2,
+        "LAGR": -0.05,
+        "NS": 4,
+        "status": 0
+       }
+      ],
+      "radius": [
+       {
+        "value": 0.5,
+        "KE": 0.5,
+        "SLOPE": 0.85,
+        "KV": 0.4,
+        "SNW": -0.01,
+        "w_far": 0.05,
+        "LAGR": -0.03,
+        "NS": 18,
+        "status": 0
+       }
+      ],
+      "disc": [
+       {
+        "value": [
+         1,
+         1,
+         1
+        ],
+        "KE": 0.66,
+        "SLOPE": 0.93,
+        "KV": 0.35,
+        "SNW": -0.04,
+        "w_far": 0.01,
+        "LAGR": -0.02,
+        "NS": 24,
+        "status": 0
+       }
+      ],
+      "size": [
+       {
+        "value": 0.5,
+        "KE": 0.55,
+        "SLOPE": 0.92,
+        "KV": 0.36,
+        "SNW": -0.04,
+        "w_far": 0.01,
+        "LAGR": -0.02,
+        "NS": 24,
+        "status": 0
+       }
+      ]
+     },
+     "recommend": {
+      "n_max": 16
+     }
+    }
+   ],
+   "recommend": {
+    "n_max": 16
+   }
+  }
+ },
+ "global": {
+  "status": 200,
+  "body": {
+   "estimation_id": 41,
+   "field": "AU_OK_EST",
+   "composites": {
+    "naive": {
+     "n": 880,
+     "mean": 2.01,
+     "var": 1.9,
+     "cv": 0.69
+    },
+    "declus": {
+     "n": 880,
+     "mean": 1.77,
+     "var": 1.6,
+     "cv": 0.71
+    }
+   },
+   "nn": {
+    "n": 1100,
+    "volume": 550000.0,
+    "mean": 1.79,
+    "var": 1.55,
+    "cv": 0.7
+   },
+   "estimate": {
+    "n": 1100,
+    "volume": 550000.0,
+    "mean": 1.74,
+    "var": 0.62,
+    "cv": 0.45
+   },
+   "diff_pct": -1.69,
+   "norm": true,
+   "block_var": {
+    "expected": 0.67771,
+    "estimate": 0.62
+   }
+  }
+ },
+ "simulation": {
+  "status": 200,
+  "body": {
+   "id": 61,
+   "name": "AU · SGS · окисл",
+   "version": 1,
+   "meta": {
+    "v": 1,
+    "kind": "sgs",
+    "model_id": 7,
+    "target": {
+     "domain_field": "ZONE",
+     "label": "окисл",
+     "filter_id": null,
+     "rules": null
+    },
+    "samples": {
+     "set_id": 3,
+     "table": "12",
+     "field": "AU",
+     "unit": "г/т",
+     "domain": {
+      "table": "14",
+      "field": "ZONE",
+      "values": [
+       "окисл"
+      ]
+     },
+     "soft": null,
+     "topcut": null,
+     "weights": null
+    },
+    "variogram": {
+     "model_id": 21,
+     "snapshot": {
+      "type": "semivariogram",
+      "c0": 0.1,
+      "structures": [
+       {
+        "type": "spherical",
+        "c": 0.9,
+        "ang1": 0.0,
+        "ang2": 0.0,
+        "ang3": 0.0,
+        "a1": 30.0,
+        "a2": 30.0,
+        "a3": 30.0
+       }
+      ],
+      "common_axes": true
+     },
+     "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "scale": "y",
+     "share": null
+    },
+    "variograms": null,
+    "method": null,
+    "search": {
+     "from": "model",
+     "ang1": 0.0,
+     "ang2": 0.0,
+     "ang3": 0.0,
+     "r1": 30.0,
+     "r2": 30.0,
+     "r3": 30.0,
+     "passes": [
+      {
+       "factor": 1.0,
+       "n_min": 4,
+       "n_max": 24,
+       "n_hole": 0,
+       "n_oct": 0,
+       "k_oct": 0,
+       "n_holes_min": 0,
+       "hy": null
+      }
+     ]
+    },
+    "nodes": 12,
+    "seed": 12345,
+    "n_real": 20,
+    "secondary": null,
+    "nscore": {
+     "ltail": "linear",
+     "utail": "linear",
+     "ltpar": null,
+     "utpar": null
+    },
+    "origin": [
+     7.0,
+     6.0,
+     0.0
+    ],
+    "inputs": [
+     {
+      "kind": "dh_table",
+      "id": 12,
+      "fp": "tok-12:5",
+      "name": "Композиты"
+     },
+     {
+      "kind": "dh_table",
+      "id": 14,
+      "fp": "tok-14:2",
+      "name": "Литология"
+     },
+     {
+      "kind": "dh_set",
+      "id": 3,
+      "fp": "traj:9f2c",
+      "name": "Скважины"
+     },
+     {
+      "kind": "object:variogram_model",
+      "id": 21,
+      "fp": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "name": "AU · окисл"
+     },
+     {
+      "kind": "object:block_model",
+      "id": 7,
+      "fp": "cells:1111111111111111111111111111111111111111111111111111111111111111",
+      "name": "Модель"
+     },
+     {
+      "kind": "bm_field",
+      "id": "7:ZONE",
+      "fp": "cells:1111111111111111111111111111111111111111111111111111111111111111",
+      "name": "Модель · ZONE"
+     }
+    ],
+    "algo": "sim-1",
+    "last_run": {
+     "at": "2026-11-25T10:00:00+00:00",
+     "job": "j-0003",
+     "nodes": 1000,
+     "realizations": 20
+    }
+   },
+   "file": {
+    "role": "real",
+    "sha": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "rows": 1000,
+    "columns": [
+     "p",
+     "dom",
+     "r001",
+     "r002"
+    ]
+   },
+   "stale": false,
+   "stale_reason": null,
+   "source_lost": false,
+   "created_at": "2026-11-25T10:00:00+00:00",
+   "updated_at": "2026-11-25T10:00:00+00:00"
+  }
+ },
+ "simulate_result": {
+  "status": 200,
+  "body": {
+   "simulation_id": 61,
+   "nodes": 1000,
+   "realizations": 20,
+   "seconds": 3.2,
+   "events": [
+    [
+     "geostat.changed",
+     {
+      "kind": "simulation",
+      "id": 61
+     }
+    ]
+   ]
+  }
+ },
+ "simulate_post_result": {
+  "status": 200,
+  "body": {
+   "simulation_id": 61,
+   "model_id": 7,
+   "version": 6,
+   "fields": [
+    "AU_SGS_MEAN",
+    "AU_SGS_STD",
+    "AU_SGS_P10",
+    "AU_SGS_P50",
+    "AU_SGS_P90",
+    "AU_SGS_PROB_GT_1"
+   ],
+   "events": [
+    [
+     "objects.changed",
+     {
+      "kind": "block_model",
+      "id": 7
+     }
+    ]
+   ]
+  }
+ }
+}
