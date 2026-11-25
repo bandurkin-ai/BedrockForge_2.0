@@ -92,8 +92,7 @@ def to_wireframe(svc: Svc, request: Request, model_id: int, body: Payload) -> di
     project = svc.require_current(writable=True)
     with dialect.write_tx(project.engine) as conn:
         row = sb.stored(conn, model_id)
-        if row.state == "building":
-            raise sb.building()
+        sb.refuse_building(conn, row)
         out = copy_output(conn, model_id, raw.get("wireframe_id"), raw.get("name"), author())
     publish_wireframe(request, out["wireframe_id"])
     return out

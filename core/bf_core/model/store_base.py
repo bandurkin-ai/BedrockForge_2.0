@@ -38,8 +38,9 @@ DEAD_ID = 2_000_000_000
 DEAD_TABLE = "0"
 
 __all__ = ["ALGO", "BLOB_ROLES", "DEAD_ID", "DEAD_TABLE", "DEFAULT_NAME", "KIND", "LINEAGE_KIND", "OWNER",
-           "ROLE_PATCHES", "ROLE_POINTS", "ROLE_SOLUTION", "ROLE_TREND", "bad", "building", "conflict",
-           "graph_fingerprint", "load_spec", "not_found", "params_hash", "stored", "without_ids"]  # fmt: skip
+           "ROLE_PATCHES", "ROLE_POINTS", "ROLE_SOLUTION", "ROLE_TREND", "back_of", "bad", "building", "conflict",
+           "graph_fingerprint", "is_building", "job_alive", "load_spec", "not_found", "params_hash", "refuse_building",
+           "resolved_spec", "settled", "stored", "viewed", "without_ids"]  # fmt: skip
 
 
 def not_found(param: str | None = None) -> ApiError:
@@ -67,6 +68,64 @@ def stored(conn: sa.Connection, model_id: int) -> Any:
     return r
 
 
+# --- «идёт построение» --------------------------------------------------------------------------------------------
+# The state lives in `meta` only (`meta.state == "building"`, `meta.job_id`, `meta.back`): `objects.state` and
+# `objects.job_id` of a model stay `ready` / NULL, because the clean-ups of the jobs and of the project snapshot
+# (`jobs.store.drop_partial`, `archive.export`) delete every `objects` row that is `building` — the model with its
+# outputs among them.
+
+
+def job_alive(conn: sa.Connection, job_id: int) -> bool:
+    """The job is queued or running (its row of `jobs`); a job that is gone, done, failed or cancelled is not."""
+    from bf_core.db.schema import jobs
+    from bf_core.jobs.store import ACTIVE
+
+    status = conn.execute(sa.select(jobs.c.status).where(jobs.c.id == job_id)).scalar()
+    return status in ACTIVE
+
+
+def is_building(conn: sa.Connection, meta: Mapping[str, Any] | None) -> bool:
+    """The model is being built now: `meta.state == "building"` and its job (`meta.job_id`) is alive (a mark without a
+    job id is trusted). A mark whose job is gone (a crash, a kill, a restart) is not: the model is as it was."""
+    m = meta or {}
+    if m.get("state") != "building":
+        return False
+    job = m.get("job_id")
+    return True if job is None or isinstance(job, bool) or not isinstance(job, int) else job_alive(conn, job)
+
+
+def back_of(meta: Mapping[str, Any] | None) -> tuple[str, Any]:
+    """(state, error) the model goes back to when its build ends without a result."""
+    m = meta or {}
+    if m.get("state") != "building":
+        return str(m.get("state") or "ready"), m.get("error")
+    back = m.get("back")
+    if isinstance(back, Mapping) and back.get("state") in ("ready", "error"):
+        return str(back["state"]), back.get("error")
+    return "ready", None
+
+
+def settled(meta: Mapping[str, Any] | None) -> dict[str, Any]:
+    """`meta` of a model whose build is over (or is not alive): the state it went back to, no job and no mark."""
+    out = dict(meta or {})
+    state, error = back_of(out)
+    out.pop("job_id", None)
+    out.pop("back", None)
+    out.update(state=state, error=error)
+    return out
+
+
+def viewed(conn: sa.Connection, meta: Mapping[str, Any] | None) -> dict[str, Any]:
+    """`meta` as the readers show it: a mark «идёт построение» whose job is gone is shown as what the model was."""
+    return dict(meta or {}) if is_building(conn, meta) else settled(meta)
+
+
+def refuse_building(conn: sa.Connection, row: Any) -> None:
+    """409 `model_building` for a model that is being built (`is_building`)."""
+    if is_building(conn, row.meta):
+        raise building()
+
+
 # --- the parameters of a stored row ---------------------------------------------------------------------------------
 
 
@@ -75,6 +134,19 @@ def load_spec(meta: Mapping[str, Any]) -> ModelSpec:
     `inputs`, `state`, `error`, `versions`, `last_run`, `created_at`). A reference the archive did not have is
     `DEAD_ID` (`remap`), so the parameters parse as they are."""
     return parse_model(dict(meta))
+
+
+def resolved_spec(meta: Mapping[str, Any]) -> ModelSpec:
+    """`load_spec` with the step `h` the model is built with when the user left it «авто» (the extent of the boundary
+    is in `meta.extent`)."""
+    spec = load_spec(meta)
+    extent = meta.get("extent")
+    if spec.h is None and isinstance(extent, list) and len(extent) == 6:
+        try:
+            spec = spec.resolved(tuple(float(v) for v in extent))
+        except ApiError:
+            pass
+    return spec
 
 
 def _dump(value: Any) -> str:

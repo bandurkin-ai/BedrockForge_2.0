@@ -216,7 +216,7 @@ def commit(engine: sa.Engine, store: BlobStore, model_id: int, files: Files, *, 
                 forget_surface(conn, wid)
                 lineage.forget(conn, lineage.Node("wireframe", wid))
                 deleted.append(wid)
-        st.record_run(conn, model_id, spec, last_run, prep.inputs, outputs=outputs, stats=stats)
+        st.record_run(conn, model_id, spec, last_run, prep.inputs, outputs=outputs, stats=stats, extent=prep.extent)
         version = int(sb.stored(conn, model_id).version)
     return Done(version, outputs, removed, deleted, replaced, created)
 

@@ -5,11 +5,19 @@ children of the model (`parent_id`, `meta.source {op: "implicit", model_id, grou
 against the project, the inputs of the graph and «устарела» — `store_check.py`.
 
 `meta` v1 (e19-api §2): the checked parameters (`spec.canonical()`) and `v`, `algo`, `versions`, `created_at`,
-`extent` (the box of the boundary; `objects.extent` too), `state` (`ready` | `building` | `error`; `objects.state`
-is `building` while the job runs, else `ready`), `error` {code, message, hint, group?} | null, `outputs`
+`extent` (the box of the boundary; `objects.extent` too), `state` (`ready` | `building` | `error`), `error` {code,
+message, hint, group?} | null, `outputs`
 [{wireframe_id, kind, group, wing, threshold?, name}], `stats`, `inputs` [{kind, id, fp, name}], `last_run`
 {at, job, mode, seconds, params} | null (written by the job: `record_run`; `params` is the hash of the parameters it
 ran with: a later `PUT` that changes them makes the model «устарела»).
+
+`h` is what the user gave (None — «авто»): `h_used` is the step the model is built with now (`spec.resolved`); a `PUT`
+that moves the boundary and gives no `h` takes the step again. «Идёт построение» is `meta.state == "building"` with
+`meta.job_id` (the job that runs) and `meta.back` {state, error} (what the model goes back to); `objects.state` and
+`objects.job_id` of a model stay `ready` / NULL — the clean-ups of the jobs and of the project snapshot delete every
+`building` row of `objects`, the model with its outputs among them. The job marks the model in its own first
+transaction (`job._begin`), the route only checks; a mark whose job is gone (cancelled in the queue, killed, a crash)
+is not «идёт построение» (`store_base.is_building`) and the next write takes it back to `back`.
 
 References (ADR 0026 решение 24): the trend is `object_refs(src=model, dst=trend, role="trend")` — a trend with
 such rows is not deleted (409 `in_use`, `geostat/trend_store.py`); the other inputs are not references: deleting
@@ -28,6 +36,7 @@ from __future__ import annotations
 
 import shutil
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from importlib import metadata
 from typing import TYPE_CHECKING, Any
 
@@ -81,13 +90,30 @@ load_spec = sb.load_spec
 # --- the graph (ADR 0025) ---------------------------------------------------------------------------------------------
 
 
-def _lineage(conn: sa.Connection, model_id: int, inputs: Sequence[Mapping[str, Any]]) -> None:
+def _lineage(conn: sa.Connection, model_id: int, inputs: Sequence[Mapping[str, Any]], *, keep: bool = False) -> None:
     """`lineage.record(conn, dst, inputs)`: the model is a node `("object:implicit_model", id)`; the graph takes the
-    fingerprint and the name of every input itself (one form of `fp` for every kind)."""
+    fingerprint and the name of every input itself (one form of `fp` for every kind). `keep`: an edit of a model that
+    was built — an input the graph already has keeps the fingerprint of the last run, so a changed input stays
+    «устарела» (only a new input gets its fingerprint as it is now)."""
     from bf_core import lineage
+    from bf_core.lineage import store as lstore
 
-    lineage.record(conn, lineage.Node(LINEAGE_KIND, model_id), [lineage.Node(str(i["kind"]), int(i["id"]))
-                                                                 for i in inputs])  # fmt: skip
+    dst = lineage.Node(LINEAGE_KIND, model_id)
+    old = {r.node: r for r in lstore.inputs_of(conn, [dst]).get(dst, [])} if keep else {}
+    refs = lineage.record(conn, dst, [lineage.Node(str(i["kind"]), int(i["id"])) for i in inputs])
+    if old:
+        lstore.write_inputs(conn, dst, [lineage.InputRef(r.node, old[r.node].fp, r.name) if r.node in old else r
+                                        for r in refs])  # fmt: skip
+
+
+def _kept_inputs(meta: Mapping[str, Any], inputs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """`inputs` of an edit of a model that was built: an input the last run had keeps its `fp` (what the run saw), the
+    name is the current one; a new input has the fingerprint as it is now. A model never built — all as they are."""
+    if not meta.get("last_run"):
+        return inputs
+    old = {(str(i.get("kind")), i.get("id")): i for i in meta.get("inputs") or [] if isinstance(i, Mapping)}
+    return [{**i, "fp": old[(i["kind"], i["id"])]["fp"]} if "fp" in old.get((i["kind"], i["id"]), {}) else i
+            for i in inputs]  # fmt: skip
 
 
 # --- writing ----------------------------------------------------------------------------------------------------------
@@ -111,11 +137,12 @@ def _sync_refs(conn: sa.Connection, model_id: int, spec: ModelSpec) -> None:
 
 
 def _meta(spec: ModelSpec, name: str, prep: Prepared, *, created: str, **kept: Any) -> dict[str, Any]:
-    """`kept`: what the job wrote (`state`, `error`, `outputs`, `stats`, `last_run`, `versions`)."""
+    """`kept`: what the job wrote (`state`, `error`, `outputs`, `stats`, `last_run`, `versions`). `spec` is what the
+    user gave (`h` None — «авто»): `h` stays as given, the step in use is `h_used`."""
     base: dict[str, Any] = {"state": "ready", "error": None, "outputs": [], "stats": None, "last_run": None,
                             "versions": _versions()}  # fmt: skip
-    return {"v": 1, **{**spec.canonical(), "name": name}, "algo": sb.ALGO, "created_at": created,
-            "extent": prep.extent, "inputs": prep.inputs, **{**base, **kept}}  # fmt: skip
+    return {"v": 1, **{**spec.canonical(), "name": name}, "h_used": prep.spec.h, "algo": sb.ALGO,
+            "created_at": created, "extent": prep.extent, "inputs": prep.inputs, **{**base, **kept}}  # fmt: skip
 
 
 def create(conn: sa.Connection, store: BlobStore | None, project: Any, spec: ModelSpec, author: str | None = None,
@@ -126,7 +153,7 @@ def create(conn: sa.Connection, store: BlobStore | None, project: Any, spec: Mod
     prep = prepared or prepare(conn, spec, points=points)
     final = eb.final_name(conn, KIND, prep.spec.name, sb.DEFAULT_NAME)
     now = dialect.utcnow()
-    meta = _meta(prep.spec, final, prep, created=now.isoformat())
+    meta = _meta(replace(prep.spec, h=spec.h), final, prep, created=now.isoformat())
     res = conn.execute(sa.insert(objects).values(
         kind=KIND, name=final, name_key=dialect.name_key(final), parent_id=None, sort_key=0.0, state="ready",
         version=1, meta=meta, extent=prep.extent, author=author, created_at=now, updated_at=now))  # fmt: skip
@@ -143,73 +170,97 @@ def update(conn: sa.Connection, store: BlobStore | None, project: Any, model_id:
     the result is checked again. `expected_version` is required (422 `bad_param {param: "expected_version"}`):
     another one — 409 `version_conflict {version}` (also when another window writes between the reading and the
     update); a model that is being built — 409 `model_building`. The result of the last build stays (the model is
-    «устарела» by its parameters until it is built again)."""
+    «устарела» by its parameters until it is built again), and so do the fingerprints of its inputs: an edit does not
+    make a changed input look unchanged (`_kept_inputs`). `h` is what the user gave: a boundary changed without `h`
+    takes the step again."""
     row = sb.stored(conn, model_id)
-    if row.state == "building":
-        raise sb.building()
+    sb.refuse_building(conn, row)
     version = ms.clean_version(expected_version)
     if int(row.version) != version:
         raise sb.conflict(int(row.version))
-    meta = dict(row.meta or {})
+    meta = sb.settled(row.meta)  # a mark whose job is gone is not kept
     body = {k: meta[k] for k in KEYS if k in meta}
     body.update({k: raw[k] for k in KEYS if k in raw})
     new = parse_model({**body, "name": meta.get("name")})
     prep = prepared or prepare(conn, new, points=points)
     final = str(row.name) if raw.get("name") is None else eb.final_name(conn, KIND, raw["name"], "", model_id)
     kept = {k: meta.get(k) for k in ("state", "error", "outputs", "stats", "last_run", "versions") if k in meta}
-    out = _meta(prep.spec, final, prep, created=str(meta.get("created_at") or ""), **kept)
+    prep = replace(prep, inputs=_kept_inputs(meta, prep.inputs))
+    out = _meta(replace(prep.spec, h=new.h), final, prep, created=str(meta.get("created_at") or ""), **kept)
     n = conn.execute(sa.update(objects).where(objects.c.id == model_id, objects.c.version == version).values(
         name=final, name_key=dialect.name_key(final), meta=out, extent=prep.extent, version=version + 1,
         updated_at=dialect.utcnow())).rowcount  # fmt: skip
     if n != 1:
         raise sb.conflict(int(sb.stored(conn, model_id).version))
     _sync_refs(conn, model_id, prep.spec)
-    _lineage(conn, model_id, prep.inputs)
+    _lineage(conn, model_id, prep.inputs, keep=bool(meta.get("last_run")))
     return {"id": model_id, "name": final, "version": version + 1}
 
 
 def set_state(conn: sa.Connection, model_id: int, state: str, *, error: Mapping[str, Any] | None = None,
               job_id: int | None = None) -> None:  # fmt: skip
     """The job begins (`building`, its id) or ends without a result (`ready` / `error` with `error {code, message,
-    hint, group?}`): `meta.state`, `meta.error` and `objects.state` (`building` or `ready`). The version does not
-    change: this is not an edit of a window."""
+    hint, group?}`): `meta.state`, `meta.error`, `meta.job_id` and `meta.back` — all in `meta`; `objects.state` and
+    `objects.job_id` are not touched (see the module text). The version does not change: this is not an edit of a
+    window."""
     if state not in STATES:
         raise ValueError(f"not a state of an implicit model: {state!r}")
     row = sb.stored(conn, model_id)
-    meta = {**(row.meta or {}), "state": state, "error": dict(error) if error else None}
-    conn.execute(sa.update(objects).where(objects.c.id == model_id).values(
-        meta=meta, state="building" if state == "building" else "ready",
-        job_id=job_id if state == "building" else None))  # fmt: skip
+    meta = dict(row.meta or {})
+    if state == "building":
+        back_state, back_error = sb.back_of(meta)  # the first mark keeps what the model goes back to
+        meta.update(state=state, error=None, job_id=job_id, back={"state": back_state, "error": back_error})
+    else:
+        meta.pop("job_id", None)
+        meta.pop("back", None)
+        meta.update(state=state, error=dict(error) if error else None)
+    conn.execute(sa.update(objects).where(objects.c.id == model_id).values(meta=meta))
 
 
 def begin(conn: sa.Connection, model_id: int, expected_version: Any, job_id: int | None = None) -> Any:
-    """Before the job is queued: the model is checked (404, 409 `version_conflict`, `model_building`) and marked
-    `building`; returns the row as it was (the job puts the previous state back when it is cancelled)."""
+    """The model is checked (404, 409 `version_conflict`, `model_building`) and marked `building`; returns the row as
+    it was. The route does not call it (it only checks: `check_startable`); the job marks its model itself."""
+    row = check_startable(conn, model_id, expected_version)
+    set_state(conn, model_id, "building", job_id=job_id)
+    return row
+
+
+def check_startable(conn: sa.Connection, model_id: int, expected_version: Any) -> Any:
+    """What the route checks before it queues a job: 404 `model_not_found`, 409 `model_building`, `version_conflict`;
+    returns the row."""
     row = sb.stored(conn, model_id)
-    if row.state == "building":
-        raise sb.building()
+    sb.refuse_building(conn, row)
     version = ms.clean_version(expected_version)
     if int(row.version) != version:
         raise sb.conflict(int(row.version))
-    set_state(conn, model_id, "building", job_id=job_id)
     return row
 
 
 def record_run(conn: sa.Connection, model_id: int, spec: ModelSpec, last_run: Mapping[str, Any],
                inputs: list[dict[str, Any]], *, outputs: list[dict[str, Any]], stats: Mapping[str, Any] | None,
                state: str = "ready", error: Mapping[str, Any] | None = None,
-               versions: Mapping[str, Any] | None = None) -> None:  # fmt: skip
+               versions: Mapping[str, Any] | None = None, extent: Sequence[float] | None = None) -> None:  # fmt: skip
     """The job wrote the files and the outputs (in its transaction, after `commit` and `commit_output`):
     `meta.last_run` = `last_run` + `params` (the hash of the parameters it ran with), `meta.inputs`, `outputs`,
-    `stats`, `state`, `error`; the outputs get the model as their input in the graph. The version does not change."""
+    `stats`, `state`, `error`, `extent` (what the run read, when it says); the outputs get the model as their input in
+    the graph. `last_run.params` is the hash of the parameters as the user gave them (`h` None stays None), as
+    `freshness` reads them. The version does not change."""
     if state not in STATES or state == "building":
         raise ValueError(f"not a final state of an implicit model: {state!r}")
     row = sb.stored(conn, model_id)
     meta = dict(row.meta or {})
-    meta.update(last_run={**last_run, "params": sb.params_hash(spec)}, inputs=inputs, outputs=outputs,
-                stats=None if stats is None else dict(stats), state=state, error=dict(error) if error else None,
+    given = sb.load_spec(meta)  # `h` as the user gave it: `freshness` hashes the stored meta the same way
+    meta.pop("job_id", None)
+    meta.pop("back", None)
+    meta.update(last_run={**last_run, "params": sb.params_hash(replace(spec, h=given.h))}, inputs=inputs,
+                outputs=outputs, stats=None if stats is None else dict(stats), state=state,
+                error=dict(error) if error else None,
                 versions=dict(versions) if versions is not None else _versions())  # fmt: skip
-    conn.execute(sa.update(objects).where(objects.c.id == model_id).values(meta=meta, state="ready", job_id=None))
+    values: dict[str, Any] = {"meta": meta}
+    if extent is not None:
+        meta.update(extent=[float(v) for v in extent], h_used=spec.h)
+        values["extent"] = meta["extent"]
+    conn.execute(sa.update(objects).where(objects.c.id == model_id).values(**values))
     _lineage(conn, model_id, inputs)
     from bf_core import lineage
 
@@ -230,8 +281,7 @@ def delete(conn: sa.Connection, store: BlobStore | None, model_id: int) -> dict[
     from bf_core.wireframes.cloud_dz import forget_surface
 
     row = sb.stored(conn, model_id)
-    if row.state == "building":
-        raise sb.building()
+    sb.refuse_building(conn, row)
     kids = [int(i) for i in conn.execute(sa.select(objects.c.id).where(
         objects.c.parent_id == model_id, objects.c.kind == wf.WIREFRAME).order_by(objects.c.id)).scalars()]  # fmt: skip
     removed = []
@@ -360,7 +410,7 @@ def list_rows(conn: sa.Connection) -> list[dict[str, Any]]:
     created_at, updated_at}`."""
     out = []
     for r in conn.execute(sa.select(objects).where(objects.c.kind == KIND).order_by(objects.c.name_key, objects.c.id)):
-        meta = r.meta or {}
+        meta = sb.viewed(conn, r.meta)
         out.append({"id": int(r.id), "name": r.name, "version": int(r.version), "state": meta.get("state") or "ready",
                     **freshness(conn, meta),
                     "groups": [{"id": g.get("id"), "name": g.get("name"), "type": g.get("type")}
@@ -375,7 +425,7 @@ def get(conn: sa.Connection, model_id: int) -> dict[str, Any]:
     """`{id, name, version, meta, state, error, stale, stale_reason, source_lost, outputs, created_at, updated_at}`
     (e19-api §5); 404 `model_not_found`."""
     row = sb.stored(conn, model_id)
-    meta = dict(row.meta or {})
+    meta = sb.viewed(conn, row.meta)
     return {"id": int(row.id), "name": row.name, "version": int(row.version), "meta": meta,
             "state": meta.get("state") or "ready", "error": meta.get("error"), **freshness(conn, meta),
             "outputs": outputs_of(conn, meta), "created_at": row.created_at,

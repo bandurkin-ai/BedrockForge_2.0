@@ -3,9 +3,9 @@
 
     out = run_build(engine, folder, params, tick, update=False, threads=None, job_id=None)    # the body of the job
 
-`params` — what the route checked: `model_id`, `expected_version` (of the model), `threads` (1–64), and, from the
-route that marked the model `building` (`store.begin`), `previous_state` / `previous_error` — what the model goes back
-to when the job is cancelled (the default is `ready`).
+`params` — what the route checked: `model_id`, `expected_version` (of the model), `threads` (1–64). The job marks the
+model `building` in its first transaction (`_begin`; the state is in `meta`, not in `objects.state`); a cancel puts back
+the state it had (`ready` or `error` with its reason).
 
 The stages (`spec.STAGES`, the text of a message starts with its stage): «Данные» (`data.load`) → «Участки» (the octree
 and the solution of the patches of every group) → «Изоповерхности» (the bricks) → «Тела» (the chronology, the veins, the
@@ -80,10 +80,10 @@ def _error_of(err: ApiError) -> dict[str, Any]:
     return out
 
 
-def _begin(engine: sa.Engine, model_id: int, expected: Any, job_id: int | None,
-           params: dict[str, Any]) -> dict[str, Any]:  # fmt: skip
-    """The job starts: the model is marked `building` (the route may have done it: `store.begin`); returns the state it
-    goes back to on a cancel."""
+def _begin(engine: sa.Engine, model_id: int, expected: Any, job_id: int | None) -> dict[str, Any]:
+    """The job starts: the model is marked `building` with the id of the job (in `meta`, see `store`); returns the
+    state it goes back to on a cancel. A model that another job (alive) is building — 409 `model_building`; a mark whose
+    job is gone is taken over (the model goes back to the state in `meta.back`)."""
     from . import store as st
     from . import store_base as sb
 
@@ -91,17 +91,12 @@ def _begin(engine: sa.Engine, model_id: int, expected: Any, job_id: int | None,
         row = sb.stored(conn, model_id)
         if expected is not None and int(row.version) != int(expected):
             raise sb.conflict(int(row.version))
-        if row.state == "building":
-            if row.job_id not in (None, job_id):
-                raise sb.building()
-            back = {"state": params.get("previous_state") or "ready", "error": params.get("previous_error")}
-        else:
-            meta = row.meta or {}
-            back = {"state": meta.get("state") or "ready", "error": meta.get("error")}
+        meta = row.meta or {}
+        if meta.get("state") == "building" and meta.get("job_id") not in (None, job_id) and sb.is_building(conn, meta):
+            raise sb.building()
+        state, error = sb.back_of(meta)
         st.set_state(conn, model_id, "building", job_id=job_id)
-    if back["state"] == "building":
-        back = {"state": "ready", "error": None}
-    return back
+    return {"state": state, "error": error}
 
 
 def _settle(engine: sa.Engine, model_id: int, state: str, error: dict[str, Any] | None) -> None:
@@ -153,7 +148,7 @@ def run_build(
 
     model_id = int(params["model_id"])
     expected = params.get("expected_version")
-    back = _begin(engine, model_id, expected, job_id, params)
+    back = _begin(engine, model_id, expected, job_id)
     try:
         return _run(engine, Path(folder), model_id, expected, params, tick, update, threads, job_id)
     except JobCancelled as exc:
@@ -173,6 +168,7 @@ def _run(engine: sa.Engine, folder: Path, model_id: int, expected: Any, params: 
          update: bool, threads: int | None, job_id: int | None) -> dict[str, Any]:  # fmt: skip
     from bf_core import lineage  # noqa: F401 - the providers of the graph are registered with the package
     from bf_core.composites import strips
+    from bf_core.jobs.context import JobCancelled
     from bf_core.storage.blobs import BlobStore
 
     from . import job_stages as js
@@ -221,7 +217,10 @@ def _run(engine: sa.Engine, folder: Path, model_id: int, expected: Any, params: 
         files.discard()
     jw.drop_levels(folder, done.removed)
     up.sweep(folder, model_id, built.used)
-    prog(1.0, None)
+    try:
+        prog(1.0, None)
+    except JobCancelled:
+        pass  # the commit is done: a cancel now takes nothing back (`run_build` would put the old state over it)
     with dialect.read_tx(engine) as conn:
         listed = st.outputs_of(conn, {"outputs": done.outputs})
     return _answer(model_id, done, mode, listed, stats, journal, prog.stages(), jw.events(model_id, done))

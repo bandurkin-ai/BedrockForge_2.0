@@ -59,7 +59,7 @@ __all__ = [
     "ANGLE_COLUMNS", "ATTITUDES_MAX", "DEFAULT_RUN_NAME", "LINES", "MESH_MAX", "MIN_BY", "MISSING", "RANGES",
     "SOURCES", "SRC_MAX", "TT_COLUMNS", "TT_TITLE", "Attitude", "RunSpec", "Source", "TtSpec", "_any_table", "_code",
     "_core", "_domain", "_empty", "_located", "_mesh", "_span", "angle_pair", "bad", "check_columns", "choice",
-    "number", "parse_attitudes", "parse_orientation", "parse_run", "parse_tt", "ranged", "rebind",
+    "make_inputs", "number", "parse_attitudes", "parse_orientation", "parse_run", "parse_tt", "ranged", "rebind",
     "simple_orientation",
 ]  # fmt: skip
 
@@ -152,6 +152,26 @@ def _tables(table_id: int, own: list[str], orientation: list[Source]) -> list[tu
         if t is not None:
             order.setdefault(t[0], []).extend(t[1])
     return [(tid, list(dict.fromkeys(f))) for tid, f in order.items()]
+
+
+def make_inputs(conn: sa.Connection, spec: TtSpec | RunSpec) -> dict[str, Any]:
+    """`inputs` of a result (`results.make_inputs`): the tables and the wireframes of the sources, then — last, so that
+    `rebind` walks the same lists — what the structural trends of the orientation read (the table of the measurements
+    when it is in the set of the result, the supporting wireframe): a changed measurement makes the result «устарел»."""
+    from bf_core.composites import results
+
+    tables = [(t, list(f)) for t, f in spec.tables()]
+    meshes = spec.mesh_ids()
+    at = {t: f for t, f in tables}
+    for s in spec.orientation:
+        for tid, fields in s.trend_tables(spec.set_id):
+            if tid in at:
+                at[tid].extend(f for f in fields if f not in at[tid])
+            else:
+                at[tid] = list(fields)
+                tables.append((tid, at[tid]))
+        meshes.extend(m for m in s.trend_meshes() if m not in meshes)
+    return results.make_inputs(conn, spec.set_id, tables, trajectories=True, meshes=meshes)
 
 
 def _core_rows(conn: sa.Connection, orientation: list[Source]) -> int:
@@ -282,7 +302,8 @@ def check_columns(conn: sa.Connection, spec: TtSpec) -> None:
 
 def trend_lookup(conn: sa.Connection) -> Callable[[Any, Any], int]:
     """(old id, name) of a source `trend` → its id in this project: the old id when it still names a trend of that
-    name, else the trend of that name (the first), else 0 (`parse_orientation`: 422 `trend_not_found`) — a `.bfggis`
+    name, else the trend of that name (the first), else the old id when it is alive under another name (a renamed
+    trend), else 0 (`parse_orientation`: 422 `trend_not_found`) — a `.bfggis`
     import renumbers the objects."""
     named = {int(r.id): str(r.name_key) for r in conn.execute(sa.select(objects.c.id, objects.c.name_key)
                                                               .where(objects.c.kind == "trend"))}  # fmt: skip
@@ -294,7 +315,13 @@ def trend_lookup(conn: sa.Connection) -> Callable[[Any, Any], int]:
                 return int(old)
         except (TypeError, ValueError):
             pass
-        return min((i for i, k in named.items() if k == key), default=0)
+        same = min((i for i, k in named.items() if k == key), default=0)
+        if same:
+            return same
+        try:  # the trend was renamed: the id is alive, only its name is not the one the result remembers
+            return int(old) if int(old) in named else 0
+        except (TypeError, ValueError):
+            return 0
 
     return find
 

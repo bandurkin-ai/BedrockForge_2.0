@@ -43,8 +43,7 @@ def _edit(svc: Svc, request: Request, model_id: int, version: Any,
     expected = ms.clean_version(version)
     with dialect.write_tx(project.engine) as conn:
         row = sb.stored(conn, model_id)
-        if row.state == "building":
-            raise sb.building()
+        sb.refuse_building(conn, row)
         if int(row.version) != expected:
             raise sb.conflict(int(row.version))
         new, group = change(sb.load_spec(dict(row.meta or {})))

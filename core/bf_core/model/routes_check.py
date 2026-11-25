@@ -9,9 +9,11 @@
 body is the whole surface (vertices from `mesh.origin`, distances, triangles; `check_support.mesh_body`) and the header
 has the same plus `mesh {origin, vertices, triangles}`.
 
-Nothing is written but `support_share` of the statistics of the model (the version stays), so both work in a project
-«только просмотр». 404 `model_not_found`, `group_not_found`, `wireframe_not_found`; 409 `model_building`, `not_built`;
-422 `bad_param` {param}.
+Both are synchronous calculations in one of the HEAVY slots; a request with a newer `seq` of its `channel` (the query of
+`check`, the body of `support`) overtakes this one (409 `superseded`). Nothing is written but `support_share` of the
+statistics of the model (the version stays), so both work in a project «только просмотр». 404 `model_not_found`,
+`group_not_found`, `wireframe_not_found`; 409 `model_building`, `not_built`;
+409 `superseded`; 422 `bad_param` {param}.
 
 `model/router.py` (подшаг 19.16) includes `router` of this module (the paths are relative to `/implicit`):
 
@@ -43,7 +45,7 @@ def _query(params: Mapping[str, str]) -> dict[str, Any]:
     """The query as `spec.parse_check` reads it: the numbers are numbers (a text that is not one stays a text and is
     refused there)."""
     out: dict[str, Any] = dict(params)
-    for key in ("group", "page", "size"):
+    for key in ("group", "page", "size", "seq"):
         if isinstance(out.get(key), str) and WHOLE.match(out[key]):
             out[key] = int(out[key])
     return out
@@ -64,7 +66,10 @@ def _highlight(raw: Any) -> float | None:
 
 
 def _check(svc: ProjectService, model_id: int, params: Mapping[str, str], fmt: str | None) -> Response:
+    from bf_core.blocks import viz_spec as sp
+
     from . import check as ck
+    from .routes_base import common_of
     from .spec import parse_check
 
     q = _query(params)
@@ -72,15 +77,23 @@ def _check(svc: ProjectService, model_id: int, params: Mapping[str, str], fmt: s
         q["format"] = fmt
     cs = parse_check(q)
     hl = _highlight(q.get("highlight"))
-    loaded = ck.load(svc.require_current(), model_id)
-    if cs.format == "csv":
-        name = quote(f"Проверка модели № {model_id}.csv")
-        return Response(
-            ck.csv_bytes(loaded, cs, hl),
-            media_type="text/csv; charset=utf-8",
-            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{name}", "Cache-Control": "no-store"},
-        )
-    return JSONResponse(ck.page(loaded, cs, hl))
+    common = common_of({"channel": q.get("channel"), "seq": q.get("seq")})  # `channel`, `seq` of the query
+    project = svc.require_current()
+
+    def work(tok: Any) -> Response:
+        with sp.heavy(tok):  # the table is read and sorted in one of the HEAVY slots of the synchronous calculations
+            loaded = ck.load(project, model_id)
+            if cs.format == "csv":
+                name = quote(f"Проверка модели № {model_id}.csv")
+                return Response(
+                    ck.csv_bytes(loaded, cs, hl),
+                    media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f"attachment; filename*=UTF-8''{name}",
+                             "Cache-Control": "no-store"},
+                )
+            return JSONResponse(ck.page(loaded, cs, hl))
+
+    return sp.overtaken(common, work)
 
 
 @router.get("/models/{model_id}/check", response_model=None)
@@ -95,10 +108,20 @@ def check_csv(svc: Svc, model_id: int, request: Request) -> Response:
 
 @router.post("/models/{model_id}/support", response_model=None)
 def support(svc: Svc, model_id: int, body: Payload = None) -> Response:
+    from bf_core.blocks import viz_spec as sp
+
     from . import check_support as cs
+    from .routes_base import common_of
 
     req = cs.parse(body)
-    res = cs.run(svc.require_current(), model_id, req)
+    common = common_of(req.body)
+    project = svc.require_current()
+
+    def work(tok: Any) -> Any:
+        with sp.heavy(tok):
+            return cs.run(project, model_id, req)
+
+    res = sp.overtaken(common, work)
     if req.format in ("f4", "f4mesh") and res.values is not None:
         head: dict[str, Any] = {
             "threshold": res.out["threshold"],

@@ -96,8 +96,10 @@ def _input(i: Any, ids: Remap) -> Any:
 
 
 def remap_meta(meta: Mapping[str, Any], ids: Remap) -> dict[str, Any]:
-    """The `meta` of an implicit model with the ids of the new project; `last_run.params` is made again."""
-    out = dict(meta)
+    """The `meta` of an implicit model with the ids of the new project; `last_run.params` is made again. A mark
+    «идёт построение» (the snapshot of a project that is building it) is not carried over: its job is not a job of the
+    new project, the model is as it was before (`store_base.settled`)."""
+    out = sb.settled(meta) if meta.get("state") == "building" else dict(meta)
     if isinstance(out.get("boundary"), Mapping):
         b = dict(out["boundary"])
         for key in ("wireframe_id", "dtm_id"):
@@ -165,9 +167,13 @@ def remap_implicit(conn: sa.Connection, objects_map: Mapping[int, int], tables_m
             new: dict[str, Any] = remap_meta(meta, ids)
         else:
             source = meta.get("source")
-            if parent not in models or not isinstance(source, Mapping) or source.get("op") != "implicit":
+            if isinstance(source, Mapping) and source.get("op") == "implicit_copy":  # a copy «В каркас»: no parent
+                new = {**meta, "source": {**source, "model_id": ids.obj(source.get("model_id")),
+                                          "wireframe_id": ids.obj(source.get("wireframe_id"))}}
+            elif parent in models and isinstance(source, Mapping) and source.get("op") == "implicit":
+                new = {**meta, "source": {**source, "model_id": int(parent)}}
+            else:
                 continue
-            new = {**meta, "source": {**source, "model_id": int(parent)}}
         if new != meta:
             conn.execute(sa.update(objects).where(objects.c.id == ident).values(meta=new))
             changed += 1
