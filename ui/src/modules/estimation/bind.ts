@@ -25,10 +25,12 @@ import { PARAMS_TITLE, PARAMS_WINDOW, ParamsWindow } from "./ParamsWindow";
 import { PlanWindow } from "./PlanWindow";
 import { choosePlan, chooseModel as choosePlanModel, confirmDiscard, deletePlan, pickModel, planById, planStore, PLAN_TITLE, PLAN_WINDOW, resetPlan, syncPlan } from "./planState";
 import { bindChecks, renderCheckWindow } from "./checksBind";
+import { bindInspect, renderInspectWindow } from "./inspect/bind";
 import { runBegin, runCancelled, runDone, runFailed, runJob, runReset } from "./runState";
 import { clearEstimations, deleteEstimation, estimableModels, estimationStore, isEstimationEvent, loadRows, rowById } from "./state";
 import { loadVariogramModels, putForm, resetWizard, setStep, startEdit, TITLE, WIZARD_WINDOW, wizardStore } from "./wizardState";
 import { Wizard } from "./Wizard";
+import { bindXval, renderXvalWindow } from "./xvalBind";
 
 /** The window of the wizard, if open. */
 export const wizardWindow = (): string | null => windowStore.get().windows.find((w) => w.kind === WIZARD_WINDOW)?.id ?? null;
@@ -271,9 +273,11 @@ export function bindEstimation(app: App): void {
   app.registry.bind("estimate.plan", noted(app, (a, s) => openPlan(app, a, s)), needProject);
   app.registry.bind("estimate.plan_delete", noted(app, (a, s) => runPlanDelete(a, s)), needWritable(app));
   unbind.push(bindChecks(app)); // estimate.kna, .global, .qq, .swath (18.24)
+  bindInspect(app); // «Блок · i, j, k» (Д-30, 18.Д4): the command, the click on a block, the window
   let uid: string | null = projectStore.get().current?.uid ?? null;
   if (uid) void loadRows();
   unbind.push(
+    ...bindXval(app), // «Перекрёстная проверка» (18.23): its command, its events, its window
     // what was asked of one project does not belong to another
     projectStore.subscribe(() => {
       const cur = projectStore.get().current?.uid ?? null;
@@ -303,5 +307,5 @@ export function bindEstimation(app: App): void {
 export function renderEstimationWindow(w: FloatWin): ReactNode | null {
   if (w.kind === WIZARD_WINDOW) return createElement(Wizard, { winId: w.id });
   if (w.kind === PARAMS_WINDOW) return createElement(ParamsWindow, { winId: w.id });
-  return w.kind === PLAN_WINDOW ? createElement(PlanWindow, { winId: w.id }) : renderCheckWindow(w);
+  return w.kind === PLAN_WINDOW ? createElement(PlanWindow, { winId: w.id }) : (renderCheckWindow(w) ?? renderXvalWindow(w) ?? renderInspectWindow(w));
 }
