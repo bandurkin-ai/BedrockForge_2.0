@@ -24,6 +24,20 @@ GEOSTATSPY=/tmp/GeostatsPy refenv/bin/python tools/gen/ref_geostatspy.py tests/d
 
 Скрипт останавливается, если замкнутая форма расходится с GeostatsPy более чем на 1e−9.
 
+### GeostatsPy 0.0.79 (Э18, Т8.8-4…6, ADR 0024)
+
+`kb2d_079.json`, `kb3d_079.json`, `manifest_079.json` (sha256 файлов, версии, проверки, известные дефекты) — GeostatsPy **0.0.79** с PyPI (MIT), зерно 42. `kb2d`: 300 проб в квадрате 1000 м, сетка 50 × 50 по 20 м, две анизотропные структуры, `ndmax` 16, радиус 400 м; OK и SK, точечный (из 0.0.79) и блочный 4 × 4 (из `core/tests/reference/kb2d_fixed.py` — копия `kb2d` с двумя исправлениями, только для тестов, лицензия MIT рядом). `kb3d`: 250 проб, сетка 16 × 16 × 8, точечный OK и SK, структур 1 и 2 (в том числе с падением); для двух структур в `setrot3D_array` 0.0.79 перенесено одно выделение матрицы (иначе первая структура вырождается в константу) — подробности в `known_defects`. Массивы `est[iy][ix]` и `est[iz][iy][ix]` растут с Y, X, Z.
+
+```bash
+export UV_SYSTEM_CERTS=1; unset UV_NATIVE_TLS
+uv venv /tmp/ref079 --python 3.12
+uv pip install --python /tmp/ref079/bin/python geostatspy==0.0.79 numpy scipy pandas numba statsmodels tqdm matplotlib
+pip download geostatspy==0.0.79 --no-deps -d /tmp/ref079-wheel
+GEOSTATSPY_WHEEL=/tmp/ref079-wheel/geostatspy-0.0.79-py3-none-any.whl /tmp/ref079/bin/python tools/gen/ref_geostatspy.py --079 tests/data/ref/geostatspy
+```
+
+Повторный запуск даёт те же sha256. Разделы 0.0.46 (`geostatspy_reference.json`, `manifest.json`) не меняются. Тест целостности — `core/tests/test_ref_geostatspy_079.py`.
+
 ## Эталоны вариографии (`core/tests/data/variography/`)
 
 Эталоны Э16 лежат рядом с тестами ядра и общие для ядра и интерфейса (ADR 0022; интерфейс сверяет формы с настоящими ответами ядра).
