@@ -80,12 +80,13 @@ describe("the declarations", () => {
     expect(renderToStaticMarkup(createElement(Icon, { name: b!.icon }))).toMatch(/<path d="M/);
   });
   it("the buttons of the ribbon name registered commands", () => {
-    for (const b of [...ESTIMATE_BUTTONS, ...CHECK_BUTTONS, ...SIM_BUTTONS]) {
+    for (const b of [...ESTIMATE_BUTTONS, ...CHECK_BUTTONS]) {
       expect(ids).toContain(b.command);
       expect(b.label).not.toBe("");
       expect(b.hint).toMatch(/[А-Яа-я]/);
     }
-    expect(SIM_BUTTONS[0]).toMatchObject({ command: "estimate.open", args: { method: "ik" }, label: "Индикаторы" });
+    // the group «Моделирование» is the simulation's: its buttons are tested in test/simulation/commands.test.ts; the shell still takes them from here
+    expect(SIM_BUTTONS.map((b) => b.command)).toEqual(["simulate.sgs", "simulate.sis", "simulate.cosgs", "simulate.summary", "simulate.post"]);
   });
 });
 

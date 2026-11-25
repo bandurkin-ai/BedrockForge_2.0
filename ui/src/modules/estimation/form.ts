@@ -145,14 +145,58 @@ export type Built = { ok: true; body: Record<string, unknown> } | { ok: false; i
 
 const needsVariogram = (f: EstimationForm): boolean => f.method === "sk" || f.method === "ok" || (f.method === "ik" && f.ikModels === "median");
 
+/** Step 1 shared with the simulation: the domain of the blocks and the restrictor → `target`, or the words under the field. */
+export function targetBody(f: EstimationForm): Record<string, unknown> | Issue {
+  if (f.domainField && !f.label.trim()) return bad("target.label", "Не выбран домен блоков.", "Выберите значение поля домена модели.");
+  if (!f.domainField && f.label.trim()) return bad("target.domain_field", "Домен блоков без поля домена.", "Выберите поле домена модели.");
+  return { domain_field: f.domainField || null, label: f.label.trim() || null, filter_id: f.filterId, ...(f.filterId === null && f.rest.rules ? { rules: f.rest.rules } : {}) };
+}
+
+/** Step 2 shared with the simulation: the samples (set, table, field, domain, soft boundary, top cut, weights) → `samples`, or the words under the field. */
+export function samplesBody(f: EstimationForm): Record<string, unknown> | Issue {
+  if (f.setId === null) return bad("samples.set_id", "Не выбран набор скважин.", "Выберите набор скважин с пробами.");
+  if (!f.table) return bad("samples.table", "Не выбрана таблица проб.", "Выберите таблицу проб или композитов.");
+  if (!f.field?.trim()) return bad("samples.field", "Не выбрано поле содержания.", "Выберите числовое поле.");
+  let domain: Record<string, unknown> | null = null;
+  if (f.domain) {
+    if (!f.domain.field.trim()) return bad("samples.domain.field", "Домен проб: не выбрано поле.", "Выберите поле домена проб.");
+    const values = [...new Set(f.domain.values.map((v) => v.trim()).filter(Boolean))];
+    if (!values.length) return bad("samples.domain.values", "Домен проб: не выбраны значения.", "Отметьте одно или несколько значений.");
+    if (values.length > DOMAIN_VALUES_MAX) return bad("samples.domain.values", `Домен проб: больше ${DOMAIN_VALUES_MAX} значений.`, `Оставьте не больше ${DOMAIN_VALUES_MAX}.`);
+    domain = { ...(f.domain.table && f.domain.table !== f.table ? { table: f.domain.table } : {}), field: f.domain.field.trim(), values };
+  }
+  let soft: Record<string, unknown> | null = null;
+  if (f.soft.on) {
+    if (!domain) return bad("samples.soft", "Мягкая граница без домена проб.", "Выберите домен проб или уберите мягкую границу.");
+    const dist = numberIn(f.soft.dist, RANGES.soft_dist, "Расстояние мягкой границы", "samples.soft.dist");
+    if (typeof dist !== "number") return dist;
+    const doms = [...new Set(f.soft.domains.map((v) => v.trim()).filter(Boolean))];
+    if (dist > 0 && !doms.length) return bad("samples.soft.domains", "Мягкая граница: не выбраны соседние домены.", "Отметьте домены, пробы которых допускаются у границы, или задайте расстояние 0.");
+    if (doms.some((v) => (domain!.values as string[]).includes(v))) return bad("samples.soft.domains", "Домен мягкой границы совпадает с доменом проб.", "Уберите его из соседних доменов.");
+    soft = { domains: doms, dist };
+  }
+  let topcut: Record<string, unknown> | null = null;
+  if (f.topcut.mode === "field") {
+    if (!f.topcut.field.trim()) return bad("samples.topcut.field", "Урезка: не выбрано поле.", "Выберите поле урезанных содержаний или уберите урезку.");
+    topcut = { field: f.topcut.field.trim() };
+  } else if (f.topcut.mode === "value") {
+    const v = numberIn(f.topcut.value, RANGES.topcut, "Порог урезки", "samples.topcut.value");
+    if (typeof v !== "number") return v;
+    topcut = { value: v };
+  }
+  if (f.weights.kind === "field" && !f.weights.field.trim()) return bad("samples.weights", "Веса: не выбрано поле.", "Выберите поле весов или «нет».");
+  const weights = f.weights.kind === "auto" ? undefined : f.weights.kind === "none" ? false : f.weights.field.trim();
+  return { set_id: f.setId, table: f.table, field: f.field.trim(), ...(domain ? { domain } : {}), ...(soft ? { soft } : {}), ...(topcut ? { topcut } : {}), ...(weights !== undefined ? { weights } : {}) };
+}
+
 /** The body of `POST /estimations` (what is not typed is absent: the core gives its defaults). */
 export function bodyOf(f: EstimationForm, ctx: BodyContext = { scales: {} }): Built {
   const fail = (issue: Issue): Built => ({ ok: false, issue });
   // step 1
   if (f.modelId === null) return fail(bad("model_id", "Не выбрана блочная модель.", "Выберите блочную модель, в которую пишется оценка."));
   if (f.name.trim().length > NAME_MAX) return fail(bad("name", `Имя длиннее ${NAME_MAX} знаков.`, `Сократите имя до ${NAME_MAX} знаков.`));
-  if (f.domainField && !f.label.trim()) return fail(bad("target.label", "Не выбран домен блоков.", "Выберите значение поля домена модели."));
-  if (!f.domainField && f.label.trim()) return fail(bad("target.domain_field", "Домен блоков без поля домена.", "Выберите поле домена модели."));
+  const target = targetBody(f);
+  if (isIssue(target)) return fail(target);
   const disc: number[] = [];
   for (let i = 0; i < 3; i++) {
     const v = numberIn(f.disc[i], RANGES.disc, `Дискретизация по ${"XYZ"[i]}`, `disc.${i}`);
@@ -160,38 +204,8 @@ export function bodyOf(f: EstimationForm, ctx: BodyContext = { scales: {} }): Bu
     disc.push(v);
   }
   // step 2
-  if (f.setId === null) return fail(bad("samples.set_id", "Не выбран набор скважин.", "Выберите набор скважин с пробами."));
-  if (!f.table) return fail(bad("samples.table", "Не выбрана таблица проб.", "Выберите таблицу проб или композитов."));
-  if (!f.field?.trim()) return fail(bad("samples.field", "Не выбрано поле содержания.", "Выберите числовое поле."));
-  let domain: Record<string, unknown> | null = null;
-  if (f.domain) {
-    if (!f.domain.field.trim()) return fail(bad("samples.domain.field", "Домен проб: не выбрано поле.", "Выберите поле домена проб."));
-    const values = [...new Set(f.domain.values.map((v) => v.trim()).filter(Boolean))];
-    if (!values.length) return fail(bad("samples.domain.values", "Домен проб: не выбраны значения.", "Отметьте одно или несколько значений."));
-    if (values.length > DOMAIN_VALUES_MAX) return fail(bad("samples.domain.values", `Домен проб: больше ${DOMAIN_VALUES_MAX} значений.`, `Оставьте не больше ${DOMAIN_VALUES_MAX}.`));
-    domain = { ...(f.domain.table && f.domain.table !== f.table ? { table: f.domain.table } : {}), field: f.domain.field.trim(), values };
-  }
-  let soft: Record<string, unknown> | null = null;
-  if (f.soft.on) {
-    if (!domain) return fail(bad("samples.soft", "Мягкая граница без домена проб.", "Выберите домен проб или уберите мягкую границу."));
-    const dist = numberIn(f.soft.dist, RANGES.soft_dist, "Расстояние мягкой границы", "samples.soft.dist");
-    if (typeof dist !== "number") return fail(dist);
-    const doms = [...new Set(f.soft.domains.map((v) => v.trim()).filter(Boolean))];
-    if (dist > 0 && !doms.length) return fail(bad("samples.soft.domains", "Мягкая граница: не выбраны соседние домены.", "Отметьте домены, пробы которых допускаются у границы, или задайте расстояние 0."));
-    if (doms.some((v) => (domain!.values as string[]).includes(v))) return fail(bad("samples.soft.domains", "Домен мягкой границы совпадает с доменом проб.", "Уберите его из соседних доменов."));
-    soft = { domains: doms, dist };
-  }
-  let topcut: Record<string, unknown> | null = null;
-  if (f.topcut.mode === "field") {
-    if (!f.topcut.field.trim()) return fail(bad("samples.topcut.field", "Урезка: не выбрано поле.", "Выберите поле урезанных содержаний или уберите урезку."));
-    topcut = { field: f.topcut.field.trim() };
-  } else if (f.topcut.mode === "value") {
-    const v = numberIn(f.topcut.value, RANGES.topcut, "Порог урезки", "samples.topcut.value");
-    if (typeof v !== "number") return fail(v);
-    topcut = { value: v };
-  }
-  if (f.weights.kind === "field" && !f.weights.field.trim()) return fail(bad("samples.weights", "Веса: не выбрано поле.", "Выберите поле весов или «нет»."));
-  const weights = f.weights.kind === "auto" ? undefined : f.weights.kind === "none" ? false : f.weights.field.trim();
+  const samples = samplesBody(f);
+  if (isIssue(samples)) return fail(samples);
   // step 3
   const method: Record<string, unknown> = { kind: f.method };
   if (f.method === "idw") {
@@ -216,10 +230,10 @@ export function bodyOf(f: EstimationForm, ctx: BodyContext = { scales: {} }): Bu
   const body: Record<string, unknown> = {
     ...(f.name.trim() ? { name: f.name.trim() } : {}),
     model_id: f.modelId,
-    target: { domain_field: f.domainField || null, label: f.label.trim() || null, filter_id: f.filterId, ...(f.filterId === null && f.rest.rules ? { rules: f.rest.rules } : {}) },
+    target,
     sub: f.sub,
     disc,
-    samples: { set_id: f.setId, table: f.table, field: f.field.trim(), ...(domain ? { domain } : {}), ...(soft ? { soft } : {}), ...(topcut ? { topcut } : {}), ...(weights !== undefined ? { weights } : {}) },
+    samples,
     method,
   };
   const checkScale = (id: number, param: string): Issue | null => (ctx.scales[id] === "y" ? scaleIssue(param) : null);
