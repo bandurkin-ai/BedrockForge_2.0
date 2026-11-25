@@ -34,6 +34,23 @@ const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
 
 // ---- the data of a calculation ----
 
+/** `none`; `nscore` — normal scores; `indicator:<t>` — the indicator of the threshold t (i = 1 where z ≤ t; ТЗ 8.8.1). */
+export type Transform = "none" | "nscore" | `indicator:${string}`;
+export const INDICATOR = "indicator:";
+export const isIndicator = (t: string): t is `indicator:${string}` => t.startsWith(INDICATOR);
+/** The threshold of `indicator:<t>`: a number (a decimal comma too); null — not (yet) a finite number. */
+export function parseThreshold(text: string): number | null {
+  const s = text.trim().replace(",", ".");
+  const t = s === "" ? NaN : Number(s);
+  return Number.isFinite(t) ? t : null;
+}
+/** The transform of an answer or a command: `transform` (`indicator:<t>`, or `indicator` with `threshold`); else `none`. */
+export function asTransform(raw: unknown, threshold?: unknown): Transform {
+  if (raw === "nscore") return "nscore";
+  if (raw === "indicator") return `${INDICATOR}${typeof threshold === "number" || typeof threshold === "string" ? String(threshold).trim() : ""}`;
+  return typeof raw === "string" && isIndicator(raw) ? raw : "none";
+}
+
 /** The common part of `experimental`, `preview`, `map` (e16-api.md «Данные расчёта»). */
 export interface DataBody {
   set_id: number;
@@ -42,7 +59,7 @@ export interface DataBody {
   domain: { table?: string; field: string; values: string[] } | null;
   /** null — DECL_W when the table has it; false — no weights; a field name */
   weights: string | false | null;
-  transform: "none" | "nscore";
+  transform: Transform;
 }
 
 export interface Counts {
@@ -83,6 +100,8 @@ export interface DefaultsAnswer {
   /** the weight field taken (DECL_W by default), null — none */
   weights: string | null;
   has_decl_w: boolean;
+  /** the indicator: its threshold and p — the share of the points with z ≤ t (σ² = p (1 − p)); null — another transform */
+  indicator: { threshold: number; p: number } | null;
   extent: { min: [number, number, number]; max: [number, number, number] } | null;
   /** the defaults of the form: flat keys and `fan`, `map` objects (ТЗ 8.6.4, ADR 0022 §2) */
   defaults: Record<string, unknown>;
@@ -125,6 +144,7 @@ export function readDefaults(raw: unknown): DefaultsAnswer {
     median_length: numOrNull(o.median_length),
     weights: str(o.weights),
     has_decl_w: o.has_decl_w === true,
+    indicator: isNum(obj(o.indicator).threshold) && isNum(obj(o.indicator).p) ? { threshold: obj(o.indicator).threshold as number, p: obj(o.indicator).p as number } : null,
     extent: lo && hi ? { min: lo, max: hi } : null,
     defaults: obj(o.defaults),
     ranges,
@@ -177,7 +197,7 @@ export interface CalcResult {
   table: string | null;
   field: string | null;
   unit: string | null;
-  transform: "none" | "nscore";
+  transform: Transform;
   sigma2: number | null;
   sigma2_z: number | null;
   origin: [number, number, number] | null;
@@ -220,7 +240,7 @@ export function readCalc(raw: unknown): CalcResult {
     table: str(o.table),
     field: str(o.field),
     unit: str(o.unit),
-    transform: o.transform === "nscore" ? "nscore" : "none",
+    transform: asTransform(o.transform),
     sigma2: numOrNull(o.sigma2),
     sigma2_z: numOrNull(o.sigma2_z),
     origin,

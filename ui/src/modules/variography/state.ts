@@ -8,7 +8,7 @@
  */
 import { Store } from "../../shell/store";
 import { parseNumber } from "../composites/params";
-import type { CalcResult, DataBody, DefaultsAnswer, FitWeights, ModelRow, StoredModel } from "./api";
+import { asTransform, INDICATOR, isIndicator, parseThreshold, type CalcResult, type DataBody, type DefaultsAnswer, type FitWeights, type ModelRow, type StoredModel, type Transform } from "./api";
 import type { MapCalc } from "./mapCalc";
 import { EMPTY_MODEL, type Structure, type VModel } from "./model";
 
@@ -24,7 +24,8 @@ export interface DataState {
   /** null — every point; `table` "" — the table of the data */
   domain: { table: string; field: string; values: string[] } | null;
   weights: WeightsChoice;
-  transform: "none" | "nscore";
+  /** `indicator:<text>` keeps the threshold as typed (a number once `dataBody` accepts it) */
+  transform: Transform;
 }
 
 export const DEFAULT_DATA: DataState = { setId: null, table: null, field: null, domain: null, weights: { kind: "auto" }, transform: "none" };
@@ -47,10 +48,16 @@ export function dataBody(d: DataState): { body: DataBody | null; reason: string 
   }
   const weights = d.weights.kind === "auto" ? null : d.weights.kind === "none" ? false : d.weights.field;
   if (d.weights.kind === "field" && !d.weights.field.trim()) return fail("Веса: выберите поле весов");
-  return { body: { set_id: d.setId, table: d.table, field: d.field.trim(), domain, weights, transform: d.transform }, reason: null };
+  let transform: Transform = d.transform;
+  if (isIndicator(transform)) {
+    const t = parseThreshold(transform.slice(INDICATOR.length));
+    if (t === null) return fail("Индикатор: введите порог — число в единицах поля");
+    transform = `${INDICATOR}${t}`;
+  }
+  return { body: { set_id: d.setId, table: d.table, field: d.field.trim(), domain, weights, transform }, reason: null };
 }
 
-/** The data of a command (`set_id, table, field, domain?, domain_table?, domain_values?, weights?, transform?`). */
+/** The data of a command (`set_id, table, field, domain?, domain_table?, domain_values?, weights?, transform?, threshold?`). */
 export function dataFromArgs(a: Record<string, unknown>): DataState {
   const s = (k: string) => (typeof a[k] === "string" && (a[k] as string).trim() ? (a[k] as string).trim() : null);
   const values = s("domain_values")?.split(";").map((v) => v.trim()).filter(Boolean) ?? [];
@@ -62,7 +69,7 @@ export function dataFromArgs(a: Record<string, unknown>): DataState {
     field: s("field"),
     domain: s("domain") ? { table: s("domain_table") ?? "", field: s("domain")!, values } : null,
     weights,
-    transform: a.transform === "nscore" ? "nscore" : "none",
+    transform: asTransform(a.transform, a.threshold),
   };
 }
 
@@ -372,7 +379,7 @@ export function storedData(m: Pick<StoredModel, "meta" | "source">): DataState {
   const domTable = dom.table === undefined || dom.table === null ? "" : String(dom.table);
   const domain = typeof dom.field === "string" && dom.field ? { table: domTable === src.table ? "" : domTable, field: dom.field, values: Array.isArray(dom.values) ? dom.values.map(String) : [] } : null;
   const weights: WeightsChoice = typeof src.weights === "string" && src.weights ? { kind: "field", field: src.weights } : { kind: "none" };
-  return { setId: src.set_id, table: src.table, field: src.field, domain, weights, transform: m.meta.transform === "nscore" ? "nscore" : "none" };
+  return { setId: src.set_id, table: src.table, field: src.field, domain, weights, transform: asTransform(m.meta.transform) };
 }
 
 /** The values of the form of a stored model: the parameters of its calculation (`meta.calc.params`). */
