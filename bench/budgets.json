@@ -605,6 +605,55 @@
       },
       "note": "ТЗ 7.30, Д-01/Д-02: swath по модели без субблоков (Э13), с субблоками и с поворотом 30° (17.10), 2 млн строк, фильтр из библиотеки. Замер 17.39 (2 потока): Э13 первый 0,09 / повтор 0,07 с; субблоки 0,56 / 0,37 с; поворот 0,37 / 0,42 с; средние рядов 1e-9 против numpy; повтор побитно."
     },
+    "implicit_solve": {
+      "params": {"holes": 484, "points": 10000, "threads": 2},
+      "budget_s": 28.0,
+      "budget_mb": 1000,
+      "limits": {"solve_s": 9.2, "patches_s": 0.1, "field_s": 0.7, "residual": 1e-08, "bits_points": 10000},
+      "note": "local 3 repeats: total 8.6-11.3 s, solve_s 2.2-3.7, 394-399 MB"
+    },
+    "implicit_iso": {
+      "params": {"radius": 73, "rays": 800, "h": 1.0, "threads": 2},
+      "budget_s": 112.0,
+      "budget_mb": 950,
+      "limits": {"iso_s": 62.0},
+      "note": "local: total 35.4-44.5 s, iso_s 20.2-24.9, 2.0e5 triangles, 376-380 MB, us_node 16.5-20.3"
+    },
+    "implicit_domains": {
+      "params": {"holes": 289, "h": 8.0, "threads": 2},
+      "budget_s": 146.0,
+      "budget_mb": 1630,
+      "limits": {"patches_s": 17.0, "iso_s": 127.0, "balance": 1e-09},
+      "note": "local: job 32.2-58.4 s (iso_s 24-50 varies), 25.7k points, 604-651 MB"
+    },
+    "implicit_shells": {
+      "params": {"holes": 225, "h": 8.0, "threads": 2},
+      "budget_s": 52.0,
+      "budget_mb": 1180,
+      "limits": {"nest_worst": 1e-06},
+      "note": "local: total 16.7-20.5 s, job 15.0-18.1, 21.7k points, 469-470 MB"
+    },
+    "implicit_update": {
+      "params": {"holes": 225, "h": 8.0, "share": 0.05, "threads": 2},
+      "budget_s": 155.0,
+      "budget_mb": 1670,
+      "limits": {"update_s": 38.0, "share_s": 1.0},
+      "note": "local: total 58.4-61.7 s, update_s 13.4-15.1, share_s 0.56-0.77 (target 0.25 not met; small model: 73 % of 82 patches taken), scatter variant 0.87"
+    },
+    "implicit_auto": {
+      "params": {"holes": 784, "points": 10000, "degenerate": 5000, "threads": 2},
+      "budget_s": 50.0,
+      "budget_mb": 1030,
+      "limits": {"clean_overhead": 0.1, "clean_eta_s": 0.17},
+      "note": "local: total 19.4-19.9 s, clean_overhead 0.020-0.028 (target 0.10), wells_overhead 1.1-1.2 (info), twins 1.1-1.2 (info)"
+    },
+    "implicit_compile": {
+      "params": {"threads": 2, "prior": []},
+      "budget_s": 116.0,
+      "budget_mb": 300,
+      "limits": {"compile_s": 30.0, "empty_s": 30.0, "left_own": 0, "process_mb": 950},
+      "note": "local: total 42.6-46.3 s, compile_s 12.65-12.76, empty_s 12.0-12.9, load_s 0.98, left_own 0, process 370 MB"
+    },
     "estimate_idw": {
       "params": {"rows": 600000, "samples": 20000, "threads": 2},
       "budget_s": 5.4,
@@ -1333,6 +1382,55 @@
       "budget_mb": 2000,
       "limits": {"plain_again_s": 2.0, "turned_again_s": 2.0, "sub_again_s": 3.9, "sub_turn_s": 4.1},
       "note": "ТЗ 7.30 Т7.30-6: пересчёт ≤ 2 с на 20 млн ячеек. Замер 17.39 (4 потока): Э13 (без субблоков) первый 2,0 / повтор 0,39 с; субблоки без поворота 5,4 / ИСКЛЮЧЕНИЕ 2,6 с > 2 с (поворот рамки 2,7, с фильтром 4,0 с); с поворотом 30° 3,8 / 1,17 с; пик 1,3 ГБ. Пределы исключений: повтор и поворот рамки sub 3,9 и 4,1 с (17.10: с поворотом 2,6 с против 0,3 с Э13)."
+    },
+    "implicit_solve": {
+      "params": {"holes": 4800, "points": 100000, "bits": 20000, "threads": 4},
+      "budget_s": 400.0,
+      "budget_mb": 3072,
+      "limits": {"solve_s": 60.0, "residual": 1e-08},
+      "note": "target 60 s / 3 GB; local solve_s 42.1 / 51.2 / 69.2 / 78.9 (varies), 764 MB"
+    },
+    "implicit_iso": {
+      "params": {"radius": 230, "rays": 2700, "h": 1.0, "threads": 4},
+      "budget_s": 500.0,
+      "budget_mb": 2400,
+      "limits": {"iso_s": 90.0},
+      "note": "target 90 s at 2.0e6 triangles; local iso_s 93.7 / 140.8 (R=282: 3.0e6 triangles 207 s), 945 MB"
+    },
+    "implicit_domains": {
+      "params": {"holes": 2400, "threads": 4},
+      "budget_s": 450.0,
+      "budget_mb": 3300,
+      "limits": {"patches_s": 250.0, "iso_s": 200.0},
+      "note": "target 300 s; local job 180.0 / 180.2 / 231.4 / 315.4, 213.7k points (31k + 4 x 50k), 1.24-1.32 GB"
+    },
+    "implicit_shells": {
+      "params": {"holes": 2025, "threads": 4},
+      "budget_s": 300.0,
+      "budget_mb": 2400,
+      "limits": {"nest_worst": 1e-06},
+      "note": "target 300 s; local 109.6 s, 195.3k grades, 953 MB"
+    },
+    "implicit_update": {
+      "params": {"holes": 1200, "share": 0.05, "threads": 4},
+      "budget_s": 350.0,
+      "budget_mb": 4000,
+      "limits": {"share_s": 0.5},
+      "note": "target share 0.25 (ТЗ); local share_s 0.44 (update 24.2 s of full 55.5 s; 91 % of patches taken; upd_iso_s 18 of 24), 109k points, 1.57 GB. Run at 1/2 of 2400 holes"
+    },
+    "implicit_auto": {
+      "params": {"holes": 7744, "points": 100000, "degenerate": 20000, "threads": 4},
+      "budget_s": 1100.0,
+      "budget_mb": 2100,
+      "limits": {"clean_overhead": 0.1},
+      "note": "target 0.10; local clean_overhead 0.050, wells_overhead 0.90 (info), twins 1.35 (info), 849 MB"
+    },
+    "implicit_compile": {
+      "params": {"threads": 4, "prior": ["checks", "composites", "stats"]},
+      "budget_s": 220.0,
+      "budget_mb": 300,
+      "limits": {"compile_s": 30.0, "empty_s": 30.0, "left_own": 0, "left_s": 5.0, "process_mb": 950},
+      "note": "target 30 s; local compile_s 5.05 after the steps before it, empty_s 11.5, left_s 0.67, left_own 0, prior_s 60 s"
     },
     "estimate_idw": {
       "params": {"rows": 20000000, "samples": 100000, "threads": 4},
