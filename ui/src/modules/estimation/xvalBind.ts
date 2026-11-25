@@ -15,7 +15,8 @@ import { onCoreEvent } from "../jobs/state";
 import { projectStore } from "../projects/state";
 import { estimationStore, loadRows, rowById } from "./state";
 import { XVAL_BY, type XvalBy } from "./xvalApi";
-import { openXval, resetXval, runXval, syncXval, XVAL_TITLE, XVAL_WINDOW, xvalStore } from "./xvalState";
+import { errorsShown } from "./xvalScene";
+import { hide3d, openXval, resetXval, runXval, show3d, syncXval, XVAL_TITLE, XVAL_WINDOW, xvalStore } from "./xvalState";
 import { XvalWindow } from "./XvalWindow";
 
 /** The window of the check, if open. */
@@ -51,9 +52,29 @@ export async function runXvalCommand(app: App, a: Record<string, unknown>, _sour
   return runXval(by);
 }
 
+/**
+ * `estimate.xval_3d {estimation_id?, show?}` — the button «Показать ошибки в 3D» of the window and the same for the assistant: the samples of
+ * the check of the row in their places, coloured by the error; `show: false` takes them away. The table of the row is read first when it is
+ * not the one the window holds (the window need not be open). A row with no check, a 3D window not ready — a refusal with the words.
+ */
+export async function runXval3d(a: Record<string, unknown>): Promise<string> {
+  if (a.show === false) {
+    const was = errorsShown();
+    hide3d();
+    return was ? "Ошибки перекрёстной проверки убраны из 3D" : "Ошибки перекрёстной проверки в 3D не показывались";
+  }
+  const id = chosenRow(a);
+  if (id === null) throw refusal("bad_param", "Не указана строка «Параметры оценки».", "Передайте estimation_id: номера строк — в разделе «Геостатистика → Параметры оценки» дерева.");
+  await openXval(id);
+  if (xvalStore.get().phase === "none") throw refusal("no_result", "У строки нет перекрёстной проверки: показывать нечего.", "Выполните проверку командой «Перекрёстная проверка» (estimate.xval с by).");
+  const cloud = show3d();
+  return `Ошибки перекрёстной проверки показаны в 3D: проб ${cloud.n.toLocaleString("ru-RU")}`;
+}
+
 /** The binding with the registry and the events; the functions that take it off. */
 export function bindXval(app: App): (() => void)[] {
   app.registry.bind("estimate.xval", noted(app, (a, s) => runXvalCommand(app, a, s)), needProject);
+  app.registry.bind("estimate.xval_3d", noted(app, (a) => runXval3d(a)), needProject);
   let uid: string | null = projectStore.get().current?.uid ?? null;
   return [
     projectStore.subscribe(() => {

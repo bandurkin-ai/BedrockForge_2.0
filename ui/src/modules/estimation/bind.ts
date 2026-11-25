@@ -6,7 +6,7 @@
  * for the job to its end (the stages are in «Задания»; the journal of the result is kept for the window «План оценки», `runState.ts`).
  * `estimate.plan` opens that window (a plan or a model), `estimate.plan_delete` deletes a plan, `estimate.run` without arguments
  * opens it too. One app at a time (the tests create several). The windows of the verification and the inspector bind their
- * commands themselves (18.21–18.25, 18.Д4).
+ * commands themselves (18.23–18.25, 18.Д4); `estimate.ellipsoid` is bound by `previewBind.ts` (18.21).
  */
 import { createElement, type ReactNode } from "react";
 import type { App } from "../../shell/app";
@@ -23,6 +23,7 @@ import { readRun, refusalOf, startRun, waitJob, type RunBody } from "./api";
 import { formOfArgs } from "./form";
 import { PARAMS_TITLE, PARAMS_WINDOW, ParamsWindow } from "./ParamsWindow";
 import { PlanWindow } from "./PlanWindow";
+import { bindPreview } from "./previewBind";
 import { choosePlan, chooseModel as choosePlanModel, confirmDiscard, deletePlan, pickModel, planById, planStore, PLAN_TITLE, PLAN_WINDOW, resetPlan, syncPlan } from "./planState";
 import { bindChecks, renderCheckWindow } from "./checksBind";
 import { bindInspect, renderInspectWindow } from "./inspect/bind";
@@ -273,6 +274,7 @@ export function bindEstimation(app: App): void {
   app.registry.bind("estimate.plan", noted(app, (a, s) => openPlan(app, a, s)), needProject);
   app.registry.bind("estimate.plan_delete", noted(app, (a, s) => runPlanDelete(a, s)), needWritable(app));
   unbind.push(bindChecks(app)); // estimate.kna, .global, .qq, .swath (18.24)
+  unbind.push(...bindPreview(app)); // estimate.ellipsoid and the layers of the preview in 3D (18.21)
   bindInspect(app); // «Блок · i, j, k» (Д-30, 18.Д4): the command, the click on a block, the window
   let uid: string | null = projectStore.get().current?.uid ?? null;
   if (uid) void loadRows();

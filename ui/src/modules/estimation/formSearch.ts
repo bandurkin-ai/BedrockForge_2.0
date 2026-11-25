@@ -132,6 +132,9 @@ function passBody(p: PassForm, i: number): Record<string, unknown> | Issue {
 /** The effective source of the ellipsoid: the one chosen, else the one the core takes. */
 export const effectiveFrom = (s: SearchForm, hasModel: boolean): SearchFrom => s.from ?? (hasModel ? "model" : s.trendId !== null ? "trend" : "manual");
 
+/** Is there a model of variogram in the form (what the core takes the ellipsoid from by default)? */
+export const hasVariogram = (f: { method: MethodKind; ikModels: string; variogramIds: readonly (number | null)[]; variogramId: number | null }): boolean => (f.method === "ik" && f.ikModels === "per" ? f.variogramIds.some((id) => id !== null) : f.variogramId !== null);
+
 export interface SearchBody {
   search?: Record<string, unknown>;
   trend_id?: number;

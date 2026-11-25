@@ -11,7 +11,7 @@ import { windowStore } from "../../src/shell/windows";
 import { renderEstimationWindow } from "../../src/modules/estimation/bind";
 import { estimationStore, loadRows } from "../../src/modules/estimation/state";
 import { cellText } from "../../src/modules/estimation/xvalModel";
-import { hide3d, openXval, runXval, setSize, setSort, setTab, setTablePage, show3d, syncXval, XVAL_WINDOW, xvalStore, resetXval, loadXval } from "../../src/modules/estimation/xvalState";
+import { hide3d, openXval, runXval, setSize, setSort, setTab, setTablePage, show3d, syncXval, toggle3d, XVAL_WINDOW, xvalStore, resetXval, loadXval } from "../../src/modules/estimation/xvalState";
 import { XvalWindow } from "../../src/modules/estimation/XvalWindow";
 import { cancelJob, jobsStore, refresh } from "../../src/modules/jobs/state";
 import { setCurrentScene } from "../../src/modules/scene/sceneHost";
@@ -352,6 +352,7 @@ describe("the errors in 3D", () => {
       addLayer: (key: string, layer: never) => log.added.push({ key, layer }),
       removeLayer: (key: string) => log.removed.push(key),
       onRestored: () => () => undefined,
+      setHandles: () => undefined, // the swath, the trends and the variography attach their handles to every scene
       reveal: () => void log.revealed++,
       invalidate: () => void log.invalidated++,
     };
@@ -410,5 +411,51 @@ describe("the errors in 3D", () => {
     await loadXval();
     expect(xvalStore.get().shown).toBeNull();
     expect(second.removed).toContain("xval-errors");
+  });
+
+  // 18.23 debt: the button is a command of the registry (the rule «команда = запись реестра»)
+  const run3d = (args: Record<string, unknown>) => app.registry.execute("estimate.xval_3d", args, "user");
+
+  it("`estimate.xval_3d` is in the catalog and bound; it is a registry command, with the row and the switch declared", () => {
+    expect(app.registry.get("estimate.xval_3d")).toMatchObject({ id: "estimate.xval_3d", title: "Ошибки перекрёстной проверки в 3D" });
+    expect(Object.keys(app.registry.get("estimate.xval_3d")!.params ?? {})).toEqual(["estimation_id", "show"]);
+    expect(app.registry.reason("estimate.xval_3d", { hasProject: true, hasSet: true, hasHole: false, hasObject: false, hasSection: false, editing: false, coreOnline: true })).toBeNull();
+  });
+  it("it reads the table of the row when the window does not hold it, puts the layer of the 146 samples and answers with their number; show=false takes it away", async () => {
+    const log = fakeScene();
+    const r = await run3d({ estimation_id: ROW });
+    expect(r).toEqual({ ok: true, result: "Ошибки перекрёстной проверки показаны в 3D: проб 146" });
+    expect(xvalStore.get().estimationId).toBe(ROW);
+    await waitFor(() => log.added.length === 1);
+    expect(log.added[0].layer.count).toBe(146);
+    expect(xvalStore.get().shown).toMatchObject({ n: 146 });
+    expect(await run3d({ show: false })).toEqual({ ok: true, result: "Ошибки перекрёстной проверки убраны из 3D" });
+    expect(log.removed).toContain("xval-errors");
+    expect(xvalStore.get().shown).toBeNull();
+    expect(await run3d({ show: false })).toEqual({ ok: true, result: "Ошибки перекрёстной проверки в 3D не показывались" });
+  });
+  it("the row of the window is the default; no row, no result and no 3D window are refused with the words", async () => {
+    expect(await run3d({})).toMatchObject({ ok: false, result: expect.stringContaining("Не указана строка") });
+    expect(await run3d({ estimation_id: 999 })).toMatchObject({ ok: false, result: expect.stringContaining("№999 не найдена") });
+    await openXval(ROW);
+    expect(await run3d({})).toMatchObject({ ok: false, result: expect.stringContaining("3D-окно ещё не готово") });
+    kit.table = null;
+    await loadXval();
+    fakeScene();
+    const none = await run3d({});
+    expect(none.ok).toBe(false);
+    expect(none.result).toContain("нет перекрёстной проверки");
+  });
+  it("the button of the window runs the command: «Показать» then «Скрыть»; a refusal comes back as the words under the bar", async () => {
+    await openXval(ROW);
+    expect(await toggle3d(app, xvalStore.get())).toContain("3D-окно ещё не готово");
+    const log = fakeScene();
+    expect(await toggle3d(app, xvalStore.get())).toBeNull();
+    await waitFor(() => log.added.length === 1);
+    expect(xvalStore.get().shown).not.toBeNull();
+    expect(await toggle3d(app, xvalStore.get())).toBeNull();
+    expect(xvalStore.get().shown).toBeNull();
+    // the commands of the registry run: the log of the registry has both
+    expect(app.registry.entries().filter((e) => e.commandId === "estimate.xval_3d").map((e) => e.ok)).toEqual([true, true, false]); // the newest first
   });
 });
