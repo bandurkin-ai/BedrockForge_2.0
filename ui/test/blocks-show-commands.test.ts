@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { commands, SHOW_BUTTONS } from "../src/modules/blocks/commands";
 import { BLOCK_STYLES_KEY, blocksShowStore, pickedBlockStore, resetShow, revealOnShow, setPicked, styleIn } from "../src/modules/blocks/display";
 import { FILTERS_WINDOW, filtersStore } from "../src/modules/blocks/filters/state";
-import { quickText } from "../src/modules/blocks/showCommands";
+import { quickText, runStyle } from "../src/modules/blocks/showCommands";
 import { blocksStore } from "../src/modules/blocks/state";
 import type { BlockModelInfo } from "../src/modules/blocks/api";
 import { viewStore, viewSyncOf } from "../src/modules/scene/bind";
@@ -222,6 +222,23 @@ describe("blocks.style", () => {
     const r = await run("blocks.style", { model_id: 1, mode: "all", opacity: 0.6, edges: true, edge_color: "#1B222B", limit: 800_000 });
     expect(r.ok).toBe(true);
     expect(style(1)).toMatchObject({ mode: "all", opacity: 0.6, limit: 800_000, edges: { on: true, colour: "#1b222b" } });
+  });
+
+  it("the handler itself (a call that skips the registry's types): a number or an array is a list — «hidden: 1» hides code 1, not nothing; a flag is not; a kind outside the list is refused", async () => {
+    const go = (args: Record<string, unknown>) => runStyle(app, { model_id: 1, ...args });
+    await go({ field: "ROCK", hidden: 1 });
+    expect(Object.entries(style(1).colour.categories).filter(([, v]) => !v.on).map(([k]) => k)).toEqual(["1"]);
+    await go({ hidden: [0, "2"] });
+    expect(Object.entries(style(1).colour.categories).filter(([, v]) => !v.on).map(([k]) => k).sort()).toEqual(["0", "2"]);
+    await go({ field: "AU", kind: "classes", breaks: [1, 2] });
+    expect(style(1).colour.breaks).toEqual([1, 2]);
+    await go({ field: "AU", kind: "classes", breaks: 5 });
+    expect(style(1).colour.breaks).toEqual([5]);
+    const before = writes().length;
+    await expect(go({ hidden: true })).rejects.toThrow(/^Скрытые категории: нужен список через «;»/);
+    await expect(go({ field: "AU", breaks: { a: 1 } })).rejects.toThrow(/^Границы градаций: нужен список/);
+    await expect(go({ field: "AU", kind: "foo" })).rejects.toThrow(/^Вид раскраски «foo» не известен/);
+    expect(writes().length).toBe(before);
   });
 
   it("refuses what the core would: a field that is not there, breaks out of order, a range upside down, a log scale from zero, the limit, the opacity", async () => {

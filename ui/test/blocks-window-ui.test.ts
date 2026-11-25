@@ -29,7 +29,7 @@ import { ModelWindow } from "../src/modules/blocks/window/ModelWindow";
 import { PropsPanel } from "../src/modules/blocks/window/PropsPanel";
 import { QuickPanel } from "../src/modules/blocks/window/QuickPanel";
 import { blankRow, itemsKey, rowIssues, rowsOf } from "../src/modules/blocks/window/quick";
-import { MODEL_WINDOW, modelTitle, TABS } from "../src/modules/blocks/window/state";
+import { MODEL_WINDOW, modelTitle, TABS, tabByKey } from "../src/modules/blocks/window/state";
 import { StylePanel } from "../src/modules/blocks/window/StylePanel";
 import { readDetails, rotationText, subText } from "../src/modules/blocks/window/details";
 
@@ -175,6 +175,11 @@ describe("blocks.settings", () => {
     expect(TABS.map((t) => t.title)).toEqual(["Показ", "Фильтр", "Быстрый ограничитель", "Легенда", "Свойства"]);
     for (const t of TABS) expect(text(out, `model-tab-${t.id}`)).toBe(t.title);
     expect(attr(out, "model-window", "data-tab")).toBe("show");
+    // roving tabindex: the chosen tab is in the Tab order, the others only by the arrows
+    expect(TABS.map((t) => attr(out, `model-tab-${t.id}`, "tabindex"))).toEqual(["0", "-1", "-1", "-1", "-1"]);
+    expect(TABS.map((t) => tabByKey(t.id, "ArrowRight"))).toEqual(["filter", "quick", "legend", "props", "show"]);
+    expect(TABS.map((t) => tabByKey(t.id, "ArrowLeft"))).toEqual(["props", "show", "filter", "quick", "legend"]);
+    expect([tabByKey("quick", "Home"), tabByKey("quick", "End"), tabByKey("quick", "a")]).toEqual(["show", "props", null]);
     expect(has(out, "style-panel")).toBe(true);
     const other = html(renderModelWindow({ ...w, props: { model: IDS.turned, tab: "props" } }) as ReactElement);
     expect(has(other, "props-panel")).toBe(true);

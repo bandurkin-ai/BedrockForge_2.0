@@ -10,7 +10,7 @@ import { filtersStore } from "../src/modules/blocks/filters/state";
 import { blocksStore } from "../src/modules/blocks/state";
 import type { BlockModelInfo } from "../src/modules/blocks/api";
 import { viewStore, viewSyncOf } from "../src/modules/scene/bind";
-import { cellStep, axisOf, movePlane, planeText, resetSlice, sliceStatus, type PlaneBody } from "../src/modules/blocks/sliceState";
+import { cellStep, axisOf, modelExtent, movePlane, planeText, resetSlice, sliceStatus, type PlaneBody } from "../src/modules/blocks/sliceState";
 import { runSlice } from "../src/modules/blocks/sliceCommands";
 import { setCoreTarget } from "../src/shell/api";
 import { createApp, type App } from "../src/shell/app";
@@ -103,6 +103,21 @@ describe("blocks.slice", () => {
     expect(slice().on).toBe(false);
     viewStore.set({ [BLOCK_STYLES_KEY]: writes()[0].body.value });
     expect(slice()).toEqual({ on: true, plane: { origin: [40, 30, 10], normal: [0, 0, 1] } });
+  });
+
+  it("a turned model with no extent: no «middle» guessed in the local axes — a refusal with the hint; an elevation given is fine", async () => {
+    const turned: BlockModelInfo = { ...info(3, "Повёрнутая"), grid: { ...A.grid, rotation: 30 } as BlockModelInfo["grid"] };
+    blocksStore.set({ list: [A, B, turned], loaded: true, error: null, details: {}, detailErrors: {} });
+    const bad = await run({ model_id: 3, plane: "z" });
+    expect(bad.ok).toBe(false);
+    expect(bad.result).toMatch(/^Охват модели неизвестен/);
+    expect(bad.result).toMatch(/at=262,5/);
+    expect(slice(3).on).toBe(false);
+    expect((await run({ model_id: 3 })).ok).toBe(false); // the first slice would be «z in the middle»
+    expect((await run({ model_id: 3, plane: "z", at: 262.5 })).result).toBe("Срез модели «Повёрнутая»: по оси Z, отметка 262,5 м");
+    expect(modelExtent(turned)).toBeNull();
+    expect(modelExtent({ ...turned, extent: [0, 0, 0, 80, 60, 20] })).toEqual([0, 0, 0, 80, 60, 20]);
+    expect(modelExtent(A)).toEqual([0, 0, 0, 80, 60, 20]);
   });
 
   it("with a section drawn it is the plane «по разрезу»; off keeps the plane; on again", async () => {

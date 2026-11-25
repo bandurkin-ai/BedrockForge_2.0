@@ -5,7 +5,7 @@
  * with a hint and the place in the form — nothing wrong reaches the core. A refusal of the core is put in its place by
  * `issueOfPrototype`. No React.
  */
-import { numberText, parseDecimal } from "../report/state";
+import { looksGrouped, numberText, parseDecimal } from "../report/state";
 import { MAX_LEVEL, type PrototypeBody, type Refusal, type Triple } from "./api";
 
 export type Args = Record<string, unknown>;
@@ -24,9 +24,10 @@ export const issue = (field: string, message: string, hint: string, index?: numb
 
 export const given = (a: Args, k: string): boolean => a[k] !== undefined && a[k] !== null && (typeof a[k] !== "string" || (a[k] as string).trim() !== "");
 
-/** «10; 10; 5» / «10 10 5» / «0,5» → numbers (a decimal comma is a number); null — a part is not a number. */
+/** «10; 10; 5» / «10 10 5» / «0,5» → numbers (a decimal comma is a number); null — a part is not a number (or «1 000», which may be a list: use «;»). */
 export function parseNumbers(text: string): number[] | null {
   let parts = text.split(/[;\n]+/).map((p) => p.trim()).filter(Boolean);
+  if (parts.length === 1 && looksGrouped(parts[0])) return null; // «1 000»: digit groups or a list — not guessed, «;» tells
   if (parts.length === 1 && /\s/.test(parts[0])) parts = parts[0].split(/\s+/);
   const out = parts.map((p) => parseDecimal(p));
   return out.length && out.every((n): n is number => n !== null) ? out : null;

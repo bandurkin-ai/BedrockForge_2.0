@@ -7,7 +7,7 @@
  * it is kept with the project and is there when the project is opened again. Floating, not modal; the command is
  * `blocks.settings` (`bind.ts`).
  */
-import { useState } from "react";
+import { useState, type KeyboardEvent } from "react";
 import { blocksStore } from "../state";
 import { useStore } from "./hooks";
 import { FilterPanel } from "./FilterPanel";
@@ -16,17 +16,25 @@ import { PropsPanel } from "./PropsPanel";
 import { QuickPanel } from "./QuickPanel";
 import { StylePanel } from "./StylePanel";
 import mod from "./Window.module.css";
-import { TABS, type Tab } from "./state";
+import { TABS, tabByKey, type Tab } from "./state";
 
 export function ModelWindow({ winId, modelId, tab: first = "show" }: { winId: string; modelId: number; tab?: Tab }) {
   const [tab, setTab] = useState<Tab>(first);
   const gone = useStore(blocksStore, (s) => s.loaded && !s.list.some((b) => b.id === modelId));
   if (gone) return <p className={mod.gone}>Блочной модели №{modelId} больше нет в проекте. Закройте окно.</p>;
+  // roving tabindex: only the chosen tab is in the Tab order, the arrows move between the tabs
+  const onKey = (e: KeyboardEvent<HTMLButtonElement>, from: Tab) => {
+    const to = tabByKey(from, e.key);
+    if (!to) return;
+    e.preventDefault();
+    setTab(to);
+    document.getElementById(`model-tab-${modelId}-${to}`)?.focus();
+  };
   return (
     <div className={mod.window} data-testid="model-window" data-model={modelId} data-win={winId} data-tab={tab}>
       <div className={mod.tabs} role="tablist" aria-label="Разделы окна блочной модели">
         {TABS.map((t) => (
-          <button key={t.id} type="button" role="tab" id={`model-tab-${modelId}-${t.id}`} aria-selected={tab === t.id} aria-controls={`model-pane-${modelId}`} className={mod.tab} data-testid={`model-tab-${t.id}`} onClick={() => setTab(t.id)}>
+          <button key={t.id} type="button" role="tab" id={`model-tab-${modelId}-${t.id}`} aria-selected={tab === t.id} tabIndex={tab === t.id ? 0 : -1} onKeyDown={(e) => onKey(e, t.id)} aria-controls={`model-pane-${modelId}`} className={mod.tab} data-testid={`model-tab-${t.id}`} onClick={() => setTab(t.id)}>
             {t.title}
           </button>
         ))}

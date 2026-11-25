@@ -10,7 +10,7 @@
  * A point of the project: p = corner + R_z(rotation)·(origin + c). `origin` is a whole number of metres (the
  * centre of the local extent), so float32 of `c` and `h` keeps millimetres at kilometres (CLAUDE.md, `viz/origin.ts`).
  * The arrays are views of the response buffer — nothing is copied; the layer takes them as the GPU attributes as
- * they are, so a Worker can decode and transfer the buffer on. A damaged answer is a `VizError` in Russian.
+ * they are (the answer is decoded in the main thread; nothing is copied). A damaged answer is a `VizError` in Russian.
  */
 import { VizError } from "../error";
 import { bfa1Array, decodeBfa1, type Bfa1 } from "../format/bfa1";

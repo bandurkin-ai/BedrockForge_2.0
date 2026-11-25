@@ -191,11 +191,16 @@ export function fieldRow(f: BlockField): FieldRow {
   return row;
 }
 
-const FORMATS: Record<string, string> = { omf: "OMF" };
+/** The names of the file formats the core reports (`format` of an import). */
+const FORMATS: Record<string, string> = { omf: "OMF", dat: "Micromine DAT", csv: "CSV / TXT", csv_micromine: "CSV Micromine", dm: "Datamine DM", fbm: "Datamine FBM" };
+/** What made a model that was not read from a file (`op` of the source: no `format`). */
+const OPS: Record<string, string> = { fill: "Заполнение каркасами", code: "Кодирование каркасами", prototype: "Прототип", regularize: "Регуляризация", calc: "Калькулятор", import: "Импорт из файла" };
 
 export function sourceFacts(s: BlockSource | null | undefined): Fact[] {
   if (!s) return [];
-  const facts: Fact[] = [{ label: "Формат", value: FORMATS[s.format] ?? s.format }];
+  const facts: Fact[] = [];
+  if (s.format) facts.push({ label: "Формат", value: FORMATS[s.format] ?? s.format });
+  else if (s.op) facts.push({ label: "Создана", value: OPS[s.op] ?? s.op });
   if (s.file) facts.push({ label: "Файл", value: s.file });
   if (s.element) facts.push({ label: "Элемент", value: s.element });
   return facts;

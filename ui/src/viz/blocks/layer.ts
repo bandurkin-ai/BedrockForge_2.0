@@ -28,7 +28,7 @@ export type BlocksLayerContext = BlocksMaterialContext;
 export interface BlocksLayerOptions {
   style?: LegendStyle;
   look?: Partial<BlocksLook>;
-  /** an index built in a Worker; otherwise the first click builds it */
+  /** an index built beforehand (none is built off the main thread today); otherwise the first click builds it */
   index?: PickIndex;
 }
 
@@ -189,7 +189,7 @@ export class BlocksLayer implements SceneLayer {
     this.index = index;
   }
 
-  /** The index of the faces; built on the first click when no Worker gave one (a few hundred ms at 2.5 million). */
+  /** The index of the faces; built in the main thread on the first click when none was given (≈ 0.4 s at 2.5 million faces). */
   pickIndex(): PickIndex {
     return (this.index ??= PickIndex.build(this.data));
   }

@@ -13,6 +13,7 @@ export const NO_VALUE_HINT = "В блоках строки нет значени
 export function fmt(v: number | null | undefined): string {
   if (v === null || v === undefined || !Number.isFinite(v)) return NO_VALUE;
   const a = Math.abs(v);
+  if (a > 0 && a < 1e-4) return v.toExponential(2).replace(".", ","); // «3,20e-5»: a small value is never shown as 0
   const digits = a >= 1000 ? 0 : a >= 100 ? 1 : a >= 1 ? 2 : a === 0 ? 0 : 4;
   return v.toLocaleString("ru-RU", { maximumFractionDigits: digits });
 }

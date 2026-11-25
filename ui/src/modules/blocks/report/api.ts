@@ -65,7 +65,7 @@ export interface ReportCurve {
   field: string;
   unit: string | null;
   cutoffs: number[];
-  tonnes: number[];
+  tonnes: (number | null)[];
   grade: (number | null)[];
   metal: (number | null)[];
   metal_unit: string | null;
@@ -119,7 +119,7 @@ function readCurve(raw: unknown): ReportCurve | null {
   const cutoffs = numbers(c.cutoffs);
   if (cutoffs.length !== c.cutoffs.length || cutoffs.length < 2 || c.tonnes.length !== cutoffs.length || c.grade.length !== cutoffs.length) return null;
   const metal = Array.isArray(c.metal) && c.metal.length === cutoffs.length ? c.metal.map(num) : cutoffs.map(() => null);
-  return { field: str(c.field) ?? "", unit: str(c.unit), cutoffs, tonnes: c.tonnes.map((v) => num(v) ?? 0), grade: c.grade.map(num), metal, metal_unit: str(c.metal_unit) };
+  return { field: str(c.field) ?? "", unit: str(c.unit), cutoffs, tonnes: c.tonnes.map(num), grade: c.grade.map(num), metal, metal_unit: str(c.metal_unit) };
 }
 
 /** The result of the job; null when the answer is not a report (no rows, a row without numbers). */

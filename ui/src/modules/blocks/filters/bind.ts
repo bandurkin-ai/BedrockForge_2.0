@@ -81,6 +81,16 @@ export function openFiltersWindow(app: App, edit?: Filter | null): string {
   return win as string;
 }
 
+/** Asked when a window with unsaved changes is about to take another filter (or a new one) from a person. */
+export const REPLACE_QUESTION = { title: "Фильтры", message: "В окне есть несохранённые изменения фильтра. Открыть другой фильтр без сохранения?", okLabel: "Открыть без сохранения", danger: true };
+
+/** false — the person kept the unsaved form of the open window (nothing is replaced); the assistant is never asked. */
+async function mayReplace(source: CommandSource): Promise<boolean> {
+  if (source !== "user") return true;
+  const e = windowOfFilters() ? currentEdit() : null;
+  return !e?.dirty || (await askConfirm(REPLACE_QUESTION));
+}
+
 /** A filter put on edit in the window (the consumers are read when the person asks). */
 export async function editFilter(app: App, id: number): Promise<Filter> {
   const f = await filterOf(id);
@@ -170,6 +180,7 @@ export async function runSave(app: App, a: Record<string, unknown>, source: Comm
   const id = a.filter_id;
   const hasRules = given(a, "expr") || given(a, "rules");
   if (id === undefined && !hasRules && !given(a, "name")) {
+    if (!(await mayReplace(source))) return "Отменено";
     openFiltersWindow(app, null);
     return "Открыто окно «Фильтры»: новый фильтр";
   }
@@ -179,6 +190,7 @@ export async function runSave(app: App, a: Record<string, unknown>, source: Comm
   if (id !== undefined) {
     const f = await filterOf(id);
     if (!Object.keys(body).length) {
+      if (!(await mayReplace(source))) return "Отменено";
       openFiltersWindow(app, f);
       return `Открыто окно «Фильтры»: «${f.name}»`;
     }
@@ -352,11 +364,12 @@ export function bindFilters(app: App): void {
   const r = app.registry;
   r.bind(
     "filters.manage",
-    noted(app, async (a) => {
+    noted(app, async (a, source) => {
       if (a.filter_id === undefined) {
         openFiltersWindow(app);
         return "Открыто окно «Фильтры»";
       }
+      if (!(await mayReplace(source))) return "Отменено";
       const f = await editFilter(app, a.filter_id as number);
       return `Открыто окно «Фильтры»: «${f.name}»`;
     }),

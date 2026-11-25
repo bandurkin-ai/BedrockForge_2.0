@@ -12,7 +12,7 @@ export interface CurveData {
   field: string;
   unit: string | null;
   cutoffs: readonly number[];
-  tonnes: readonly number[];
+  tonnes: readonly (number | null)[];
   grade: readonly (number | null)[];
   metal: readonly (number | null)[];
   metal_unit: string | null;
