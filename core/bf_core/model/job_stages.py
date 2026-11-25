@@ -112,10 +112,10 @@ def refuse_unready(spec: ModelSpec) -> None:
             raise not_ready(f"Отношение группы «{g.name}» («{g.relation}»)", g)
 
 
-def global_matrix(conn: sa.Connection, spec: ModelSpec) -> Any:
-    """A of the model (None — the identity): the global trend or the anisotropy by hand. A structural trend (its axes
-    are per patch, 19.9 `anisotropy.local`) is refused here: `bodies.fit_group` does not pass the matrices of the
-    patches to the solver and to the field yet (422 `not_implemented`)."""
+def anisotropy_of(conn: sa.Connection, spec: ModelSpec) -> tuple[Any, dict[str, Any] | None]:
+    """(A, the `meta` of a structural trend) of the model: A is the global one (the trend or the angles by hand; None —
+    the identity and for a structural trend), the meta is that of a structural trend (its axes are per patch, 19.9
+    `anisotropy.local`: `Structural`), else None."""
     from bf_core.geostat import trend_store as ts
 
     from . import anisotropy
@@ -123,10 +123,13 @@ def global_matrix(conn: sa.Connection, spec: ModelSpec) -> Any:
     meta = None
     if spec.trend_id is not None:
         _name, meta = ts.meta_of(conn, int(spec.trend_id))
-    if anisotropy.kind_of(spec, meta) == anisotropy.STRUCTURAL:
-        raise ApiError(422, "not_implemented", "Структурный тренд в построении неявной модели подключается позже.",
-                       "Выберите глобальный тренд или задайте анизотропию вручную.", {"param": "trend_id"})  # fmt: skip
-    return anisotropy.global_matrix(spec, meta)
+    structural = anisotropy.kind_of(spec, meta) == anisotropy.STRUCTURAL
+    return anisotropy.global_matrix(spec, meta), (dict(meta or {}) if structural else None)
+
+
+def global_matrix(conn: sa.Connection, spec: ModelSpec) -> Any:
+    """A of the model (None — the identity and a structural trend: `anisotropy_of`)."""
+    return anisotropy_of(conn, spec)[0]
 
 
 @dataclass
@@ -137,6 +140,48 @@ class Prefetch:
     clip: tuple[Any, Any] | None
     expand: dict[int, tuple[Any, Any]] = field(default_factory=dict)
     matrix: Any = None
+    trend: dict[str, Any] | None = None  # `meta` of the structural trend of the model
+
+
+class Structural:
+    """A_j of the patches of a structural trend for `bodies_parts.fit_group` (`matrices_of`; contract of 19.9): the
+    source of the trend is read from the project at the first call; the axes of one set of centres are made once (the
+    thresholds of a shell and the groups on one data set share the patches); the lines of the journal — those of
+    `anisotropy.local` (a centre that took the nearest measurement) under the label of the group."""
+
+    def __init__(self, project: Any, meta: dict[str, Any], threads: int, journal: list[str]) -> None:
+        self.project, self.meta, self.threads, self.journal = project, meta, threads, journal
+        self._source: Any = None
+        self._memo: dict[bytes, Any] = {}
+        self.seconds = 0.0  # the time of the axes (the source and `local`)
+
+    def __call__(self, centres: Any, label: str = "", tick: Callable[[float], None] | None = None) -> Any:
+        from bf_core.geostat import trend_struct as ts
+
+        from . import anisotropy
+
+        q = np.ascontiguousarray(centres, dtype=np.float64)
+        key = q.tobytes()
+        got = self._memo.get(key)
+        if got is not None:
+            return got
+        started = time.perf_counter()
+        report: dict[str, Any] = {}
+        try:
+            if self._source is None:
+                self._source = ts.load_source(self.project, self.meta)
+            mats = anisotropy.local(self.meta, q, source=self._source, threads=self.threads, tick=tick, report=report)
+        except ValueError as err:  # `StatsError` of the trend: {code, message, hint} of the geostatistics
+            raise ApiError(409 if getattr(err, "code", "") == "source_gone" else 422,
+                           str(getattr(err, "code", "bad_param")), str(getattr(err, "message", None) or err),
+                           str(getattr(err, "hint", "") or ""), {"param": "trend_id"}) from None  # fmt: skip
+        self.seconds += time.perf_counter() - started
+        prefix = f"{label}: " if label else ""
+        self.journal.extend(f"{prefix}{line}" for line in report.get("journal", []))
+        shown = f" по {report['measurements']} замерам" if report.get("measurements") else ""
+        self.journal.append(f"{prefix}структурная анизотропия: свои оси в центрах {len(q)} участков{shown}.")
+        self._memo[key] = mats
+        return mats
 
 
 def _under_dtm(base: tuple[Any, Any], dtm: tuple[Any, Any]) -> tuple[Any, Any]:
@@ -173,7 +218,8 @@ def prefetch(conn: sa.Connection, store: BlobStore, prep: Prepared) -> Prefetch:
         clip = wf.read_wireframe(conn, store, spec.post.clip_id)
     expand = {int(g.params["wireframe_id"]): wf.read_wireframe(conn, store, int(g.params["wireframe_id"]))
               for g in spec.groups if g.type == "expand"}  # fmt: skip
-    return Prefetch(base, clip, expand, global_matrix(conn, spec))
+    matrix, trend = anisotropy_of(conn, spec)
+    return Prefetch(base, clip, expand, matrix, trend)
 
 
 # --- the data ---------------------------------------------------------------------------------------------------------
@@ -339,6 +385,7 @@ def _vein(project: Any, spec: ModelSpec, group: Group, pre: Prefetch, h: float, 
 def _shells(
     spec: ModelSpec, group: Group, points: Points, pre: Prefetch, solver: CachingSolver, eta_of: Any,
     bricks_of: Callable[[Record, bytes], BrickFiles], threads: int, prog: Tick, built: Built,
+    structural: Structural | None = None,
 ) -> None:
     """The shells of a group (`shells.build_shells`, 19.14): every threshold has its own store of bricks (the field
     is (level − RBF)·unit: the level and the unit are in the key of its bricks, with the patches)."""
@@ -361,8 +408,9 @@ def _shells(
         return bricks_of(rec, struct.pack("<2d", shift, float(unit)))
 
     n0 = len(solver.records)
-    res = shells.build_shells(spec, group, points, pre.boundary, clip=pre.clip, matrix=pre.matrix, eta_of=eta_of,
-                              solver=solver, brick_cache=bricks, threads=threads, tick=prog)  # fmt: skip
+    res = shells.build_shells(spec, group, points, pre.boundary, clip=pre.clip, matrix=pre.matrix,
+                              matrices_of=structural, eta_of=eta_of, solver=solver, brick_cache=bricks,
+                              threads=threads, tick=prog)  # fmt: skip
     built.outputs.extend(res.outputs)
     built.journal.extend(res.journal)
     seen: set[int] = set()
@@ -399,6 +447,7 @@ def build_groups(
     lo, hi, _bv, _bt = _boundary(pre.boundary)  # the same box and grid as the isosurface of `build_bodies`
     grid = Grid.from_box(lo, hi, h, levels)
     eta_of = solver.eta_of if spec.smoothing.mode == "auto" else None
+    structural = None if pre.trend is None else Structural(project, pre.trend, threads, built.journal)
     domains = [g for g in spec.groups if g.type == "domain"]
     others = [g for g in spec.groups if g.type in ("shell", "vein", "expand")]
     units = (1 if domains else 0) + len(others)
@@ -417,8 +466,9 @@ def build_groups(
     if domains:
         from .bodies import build_bodies
 
-        res = build_bodies(spec, points, pre.boundary, clip=pre.clip, matrix=pre.matrix, eta_of=eta_of, solver=solver,
-                           brick_cache=bricks, threads=threads, tick=prog.window(at, at + span))  # fmt: skip
+        res = build_bodies(spec, points, pre.boundary, clip=pre.clip, matrix=pre.matrix, matrices_of=structural,
+                           eta_of=eta_of, solver=solver, brick_cache=bricks, threads=threads,
+                           tick=prog.window(at, at + span))  # fmt: skip
         at += span
         built.outputs.extend(res.outputs)
         built.journal.extend(res.journal)
@@ -436,7 +486,7 @@ def build_groups(
         at += span
         win(0.0, f"{S_BODIES}: группа «{g.name}»")
         if g.type == "shell":
-            _shells(spec, g, points, pre, solver, eta_of, bricks_of, threads, win, built)
+            _shells(spec, g, points, pre, solver, eta_of, bricks_of, threads, win, built, structural)
         elif g.type == "vein":
             _vein(project, spec, g, pre, h, threads, win, built)
         else:
@@ -474,5 +524,5 @@ def check_outputs(built: Built, spec: ModelSpec, prog: Progress) -> list[str]:
     return lines
 
 
-__all__ = ["Built", "Part", "Prefetch", "Progress", "build_groups", "check_outputs", "global_matrix", "load_points",
-           "not_ready", "prefetch", "refuse_unready"]  # fmt: skip
+__all__ = ["Built", "Part", "Prefetch", "Progress", "Structural", "anisotropy_of", "build_groups", "check_outputs",
+           "global_matrix", "load_points", "not_ready", "prefetch", "refuse_unready"]  # fmt: skip
