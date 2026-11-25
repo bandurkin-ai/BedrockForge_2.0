@@ -170,7 +170,7 @@ describe("the window", () => {
     expect(init.src).toMatchObject({ setId: 3, table: "Пробы" });
     expect(init.values).toMatchObject({ eps: "0,2", step: "1", angles: true });
     expect(init.orient).toMatchObject({ source: "mesh", meshWireframes: [4], fallback: true, fallbackAlpha: "30" });
-    expect(ttInitial({ source: "trend" }).note).toContain("Источник ориентировки");
+    expect(ttInitial({ source: "plane" }).note).toContain("Источник ориентировки");
     const out = renderInterceptsWindow({ id: "w1", kind: TT_WINDOW, title: "Истинная мощность", props: { args: { set_id: 3, source: "mesh", d_max: 2000 } } } as never);
     const page = renderToStaticMarkup(createElement("div", null, out));
     for (const t of ["Ориентировка", "По каркасу", "Порог вырождения ε_в", "Часть ствола", "Предпросмотр", "Применить", "Если не найдена — глобальная α, Aп"]) expect(page, t).toContain(t);

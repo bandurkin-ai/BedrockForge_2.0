@@ -5,7 +5,8 @@
  * `EllipsoidHandlesControl` as a variogram model, the key `trend:handles`): the arcs change the angles, the axis ends
  * the ratios and the size shown (`state.withModel`); the stored layer of that trend steps aside while its window is
  * open. A trend without a centre stands at the centre of the view when it is first shown (kept for the session).
- * A drag writes the edit of the window (its form follows in the same frame); «Сохранить» stores it. A lazy chunk
+ * A drag writes the edit of the window (its form follows in the same frame); «Сохранить» stores it. A structural trend
+ * has no ellipsoid (it is skipped here): its discs are `discScene.ts`, attached with this scene. A lazy chunk
  * with three.js (`bind.ts` attaches it to every scene).
  */
 import { bridge } from "../../bridge";
@@ -19,6 +20,7 @@ import type { Scene } from "../../viz/Scene";
 import { viewStore } from "../scene/bind";
 import { sceneUi } from "../scene/sceneHost";
 import { EllipsoidHandlesControl, type EllipsoidHost, type EllipsoidTarget } from "../variography/handles";
+import { attachDiscScene } from "./discScene";
 import { checkValues, ELLIPSOIDS_KEY, modelOf, setDragging, setEdit, shownObjects, TREND_WINDOW, trendsStore, withModel } from "./state";
 
 export const trendLayerKey = (id: number): string => `trend:${id}`;
@@ -73,7 +75,7 @@ export class TrendScene implements EllipsoidHost {
     const edits = trendsStore.get().edits;
     return windowStore
       .get()
-      .windows.filter((w) => w.kind === TREND_WINDOW && edits[w.id]?.show === true)
+      .windows.filter((w) => w.kind === TREND_WINDOW && edits[w.id]?.show === true && edits[w.id]?.kind !== "structural")
       .sort((a, b) => b.z - a.z)
       .map((w) => w.id);
   }
@@ -86,6 +88,7 @@ export class TrendScene implements EllipsoidHost {
     for (const win of this.windows()) {
       const e = st.edits[win];
       if (e.trendId !== null) open.add(e.trendId);
+      if (e.kind === "structural") continue; // no ellipsoid: its discs (`discScene.ts`)
       const c = checkValues(e.values);
       if (!c.ok) continue;
       const centre = this.centreOf(c.shape.centre, centreKey(e.trendId, win));
@@ -97,7 +100,7 @@ export class TrendScene implements EllipsoidHost {
     for (const [win, e] of Object.entries(st.edits)) if (e.trendId !== null && windowStore.get().windows.some((w) => w.id === win)) open.add(e.trendId);
     for (const id of shownObjects(viewStore.get()[ELLIPSOIDS_KEY])) {
       const t = st.trends.find((x) => x.id === id);
-      if (!t || open.has(id)) continue;
+      if (!t || t.kind === "structural" || open.has(id)) continue;
       const centre = this.centreOf(t.centre, centreKey(t.id, ""));
       if (!centre) continue;
       out.push({ key: trendLayerKey(id), view: { ...modelOf(t), color: t.color }, centre, win: null });
@@ -206,12 +209,14 @@ export class TrendScene implements EllipsoidHost {
   }
 }
 
-/** Attaches the trends to a scene; gives what detaches them. */
+/** Attaches the trends to a scene — the ellipsoids of the global ones, the discs of the structural ones (`discScene.ts`); gives what detaches them. */
 export function attachTrendScene(scene: Scene): () => void {
   const s = new TrendScene(scene);
+  const discs = attachDiscScene(scene);
   const hook = bridge()?.flags?.().e2e === true && typeof window !== "undefined";
   if (hook) window.__bfTrends = { ellipsoids: () => s.stats(), handles: () => s.handles.stats(), point: (kind: HandleKind, deg?: number) => s.handles.point(kind, deg) };
   return () => {
+    discs.dispose();
     s.dispose();
     if (hook) delete window.__bfTrends;
   };

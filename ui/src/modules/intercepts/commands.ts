@@ -18,7 +18,7 @@ const TABLE = P("string", "интервальная таблица набора:
 
 /** The orientation of the body (ADR 0021 §4): the same arguments for both commands. */
 const ORIENTATION: Record<string, ParamSchema> = {
-  source: P("string", "источник ориентировки: global — α и Aп на весь расчёт, domain — по коду домена, mesh — по каркасу, core — ориентированный керн", { enum: ["global", "domain", "mesh", "core"] }),
+  source: P("string", "источник ориентировки: global — α и Aп на весь расчёт, domain — по коду домена, mesh — по каркасу, core — ориентированный керн, trend — тренд проекта (глобальный: плоскость малой оси; структурный: нормаль в середине интервала)", { enum: ["global", "domain", "mesh", "core", "trend"] }),
   alpha: P("number", "global: угол падения α, ° (0–90)"),
   dipdir: P("number", "global: азимут падения Aп, ° (0–360)"),
   domain: P("string", "domain: поле кода домена"),
@@ -33,6 +33,7 @@ const ORIENTATION: Record<string, ParamSchema> = {
   core_beta: P("string", "core: поле угла β_к от линии отсчёта"),
   core_line: P("string", "core: линия отсчёта — boh (низ керна, по умолчанию) или toh (верх)", { enum: ["boh", "toh"] }),
   d_core: P("number", "core: ближайший замер по стволу d_к, м (0–1000; 10)"),
+  trend_id: P("integer", "trend: номер тренда из раздела «Тренды» (глобального или структурного)"),
   fallback_alpha: P("number", "если ориентировка не найдена — глобальная α, °"),
   fallback_dipdir: P("number", "если ориентировка не найдена — глобальный Aп, °"),
   eps: P("number", "порог вырождения ε_в (0,01–0,5; 0,1): TT / LENGTH меньше — признак «вдоль тела»"),

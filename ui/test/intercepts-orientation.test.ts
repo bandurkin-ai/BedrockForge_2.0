@@ -136,7 +136,7 @@ describe("arguments of the commands", () => {
     expect(argsFromOrientation(o)).toEqual({ source: "domain", domain_wireframes: "4, 9", attitudes: "A=1/2", fallback_alpha: 5, fallback_dipdir: 6 });
     const mesh = [{ source: "mesh", wireframe_ids: [3], d_max: 20, r_n: 1 }];
     expect(checkOrientation(orientationFromArgs(argsFromOrientation(mesh)) as OrientationState).orientation).toEqual(mesh);
-    expect(orientationFromArgs({ source: "trend" })).toContain("Источник ориентировки");
+    expect(orientationFromArgs({ source: "plane" })).toContain("Источник ориентировки");
     expect(orientationFromArgs({ source: "domain", attitudes: "QZ 60" })).toContain("«attitudes»");
     expect((orientationFromArgs({}, true) as OrientationState).enabled).toBe(false);
   });

@@ -18,7 +18,8 @@ import { onCoreEvent } from "../jobs/state";
 import { projectStore } from "../projects/state";
 import { updateView, viewStore } from "../scene/bind";
 import { onScene } from "../scene/sceneHost";
-import { createTrend, deleteTrend, loadTrend, loadTrends, trendUsage, updateTrend, usageText, type Trend, type TrendBody, type TrendUse } from "./api";
+import { createTrend, deleteTrend, loadTrend, loadTrends, trendUsage, updateTrend, usageText, type Trend, type TrendBody, type TrendKind, type TrendUse } from "./api";
+import { editFieldsOf, notStructural, sourceOfArgs, structuralArgs, structuralBodyOfArgs, structuralSummary } from "./structural";
 import { nextName } from "../composites/api";
 import {
   bodyOfArgs,
@@ -38,7 +39,6 @@ import {
   TREND_WINDOW,
   trendsStore,
   upsertTrend,
-  valuesOf,
   windowOfTrend,
   type TrendValues,
 } from "./state";
@@ -58,7 +58,7 @@ export async function refreshTrends(): Promise<void> {
 export function followClean(): void {
   for (const [win, e] of Object.entries(trendsStore.get().edits)) {
     const t = e.trendId === null || e.dirty ? null : findTrend(e.trendId);
-    if (t && e.version !== t.version) setEdit(win, { values: valuesOf(t), origin: t.origin, version: t.version });
+    if (t && e.version !== t.version) setEdit(win, editFieldsOf(t));
   }
 }
 
@@ -80,7 +80,7 @@ export async function trendOf(id: unknown): Promise<Trend> {
 }
 
 /** Opens the window «Тренд» of a trend (focused when open) or a new one (prefilled with `values`). */
-export function openTrendWindow(t: Trend | null, values: Partial<TrendValues> = {}): string {
+export function openTrendWindow(t: Trend | null, values: Partial<TrendValues> = {}, kind: TrendKind = "global"): string {
   if (t) {
     const open = windowOfTrend(t.id);
     if (open && windowStore.get().windows.some((w) => w.id === open)) {
@@ -89,7 +89,7 @@ export function openTrendWindow(t: Trend | null, values: Partial<TrendValues> = 
     }
   }
   const win = openWindow(TREND_WINDOW, trendTitle(t?.name ?? null), "form", { trendId: t?.id ?? null }, ...viewport());
-  if (!editOf(win)) setEdit(win, t ? newEdit({ trendId: t.id, values: valuesOf(t), origin: t.origin, version: t.version }) : newEdit({ values: { ...newEdit().values, ...values } }));
+  if (!editOf(win)) setEdit(win, t ? newEdit(editFieldsOf(t)) : newEdit({ kind, values: { ...newEdit().values, ...values } }));
   return win;
 }
 
@@ -112,7 +112,7 @@ async function afterWrite(id: number): Promise<Trend | null> {
   upsertTrend(t);
   const win = windowOfTrend(t.id);
   if (win) {
-    setEdit(win, { values: valuesOf(t), origin: t.origin, version: t.version, fromModel: null, dirty: false });
+    setEdit(win, { ...editFieldsOf(t), fromModel: null, dirty: false });
     updateWindow(win, { title: trendTitle(t.name) });
   }
   return t;
@@ -143,15 +143,19 @@ const usedQuestion = (name: string, list: readonly TrendUse[]) => `Тренд «
 export async function runSave(a: Record<string, unknown>, source: CommandSource): Promise<string> {
   const id = a.trend_id;
   const fields = Object.keys(a).filter((k) => k !== "trend_id" && k !== "expected_version" && given(a, k));
-  if (id === undefined && !given(a, "ang1") && !given(a, "model_id")) {
-    if (a.kind === "structural") throw refusal("not_ready", "Структурный тренд (по замерам или опорному каркасу) будет доступен позже.", "Создайте глобальный тренд: углы и отношения осей.");
-    openTrendWindow(null, prefill(a));
-    return `Открыто окно «Новый тренд»${source === "claude" ? ": не заданы ни углы (ang1), ни модель вариограммы (model_id)" : ""}`;
+  const structural = a.kind === "structural";
+  const src = structural ? (notStructural(a) ?? sourceOfArgs(a)) : null;
+  if (src && "error" in src) throw refusal("bad_param", src.error, HINT_RANGE);
+  if (id === undefined && (structural ? !src?.source : !given(a, "ang1") && !given(a, "model_id"))) {
+    openTrendWindow(null, prefill(a), structural ? "structural" : "global");
+    return `Открыто окно «Новый тренд»${source === "claude" ? (structural ? ": не задан источник (set_id, table, alpha, dipdir или wireframe_id)" : ": не заданы ни углы (ang1), ни модель вариограммы (model_id)") : ""}`;
   }
-  const got = bodyOfArgs(a);
+  const got = structural ? structuralBodyOfArgs(a) : bodyOfArgs(a);
   if ("error" in got) throw refusal("bad_param", got.error, HINT_RANGE);
   if (id !== undefined) {
     const t = await trendOf(id);
+    if (structural && t.kind !== "structural") throw refusal("bad_param", "Тренд глобальный: вид тренда не меняется.", "Создайте структурный тренд отдельно.");
+    if (!structural && t.kind === "structural" && (given(a, "ang1") || given(a, "ang2") || given(a, "ang3") || given(a, "model_id"))) throw refusal("bad_param", "У структурного тренда нет углов и модели: оси берутся из источника.", "Задайте kind: structural и источник.");
     if (!fields.length && !("centre" in a)) {
       openTrendWindow(t);
       return `Открыто окно «${trendTitle(t.name)}»`;
@@ -181,7 +185,7 @@ export async function runSave(a: Record<string, unknown>, source: CommandSource)
       const now = await afterWrite(made.id);
       const win = windowOfTrend(t.id);
       if (win && now) {
-        setEdit(win, { trendId: now.id, values: valuesOf(now), origin: now.origin, version: now.version, fromModel: null, dirty: false });
+        setEdit(win, { ...editFieldsOf(now), fromModel: null, dirty: false });
         updateWindow(win, { title: trendTitle(now.name), props: { trendId: now.id } });
       }
       return `Тренд «${made.name}» сохранён как новый (№${made.id})`;
@@ -200,7 +204,7 @@ export async function runSave(a: Record<string, unknown>, source: CommandSource)
 const n = (v: number) => v.toLocaleString("ru-RU", { maximumSignificantDigits: 6 });
 
 /** «ang1 112,5°, ang2 −35°, ang3 −20°, a1 : a2 : a3 = 1 : 0,36 : 0,05, размер 250 м». */
-export const shapeText = (t: Trend): string => `ang1 ${n(t.ang1)}°, ang2 ${n(t.ang2)}°, ang3 ${n(t.ang3)}°, a1 : a2 : a3 = 1 : ${n(t.ratios[1])} : ${n(t.ratios[2])}, размер ${n(t.size)} м`;
+export const shapeText = (t: Trend): string => (t.kind === "structural" ? structuralSummary(t) : `ang1 ${n(t.ang1)}°, ang2 ${n(t.ang2)}°, ang3 ${n(t.ang3)}°, a1 : a2 : a3 = 1 : ${n(t.ratios[1])} : ${n(t.ratios[2])}, размер ${n(t.size)} м`);
 
 export async function runDelete(a: Record<string, unknown>, source: CommandSource): Promise<string> {
   const t = await trendOf(a.trend_id);
@@ -237,7 +241,9 @@ export function forgetTrend(id: number): void {
 export async function runShow(a: Record<string, unknown>): Promise<string> {
   const t = await trendOf(a.trend_id);
   const visible = a.visible !== false;
+  if (t.kind === "structural" && visible && t.sourceLost) throw refusal("source_gone", `Источник тренда «${t.name}» (замеры или каркас) удалён: показать диски нельзя.`, "Откройте тренд, выберите другой источник и сохраните его.");
   updateView(ELLIPSOIDS_KEY, showObject(t.id, visible));
+  if (t.kind === "structural") return visible ? `Диски структурного тренда «${t.name}» показаны в 3D` : `Диски структурного тренда «${t.name}» скрыты`;
   return visible ? `Эллипсоид тренда «${t.name}» показан в 3D${t.centre ? "" : " — в центре вида (центр тренда не задан)"}` : `Эллипсоид тренда «${t.name}» скрыт`;
 }
 
@@ -255,7 +261,7 @@ export async function runUsage(a: Record<string, unknown>, source: CommandSource
 export async function saveWindow(app: App, win: string): Promise<string | null> {
   const e = editOf(win);
   if (!e) return "Окно тренда закрыто";
-  const got = saveArgs(e);
+  const got = e.kind === "structural" ? structuralArgs(e) : saveArgs(e);
   if ("error" in got) return got.error;
   saved = null;
   const r = await app.registry.execute("trend.save", got.args, "user");
@@ -263,7 +269,7 @@ export async function saveWindow(app: App, win: string): Promise<string | null> 
   const s = lastSaved();
   if (s && e.trendId === null) {
     const t = findTrend(s.id) ?? null;
-    setEdit(win, { trendId: s.id, ...(t ? { values: valuesOf(t), origin: t.origin, version: t.version } : {}), fromModel: null, dirty: false });
+    setEdit(win, { trendId: s.id, ...(t ? editFieldsOf(t) : {}), fromModel: null, dirty: false });
     updateWindow(win, { title: trendTitle(s.name), props: { trendId: s.id } });
   }
   return null;
