@@ -121,9 +121,11 @@ def fit_group(
     threads: int = 1,
     tick: Tick | None = None,
     span: tuple[float, float] = (0.0, 1.0),
+    need_contacts: bool = True,
 ) -> Fit:
     """The points of the group → patches → η → the solution of every patch → the field. `extent` is the box of the
-    model (the octree covers it +10 %); `matrix` is the global anisotropy A (None — identity). 422 `no_contacts`,
+    model (the octree covers it +10 %); `matrix` is the global anisotropy A (None — identity). 422 `no_contacts`
+    (a domain needs a change of sign among its values; a shell, `need_contacts=False`, only some data),
     `rbf_singular` {group, patch, sources, points} and the errors of `octree`; `tick(fraction, text)` inside `span`."""
     from .evaluate import PatchField
     from .solve import solve_patches
@@ -133,7 +135,7 @@ def fit_group(
             tick(span[0] + (span[1] - span[0]) * share, text)
 
     n = pts.n
-    if n == 0 or not (bool((pts.f < 0.0).any()) and bool((pts.f > 0.0).any())):
+    if n == 0 or (need_contacts and not (bool((pts.f < 0.0).any()) and bool((pts.f > 0.0).any()))):
         raise refuse("no_contacts", f"В данных группы «{group.name}» нет контактов: поверхность не определена.",
                      group=group.id)  # fmt: skip
     beat(0.0, f"Участки: «{group.name}», октодерево")
