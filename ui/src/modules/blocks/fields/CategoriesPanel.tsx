@@ -183,6 +183,11 @@ export function CategoriesPanel({ winId }: { winId: string }) {
           </label>
           <IssueLine tab="classify" place="estimate" />
           <label className={css.field}>
+            <span>Префикс полей оценки (пусто — PASS, SLOPE, NH… без префикса)</span>
+            <input className={css.input} value={form.prefix} spellCheck={false} placeholder="например EST_" aria-label="Префикс полей оценки" title="Поля оценки в правилах читаются как ‹префикс›PASS, ‹префикс›SLOPE, ‹префикс›NH, …" data-testid="classify-prefix" onChange={(e) => setClassify({ prefix: e.target.value })} />
+          </label>
+          <IssueLine tab="classify" place="prefix" />
+          <label className={css.field}>
             <span>Мажоритарный фильтр 3×3×3 по родителям, проходов от 0 до {MAX_MAJORITY}</span>
             <input className={css.input} value={form.majority} inputMode="numeric" aria-label="Проходов мажоритарного фильтра" data-testid="classify-majority" onChange={(e) => setClassify({ majority: e.target.value })} />
           </label>
