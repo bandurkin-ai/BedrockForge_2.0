@@ -44,7 +44,7 @@ describe("the declarations", () => {
     const by = Object.fromEntries(commands.map((c) => [c.id, c]));
     expect(by["implicit.delete"].confirm).toBe(true);
     expect(by["implicit.delete"].required).toEqual(["model_id"]);
-    expect(by["implicit.to_wireframe"].required).toEqual(["model_id", "wireframe_id"]);
+    expect(by["implicit.to_wireframe"].required).toBeUndefined(); // without a wireframe the window «В каркас» lists the outputs (19.24)
     for (const c of commands) {
       expect(c.title, c.id).toMatch(/[А-Яа-я]/);
       expect(c.description, c.id).toMatch(/[А-Яа-я]/);
@@ -69,8 +69,8 @@ describe("the declarations", () => {
   });
   it("what is bound is available with a project; what waits for its window says so", () => {
     const reason = (id: string) => app.registry.reason(id, ctx);
-    for (const id of ["implicit.new", "implicit.domains", "implicit.save", "implicit.update"]) expect(reason(id), id).toBeNull();
-    for (const id of ["implicit.shells", "implicit.vein", "implicit.expand", "implicit.structural", "implicit.to_wireframe", "implicit.delete", "implicit.check", "implicit.support", "implicit.compare_holes", "drillholes.from_model"]) expect(reason(id) ?? "", id).toContain("появится на этапе");
+    for (const id of ["implicit.new", "implicit.domains", "implicit.save", "implicit.update", "implicit.shells", "implicit.vein", "implicit.expand", "implicit.to_wireframe", "implicit.delete"]) expect(reason(id), id).toBeNull();
+    for (const id of ["implicit.structural", "implicit.check", "implicit.support", "implicit.compare_holes", "drillholes.from_model"]) expect(reason(id) ?? "", id).toContain("появится на этапе");
     expect(app.registry.reason("implicit.new", { ...ctx, hasProject: false })).toBe("Откройте или создайте проект");
   });
   it("a project open for reading only: the commands that write say so", () => {
