@@ -1,0 +1,48 @@
+/* The window «Блок · i, j, k» (ТЗ 7.35 Д-30): the block and the row on top, the values and the comparison with the fields, the table of the probes; the theme tokens of the brand (docs/brand, ADR 0006). */
+.window { display: flex; flex-direction: column; height: 100%; min-height: 0; font-size: 13px; }
+.head { flex: none; display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: flex-start; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.head dl { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 1px 10px; min-width: 0; }
+.head dt { color: var(--text-dim); }
+.head dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 10px; padding: 8px 12px; }
+.banner { margin: 0; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; padding: 4px 8px; border: 1px solid var(--warn); border-radius: var(--radius); color: var(--warn); }
+.banner b { font-family: var(--font-brand); font-weight: 600; }
+.tabs { display: flex; gap: 2px; flex-wrap: wrap; border-bottom: 1px solid var(--border); }
+.tab { padding: 3px 10px; border: 1px solid transparent; border-bottom: 0; border-radius: var(--radius) var(--radius) 0 0; background: transparent; color: var(--text-dim); font: inherit; cursor: pointer; white-space: nowrap; }
+.tab[aria-selected="true"] { color: var(--text); border-color: var(--border); border-bottom: 2px solid var(--highlight); background: var(--bg-hover); font-family: var(--font-brand); font-weight: 600; }
+.tab[data-changed="true"]::after { content: " •"; color: var(--warn); }
+.tab[data-active="false"] { font-style: italic; }
+.summary { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--text-dim); margin: 0; }
+.summary b { color: var(--text); font-weight: 600; }
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+.block { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.block h3 { margin: 0; font-family: var(--font-brand); font-size: 13px; font-weight: 600; }
+.values { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr) max-content; gap: 1px 12px; font-variant-numeric: tabular-nums; }
+.values dt { color: var(--text-dim); }
+.values dd { margin: 0; text-align: right; }
+.tableWrap { overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); max-height: 360px; }
+.small { max-height: 200px; }
+.table { border-collapse: collapse; font-variant-numeric: tabular-nums; min-width: 100%; }
+.table th { position: sticky; top: 0; background: var(--bg-hover); color: var(--text-dim); font-family: var(--font-brand); font-weight: 600; padding: 2px 8px; border-bottom: 1px solid var(--border-strong); white-space: nowrap; text-align: left; }
+.table th button { all: unset; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; }
+.table th button:focus-visible { outline: 2px solid var(--accent); }
+.table td { padding: 2px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; text-align: left; }
+.table .num { text-align: right; }
+.table tbody tr { cursor: pointer; }
+.table tbody tr[data-picked="true"] td { background: var(--bg-active); }
+.table tbody tr[data-selected="false"] td { color: var(--text-dim); }
+.negative { color: var(--highlight); font-weight: 600; }
+.bad { color: var(--danger); }
+.good { color: var(--ok); }
+.filter { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.select { height: 24px; min-width: 0; padding: 2px 6px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--bg-input); color: var(--text); font: inherit; }
+.toggles { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+.toggles label { display: inline-flex; gap: 5px; align-items: center; }
+.legend { display: inline-flex; gap: 12px; flex-wrap: wrap; color: var(--text-dim); }
+.legend span { display: inline-flex; gap: 5px; align-items: center; }
+.chip { width: 14px; height: 4px; border-radius: 2px; display: inline-block; }
+.empty { margin: 8px; text-align: center; color: var(--text-faint); }
+.footer { flex: none; display: flex; gap: 8px; align-items: center; padding: 6px 12px 8px; border-top: 1px solid var(--border); min-height: 20px; }
+.note { color: var(--text-dim); margin: 0; flex: 1; }
+@media (max-width: 720px) { .head dl { grid-template-columns: 1fr; } }
