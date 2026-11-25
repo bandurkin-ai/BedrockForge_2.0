@@ -40,7 +40,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass, replace
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -50,18 +50,19 @@ from bf_core.blocks.model import Chunk, Model
 from bf_core.db import dialect
 from bf_core.jobs.context import JobContext, JobError
 from bf_core.jobs.registry import handler
-from bf_core.stats import qq as qqmod
-from bf_core.stats.weighted import Sorted, StatsError, pair_sums, sort_groups
 from bf_core.storage.blobs import BlobStore
 
-from . import kernel as kn
 from . import samples as sm
 from . import store_base as sb
-from .cov import BlockCov
 from .job_plan import domain_mask
 from .spec import EstimationSpec
 from .spec_parts import Outputs
 from .store_check import freshness
+
+if TYPE_CHECKING:  # numba and scipy stay out of the process of the API, which only registers the handler (№ 18.16)
+    from bf_core.stats.weighted import Sorted
+
+    from . import kernel as kn
 
 KIND = "estimate.global"
 TITLE = "Глобальная проверка оценки"
@@ -100,6 +101,8 @@ class Acc:
         self.m2 = 0.0
 
     def add(self, v: np.ndarray, w: np.ndarray) -> None:
+        from bf_core.stats.weighted import pair_sums
+
         if v.size == 0:
             return
         v = np.ascontiguousarray(v, dtype=np.float64)
@@ -145,6 +148,8 @@ def is_norm(diff: float | None) -> bool | None:
 
 def composites(s: sm.RowSamples) -> tuple[Sorted, Sorted | None]:
     """The samples of the domain D: (naive, declustered | None — the row has no weights)."""
+    from bf_core.stats.weighted import sort_groups
+
     d = s.dom == sm.D
     z = s.z[d]
     naive = sort_groups(z, np.ones(z.shape))[0]
@@ -289,6 +294,9 @@ def expected_variance(spec: EstimationSpec, grid_rotation: float, size: tuple[fl
     the field (NN and IDW may have none; IK models are of indicators)."""
     if spec.method.kind == "ik" or spec.variogram is None or spec.variogram.snapshot is None:
         return None, None, None
+    from . import kernel as kn
+    from .cov import BlockCov
+
     cm = kn._variogram_cov(spec)  # noqa: SLF001
     disc = spec.disc if spec.disc != (1, 1, 1) else POINT_DISC
     vv = BlockCov(cm).vv(size, disc, grid_rotation)
@@ -305,6 +313,8 @@ def global_check(project: Any, spec: EstimationSpec, *, origin: np.ndarray | Non
     """The answer of §8.3 for the row `spec` (module docstring). `project` needs `engine`, `uid`, `folder`.
     409 `not_estimated`, 422 `no_samples`, `no_estimated_blocks`, `search_unresolved`."""
     import os
+
+    from . import kernel as kn
 
     beat = lambda: tick(None, None)  # noqa: E731
     tick(0.0, STAGE_READ)
@@ -392,6 +402,9 @@ def qq_check(project: Any, spec: EstimationSpec, *, origin: np.ndarray | None = 
     """The answer of §8.4: `stats.qq.qq_samples` of the samples of the domain D (x; weighted by `DECL_W` when
     `weighted` and the row has weights) against the field of the estimate over the blocks STATUS 0 (y; the weight is
     the volume): {…qq_samples, estimation field, weighted, x {n, mean, var, cv}, y {…}}."""
+    from bf_core.stats import qq as qqmod
+    from bf_core.stats.weighted import StatsError, sort_groups
+
     beat = lambda: tick(None, None)  # noqa: E731
     n_q = _quantiles(quantiles)
     tick(0.0, STAGE_READ)
@@ -421,6 +434,9 @@ def qq_check(project: Any, spec: EstimationSpec, *, origin: np.ndarray | None = 
 
 
 def _quantiles(raw: Any) -> int:
+    from bf_core.stats import qq as qqmod
+    from bf_core.stats.weighted import StatsError
+
     try:
         return qqmod.check_quantiles(raw)
     except StatsError as exc:

@@ -39,17 +39,19 @@ import math
 import threading
 from collections.abc import Callable, Mapping, Sequence
 from types import SimpleNamespace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from bf_core.api.errors import ApiError
 from bf_core.jobs.registry import handler
 
-from . import kernel as kn
 from . import samples as sm
 from .kna_blocks import BlockAt, Blocks, Targets
 from .spec import EstimationSpec, parse_at, parse_estimation
+
+if TYPE_CHECKING:  # numba stays out of the process of the API, which only registers the handler (№ 18.16)
+    from . import kernel as kn
 
 KIND = "estimate.kna"
 TITLE = "Анализ параметров кригинга"
@@ -141,6 +143,8 @@ def indicators(rk: kn.RowKernel, d: Any) -> dict[str, Any]:
 
 def run_block(rk: kn.RowKernel, b: BlockAt, scale: float = 1.0) -> dict[str, Any]:
     """The indicators of block `b` (its size × `scale`) by `rk`: `kernel.estimate_block`."""
+    from . import kernel as kn
+
     d = kn.estimate_block(rk, b.centre, b.size * scale, active=b.active)
     return indicators(rk, d)
 
@@ -294,6 +298,8 @@ def analyse(project: Any, spec: EstimationSpec, blocks: Any = None, vary: Any = 
     with dialect.read_tx(project.engine) as conn:
         bl = Blocks.open(conn, store, spec, cancel=beat)
     placed = _blocks_of(bl, blocks)
+    from . import kernel as kn
+
     rk = kn.compile_row(spec, s, rotation_deg=bl.rotation, blockcov=None)
     tick(0.25, STAGE_SAMPLES)
     targets = None

@@ -35,7 +35,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import sqlalchemy as sa
@@ -47,12 +47,14 @@ from bf_core.jobs.context import JobContext, JobError
 from bf_core.jobs.registry import handler
 from bf_core.storage.blobs import BlobStore
 
-from . import kernel
 from . import store_base as sb
 from .samples import D, RowSamples
 from .spec import EstimationSpec
 from .spec_parts import ALLOWED, Outputs
 from .store_check import freshness
+
+if TYPE_CHECKING:  # numba stays out of the process of the API, which only registers the handler (№ 18.16)
+    from . import kernel
 
 KIND = "estimate.xval"
 TITLE = "Перекрёстная проверка"
@@ -198,6 +200,8 @@ def cross_validate(spec: EstimationSpec, samples: RowSamples, by: str = "hole", 
     resolved); `tick(None, None)` is the check of the cancel (raises `JobCancelled`), `tick(p, text)` — the progress
     of the stage; `k_c` — the first number of candidates of the tree (tests)."""
     from bf_core.composites import strips
+
+    from . import kernel
 
     if by not in BY:
         raise _bad("by", f"Перекрёстная проверка: неизвестный режим «{str(by)[:20]}».", "Режимы: hole, sample.")

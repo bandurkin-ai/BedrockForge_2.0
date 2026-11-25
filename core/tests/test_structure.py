@@ -89,3 +89,29 @@ def test_computed_object_kinds_have_a_lineage_provider() -> None:
     assert {"block_model", "variogram_model", "qaqc_report"} <= set(found), found
     missing = {k: f for k, f in found.items() if f"object:{k}" not in providers.registered()}
     assert not missing, f"no lineage provider (core/bf_core/lineage/adapt_*.py): {missing}"
+
+
+def test_job_handler_modules_do_not_load_numba() -> None:
+    """The process of the API registers every handler of `HANDLER_MODULES` (`load_handlers`) and must not pay for numba
+    with it (the kernels are loaded by the worker): a handler module is thin, its heavy imports are inside the
+    functions or under `TYPE_CHECKING` (the pattern of `geostat/estimate/job.py` and `job_run.py`). One fresh process
+    per module, so the culprit is named."""
+    import os
+    import sys
+    from concurrent.futures import ThreadPoolExecutor
+
+    from bf_core.jobs.registry import HANDLER_MODULES
+
+    env = {**os.environ, "PYTHONPATH": str(ROOT / "core"), "BF_NO_WARMUP": "1"}
+
+    def loads_numba(module: str) -> str | None:
+        code = f"import {module}, sys; raise SystemExit(3 if 'numba' in sys.modules else 0)"
+        run = subprocess.run([sys.executable, "-c", code], cwd=ROOT / "core", env=env, capture_output=True, text=True,
+                             timeout=120)  # fmt: skip
+        if run.returncode == 0:
+            return None
+        return module if run.returncode == 3 else f"{module} (import failed: {run.stderr.strip()[-200:]})"
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        bad = [m for m in pool.map(loads_numba, HANDLER_MODULES) if m]
+    assert not bad, f"these handler modules load numba at import: {bad}"
