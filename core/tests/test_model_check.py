@@ -467,6 +467,53 @@ def test_the_values_as_json_or_float32_and_the_refusals_of_the_support(
     assert cs.parse(None).threshold is None
 
 
+def test_the_f4mesh_gives_the_whole_surface_in_the_order_of_the_distances(world: World) -> None:
+    w = world
+    mid = layered(w)
+    wid = surfaces_of(w, mid)[0]["wireframe_id"]
+    got = support(w, mid, wireframe_id=wid, format="f4mesh")
+    assert "values" not in got.out and got.values is not None and got.mesh is not None
+    assert support(w, mid, wireframe_id=wid, format="f4").mesh is None
+    body, head = cs.mesh_body(got.values, got.mesh)
+    v, t = geometry(w, wid)
+    n, m = len(v), len(t)
+    assert head["vertices"] == n and head["triangles"] == m and len(body) == n * 12 + n * 4 + m * 12
+    origin = np.array(head["origin"])
+    assert np.array_equal(origin, np.round(origin))  # a whole-metre origin: float32 only for the picture
+    xyz = np.frombuffer(body, "<f4", n * 3).reshape(n, 3).astype(np.float64) + origin
+    assert np.abs(xyz - v).max() < 1e-3
+    dist = np.frombuffer(body, "<f4", n, n * 12)
+    assert np.array_equal(dist, got.values.astype("<f4"), equal_nan=True)
+    tri = np.frombuffer(body, "<u4", m * 3, n * 16).reshape(m, 3)
+    assert np.array_equal(tri, t) and tri.max() < n
+    refused(lambda: cs.parse({"format": "f5"}), 422, "bad_param")
+
+
+def test_the_f4mesh_of_a_surface_of_two_bodies_and_of_more_than_64000_triangles_is_whole() -> None:
+    """Two bodies in one surface (two parts of the picture) and a surface beyond the 64 000 of a part: the body is
+    the whole of it, the triangles are those of the wireframe (the NaN of a vertex without data stays NaN)."""
+    side = 200  # two grids of side² vertices, 2·(side − 1)² triangles each: ≈ 160 thousand
+    gx, gy = np.meshgrid(np.arange(side, dtype=np.float64), np.arange(side, dtype=np.float64))
+    one = np.stack([gx.ravel(), gy.ravel(), np.zeros(side * side)], axis=1)
+    two = one + np.array([1_000_000.5, 5_000_000.25, 100.0])  # far from the first: a real project's place
+    v = np.vstack([one, two])
+    cells = np.arange(side * side).reshape(side, side)
+    a, b, c, d = cells[:-1, :-1].ravel(), cells[:-1, 1:].ravel(), cells[1:, :-1].ravel(), cells[1:, 1:].ravel()
+    one_t = np.concatenate([np.stack([a, b, c], 1), np.stack([b, d, c], 1)])
+    t = np.vstack([one_t, one_t + side * side])
+    assert len(t) > 64_000
+    values = np.arange(len(v), dtype=np.float64)
+    values[7] = np.nan
+    body, head = cs.mesh_body(values, (v, t))
+    assert head["vertices"] == len(v) and head["triangles"] == len(t)
+    xyz = np.frombuffer(body, "<f4", len(v) * 3).reshape(-1, 3)
+    assert np.abs(xyz.astype(np.float64) + head["origin"] - v).max() < 1.0  # the two bodies are 5 000 km apart in y
+    dist = np.frombuffer(body, "<f4", len(v), len(v) * 12)
+    assert np.isnan(dist[7]) and dist[len(v) - 1] == np.float32(len(v) - 1)
+    tri = np.frombuffer(body, "<u4", len(t) * 3, len(v) * 16).reshape(-1, 3)
+    assert np.array_equal(tri, t)
+
+
 # --- the states: not built, building, «устарела» ------------------------------------------------------------
 
 
@@ -568,6 +615,11 @@ def test_the_route_answers_with_the_form_of_the_contract_the_csv_and_the_errors_
 
     head = jsonlib.loads(r.headers["x-bf-support"])
     assert len(values) == head["surface"]["vertices"] and head["threshold"] == 60.0
+    r = c.post(f"{base}/support", json={"wireframe_id": surface["wireframe_id"], "format": "f4mesh"})
+    head = jsonlib.loads(r.headers["x-bf-support"])
+    n, m = head["mesh"]["vertices"], head["mesh"]["triangles"]
+    assert r.status_code == 200 and n == len(values) and len(r.content) == n * 16 + m * 12
+    assert np.array_equal(np.frombuffer(r.content, "<f4", n, n * 12), values, equal_nan=True)
     r = c.post(f"{base}/support", json={"threshold": 12.5})
     assert r.status_code == 200 and r.json()["threshold"] == 12.5 and r.json()["surfaces"][0]["group"] == 1
     r = c.post(f"{base}/support", json={"format": "yaml"})

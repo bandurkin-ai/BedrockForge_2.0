@@ -5,12 +5,14 @@
  *   come, so the BOM is the core's;
  * - `POST /implicit/models/{id}/support {wireframe_id?, threshold?, format?}` → the surfaces with the share of the area beyond D_оп; with
  *   `wireframe_id` and `format: "f4"` the body is the distances of the vertices (float32 little-endian, NaN — no data points), the rest of
- *   the answer is the JSON of the header `X-BF-Support`.
+ *   the answer is the JSON of the header `X-BF-Support`; `format: "f4mesh"` — the same distances together with the whole surface (the
+ *   vertices from an integer origin, the distances, the triangles), so any wireframe, of several parts or of over 64 000 triangles, is painted.
  * Errors are `{code, message, hint, param?}` in Russian. No React.
  */
 import { api, CoreError, coreTarget } from "../../shell/api";
 import { apiUrl, authHeaders } from "../../shell/coreClient";
 import { isNum, numOrNull, obj, str } from "../estimation/api";
+import type { Origin } from "../../viz/origin";
 import { IMPLICIT_API, type ModelState } from "./api";
 
 const num = (v: unknown, dflt: number): number => (isNum(v) ? v : dflt);
@@ -304,4 +306,51 @@ export function readSupportF4(body: ArrayBuffer, header: string | null): Support
 export async function loadSupportValues(id: number, wireframeId: number, threshold: number | null): Promise<SupportValues> {
   const r = await callBytes("POST", `${IMPLICIT_API}/models/${id}/support`, { wireframe_id: wireframeId, format: "f4", ...(threshold !== null ? { threshold } : {}) });
   return readSupportF4(await r.arrayBuffer(), r.headers.get("X-BF-Support"));
+}
+
+/** The whole surface of the answer `f4mesh`: float32 offsets from the integer `origin` (display only; the core's numbers are float64). */
+export interface SupportMesh {
+  origin: Origin;
+  /** xyz of every vertex of the wireframe, from `origin` */
+  positions: Float32Array;
+  /** three vertices (the order of the vertices of the wireframe) per triangle */
+  index: Uint32Array;
+}
+
+export interface SupportMeshValues extends SupportValues {
+  mesh: SupportMesh;
+}
+
+const badMesh = () => new CoreError(0, "bad_answer", "Ядро вернуло поверхность карты опоры неверной длины.", "Повторите расчёт; если повторится — обновите программу.");
+
+/**
+ * The body of the `f4mesh` answer: `vertices × 3` float32 (from the origin of the header), `vertices` float32 distances, `triangles × 3` uint32,
+ * little-endian, in this order (`bf_core/model/check_support.py: mesh_body`). The arrays are views of the body — nothing is copied.
+ */
+export function readSupportMesh(body: ArrayBuffer, header: string | null): SupportMeshValues {
+  let head: Record<string, unknown> = {};
+  try {
+    head = obj(JSON.parse(header ?? "{}"));
+  } catch {
+    head = {};
+  }
+  const m = obj(head.mesh);
+  const n = num(m.vertices, -1);
+  const t = num(m.triangles, -1);
+  const o = Array.isArray(m.origin) ? m.origin : [];
+  if (!Number.isInteger(n) || !Number.isInteger(t) || n < 0 || t < 0 || o.length !== 3 || !o.every(isNum) || body.byteLength !== n * 16 + t * 12) throw badMesh();
+  return {
+    threshold: num(head.threshold, 0),
+    surface: head.surface ? readSurface(head.surface) : null,
+    warnings: readWarnings(head.warnings),
+    recorded: head.recorded === true,
+    values: new Float32Array(body, n * 12, n),
+    mesh: { origin: { x: o[0] as number, y: o[1] as number, z: o[2] as number }, positions: new Float32Array(body, 0, n * 3), index: new Uint32Array(body, n * 16, t * 3) },
+  };
+}
+
+/** `POST …/support {wireframe_id, threshold, format: "f4mesh"}`: the distances and the whole surface in the order of the vertices of the wireframe. */
+export async function loadSupportMesh(id: number, wireframeId: number, threshold: number | null): Promise<SupportMeshValues> {
+  const r = await callBytes("POST", `${IMPLICIT_API}/models/${id}/support`, { wireframe_id: wireframeId, format: "f4mesh", ...(threshold !== null ? { threshold } : {}) });
+  return readSupportMesh(await r.arrayBuffer(), r.headers.get("X-BF-Support"));
 }

@@ -1,5 +1,5 @@
 // «Проверка по скважинам» (Э19, 19.25; ТЗ 7.35 Д-32; docs/progress/e19-api.md §8.1, §8.2) on the REAL answers of the core
-// (`core/tests/data/implicit/contract_answers.json`: `check`, `check_csv`, `support`, `support_one`, `support_f4`): the readers (a gap stays `null`),
+// (`core/tests/data/implicit/contract_answers.json`: `check`, `check_csv`, `support`, `support_one`, `support_f4`, `support_mesh`): the readers (a gap stays `null`),
 // the command `implicit.check` and its window (the table, the sort, the pages, the highlight, the file, the points in 3D), the command
 // `implicit.support` (the shares of the area beyond D_оп, the map in the 3D window, the repaint when D_оп moves), the colours of the map.
 import { createElement } from "react";
@@ -10,19 +10,19 @@ import type { App } from "../../src/shell/app";
 import { windowStore } from "../../src/shell/windows";
 import type { Scene } from "../../src/viz/Scene";
 import { setCurrentScene } from "../../src/modules/scene/sceneHost";
-import { csvName, readCheck, readSupport, readSupportF4, loadCheckCsv, DEFAULT_QUERY } from "../../src/modules/implicit/checkApi";
+import { csvName, readCheck, readSupport, readSupportF4, readSupportMesh, loadCheckCsv, DEFAULT_QUERY } from "../../src/modules/implicit/checkApi";
 import { cellText, COLUMNS, groupText, numText, pointCloud, boxAround, checkLine, pagesOf } from "../../src/modules/implicit/checkModel";
 import { checkStore, openCheck, pickRow, resetCheck, saveCsv, setHighlightText, applyHighlight, setQuery, toggleShown, parseField } from "../../src/modules/implicit/CheckState";
 import { CheckWindow } from "../../src/modules/implicit/CheckWindow";
 import { SupportPanel } from "../../src/modules/implicit/SupportPanel";
 import { applyThreshold, hideMap, resetSupport, setThresholdText, showMap, supportStore, thresholdOf, shareOf } from "../../src/modules/implicit/SupportState";
-import { colorsOf, countBeyond, percent, supportColor, vertexMatch, NO_DATA_COLOR } from "../../src/modules/implicit/supportModel";
+import { colorsOf, countBeyond, meshData, percent, supportColor, NO_DATA_COLOR } from "../../src/modules/implicit/supportModel";
 import { bindChecks } from "../../src/modules/implicit/checkBind";
 import { loadRows } from "../../src/modules/implicit/state";
 import { hideSupport } from "../../src/modules/implicit/supportScene";
 import { hideCheckPoints } from "../../src/modules/implicit/checkScene";
 import { ID, newApp, teardown, waitFor } from "./harness";
-import { distances, installCheckCore, R, SECOND, SURFACE, type CheckCore } from "./checkHarness";
+import { distances, installCheckCore, meshAnswer, R, SECOND, SECOND_TRIANGLES, SECOND_VERTICES, SURFACE, type CheckCore } from "./checkHarness";
 
 let app: App;
 let core: CheckCore;
@@ -122,6 +122,23 @@ describe("the answers of the core are read as they are (a gap is null, never 0)"
     expect(Number.isNaN(f4.values[3])).toBe(true); // no data points: NaN, not 0
     expect(R.support_f4.body.bytes).toBe(SURFACE.vertices * 4);
     expect(() => readSupportF4(new ArrayBuffer(7), null)).toThrow(/неверной длины/);
+  });
+  it("the answer f4mesh of the core: the vertices, the distances and the triangles of the whole wireframe, views of one body", () => {
+    const head = R.support_mesh.body.head as { mesh: { origin: number[]; vertices: number; triangles: number } };
+    expect(head.mesh.vertices).toBe(SURFACE.vertices);
+    expect(R.support_mesh.body.bytes).toBe(head.mesh.vertices * 16 + head.mesh.triangles * 12); // the layout the reader expects
+    const m = meshAnswer(SURFACE.id);
+    const got = readSupportMesh(m.body, JSON.stringify(m.head));
+    expect(got.values).toHaveLength(SURFACE.vertices);
+    expect(got.mesh.positions).toHaveLength(SURFACE.vertices * 3);
+    expect(got.mesh.index.length % 3).toBe(0);
+    expect(got.mesh.index.length / 3).toBe((m.head.mesh as { triangles: number }).triangles);
+    expect(got.mesh.origin).toEqual({ x: 200, y: 200, z: 250 });
+    expect(got.surface?.vertices).toBe(SURFACE.vertices);
+    expect(Number.isNaN(got.values[3])).toBe(true); // no data points: NaN, not 0
+    expect(got.values.buffer).toBe(m.body); // no copy
+    expect(() => readSupportMesh(new ArrayBuffer(7), JSON.stringify(m.head))).toThrow(/неверной длины/);
+    expect(() => readSupportMesh(m.body, null)).toThrow(/неверной длины/);
   });
 });
 
@@ -325,12 +342,12 @@ describe("implicit.support", () => {
     expect(html).toContain("Показать карту в 3D");
     expect(html).toContain("по умолчанию 60");
   });
-  it("«Показать карту в 3D»: the vector f4 and the part of the wireframe are one layer painted by the distance; the counts and the legend", async () => {
+  it("«Показать карту в 3D»: the answer f4mesh is one layer painted by the distance; the counts and the legend", async () => {
     setCurrentScene(fakeScene);
     await app.registry.execute("implicit.support", { threshold: 60 }, "claude");
     const line = await showMap(SURFACE.id);
     expect(flat(line)).toContain("за порогом 0,5 % площади");
-    expect(requests(SUPPORT).at(-1)?.body).toEqual({ wireframe_id: SURFACE.id, format: "f4", threshold: 60 });
+    expect(requests(SUPPORT).at(-1)?.body).toEqual({ wireframe_id: SURFACE.id, format: "f4mesh", threshold: 60 });
     await waitFor(() => added.has("implicit-support"));
     expect(added.get("implicit-support")?.vertices).toBe(SURFACE.vertices);
     const s = supportStore.get();
@@ -356,13 +373,29 @@ describe("implicit.support", () => {
     expect(bad.ok).toBe(false);
     expect(bad.result).toContain("не поверхность модели");
   });
-  it("a surface of several parts is not painted: the words say why, the table and the shares are there", async () => {
+  it("a surface of two bodies and of over 64 000 triangles is painted whole: every vertex has its colour, no vertices are matched", async () => {
     setCurrentScene(fakeScene);
     await app.registry.execute("implicit.support", { threshold: 60 }, "claude");
     const line = await showMap(SECOND);
-    expect(line).toContain("2 частей");
-    expect(supportStore.get().shownId).toBeNull();
-    expect(supportStore.get().note).toContain("Таблица и доля площади за порогом доступны");
+    expect(line).toContain("за порогом");
+    expect(requests(SUPPORT).at(-1)?.body).toEqual({ wireframe_id: SECOND, format: "f4mesh", threshold: 60 });
+    expect(SECOND_TRIANGLES).toBeGreaterThan(64_000);
+    await waitFor(() => added.has("implicit-support"));
+    expect(added.get("implicit-support")?.vertices).toBe(SECOND_VERTICES);
+    const s = supportStore.get();
+    expect(s.shownId).toBe(SECOND);
+    expect(s.counts?.vertices).toBe(SECOND_VERTICES);
+    expect(s.counts?.noData).toBe(1);
+    const m = meshAnswer(SECOND);
+    const data = meshData(readSupportMesh(m.body, JSON.stringify(m.head)).mesh);
+    expect(data.index.length / 3).toBe(SECOND_TRIANGLES);
+    expect(data.index).toBeInstanceOf(Uint32Array); // 32-bit indices: more than 65 535 vertices
+    let top = 0;
+    for (const i of data.index) if (i > top) top = i;
+    expect(top).toBe(SECOND_VERTICES - 1); // every vertex of both bodies is used by a triangle
+    expect(data.bbox?.[0]).toBeGreaterThan(900_000); // absolute: the origin is added back
+    expect(data.bbox?.[1]).toBeGreaterThan(4_999_000);
+    hideMap();
     expect(added.has("implicit-support")).toBe(false);
   });
   it("without the 3D window: a line, the shares stay", async () => {
@@ -454,10 +487,14 @@ describe("the colours of the map", () => {
     for (const i of [0, 3, 77, 499]) expect([...got.slice(i * 3, i * 3 + 3)].map((x) => Math.fround(x))).toEqual(supportColor(v[i], 60).map((x) => Math.fround(x)));
     expect(countBeyond(v, 60)).toEqual({ beyond: v.filter((d) => d > 60).length, noData: 1 });
   });
-  it("the vertices of the core and of the window match when the surface is one part with all its vertices", () => {
-    expect(vertexMatch(1, 658, 658)).toBeNull();
-    expect(vertexMatch(3, 100, 658)).toContain("3 частей");
-    expect(vertexMatch(1, 600, 658)).toContain("не сопоставить");
+  it("the surface of the core is drawn as it is: the box is absolute (the origin added back), an empty surface has none", () => {
+    const m = meshAnswer(SURFACE.id);
+    const d = meshData(readSupportMesh(m.body, JSON.stringify(m.head)).mesh);
+    expect(d.positions).toHaveLength(SURFACE.vertices * 3);
+    expect(d.origin).toEqual({ x: 200, y: 200, z: 250 });
+    expect(d.bbox?.[3]).toBeGreaterThan(d.bbox?.[0] ?? Infinity);
+    expect(d.bbox?.[0]).toBeCloseTo(200 - 65, 0);
+    expect(meshData({ origin: { x: 1, y: 2, z: 3 }, positions: new Float32Array(0), index: new Uint32Array(0) }).bbox).toBeNull();
   });
   it("the frame of the repaint: 100 000 vertices", () => {
     const n = 100_000;
@@ -470,7 +507,7 @@ describe("the colours of the map", () => {
     const ms = (performance.now() - t0) / 20;
     // eslint-disable-next-line no-console
     console.log(`[замер 19.25] раскраска 100 тыс. вершин (colorsOf): ${ms.toFixed(2)} мс`);
-    expect(ms).toBeLessThan(40);
+    expect(ms).toBeLessThan(5); // 19.25б: the frame of the repaint of 100 thousand vertices
   });
   it("the frame of the repaint in the layer: the colours of 100 000 vertices go to the buffer of the layer (the upload to the card is the next frame's)", async () => {
     const { SupportView } = await import("../../src/viz/support/layer");
@@ -502,7 +539,7 @@ describe("the colours of the map", () => {
     const ms = (performance.now() - t0) / 20;
     // eslint-disable-next-line no-console
     console.log(`[замер 19.25] раскраска 100 тыс. вершин с передачей в буфер слоя: ${ms.toFixed(2)} мс`);
-    expect(ms).toBeLessThan(40);
+    expect(ms).toBeLessThan(5);
     expect(() => layer.setColors(new Float32Array(3))).toThrow(/цвет|colour/);
     layer.dispose();
   });

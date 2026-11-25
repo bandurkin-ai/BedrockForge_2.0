@@ -2014,6 +2014,39 @@
    }
   }
  },
+ "support_mesh": {
+  "status": 200,
+  "body": {
+   "type": "application/octet-stream",
+   "bytes": 26272,
+   "head": {
+    "threshold": 60.0,
+    "surface": {
+     "wireframe_id": 7,
+     "name": "Литология · INT · поверхность",
+     "group": 1,
+     "wing": null,
+     "kind": "surface",
+     "vertices": 658,
+     "area": 27711.098083253655,
+     "area_beyond": 133.29814719000106,
+     "share_beyond": 0.004810280227421073,
+     "max_distance": 61.259282860666076
+    },
+    "warnings": [],
+    "recorded": true,
+    "mesh": {
+     "origin": [
+      197.0,
+      188.0,
+      199.0
+     ],
+     "vertices": 658,
+     "triangles": 1312
+    }
+   }
+  }
+ },
  "support_bad": {
   "status": 422,
   "body": {

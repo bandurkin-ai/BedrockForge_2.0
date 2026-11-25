@@ -3,9 +3,11 @@
 
 `GET …/check?group&page=1&size=500&sort=residual|source&format=json|csv&highlight=` — see `check.page`; `format=csv`
 (or `…/check.csv`) is the file of all the rows, `highlight` (m) the threshold of the flag `over` (default 0,1·h).
-`POST …/support {wireframe_id?, threshold?, format? json|f4}` — see `check_support`; with `format: "f4"` and a
+`POST …/support {wireframe_id?, threshold?, format? json|f4|f4mesh}` — see `check_support`; with `format: "f4"` and a
 `wireframe_id` the body of the answer is the float32 little-endian distances of the vertices, the rest of the answer
-(the entry of the surface, the threshold, the warnings) is the JSON in the header `X-BF-Support`.
+(the entry of the surface, the threshold, the warnings) is the JSON in the header `X-BF-Support`; with `f4mesh` the
+body is the whole surface (vertices from `mesh.origin`, distances, triangles; `check_support.mesh_body`) and the header
+has the same plus `mesh {origin, vertices, triangles}`.
 
 Nothing is written but `support_share` of the statistics of the model (the version stays), so both work in a project
 «только просмотр». 404 `model_not_found`, `group_not_found`, `wireframe_not_found`; 409 `model_building`, `not_built`;
@@ -97,15 +99,18 @@ def support(svc: Svc, model_id: int, body: Payload = None) -> Response:
 
     req = cs.parse(body)
     res = cs.run(svc.require_current(), model_id, req)
-    if req.format == "f4" and res.values is not None:
-        head = {
+    if req.format in ("f4", "f4mesh") and res.values is not None:
+        head: dict[str, Any] = {
             "threshold": res.out["threshold"],
             "surface": res.summary,
             "warnings": res.out["warnings"],
             "recorded": res.out["recorded"],
         }
+        body = res.values.astype("<f4").tobytes()
+        if res.mesh is not None:
+            body, head["mesh"] = cs.mesh_body(res.values, res.mesh)
         return Response(
-            res.values.astype("<f4").tobytes(),
+            body,
             media_type="application/octet-stream",
             headers={"X-BF-Support": json.dumps(head, ensure_ascii=True), "Cache-Control": "no-store"},
         )

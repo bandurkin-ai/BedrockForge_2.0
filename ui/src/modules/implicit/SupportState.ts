@@ -7,10 +7,10 @@
 import { errorText } from "../../shell/props";
 import { Store } from "../../shell/store";
 import { projectStore } from "../projects/state";
-import { loadSupport, loadSupportValues, type SupportAnswer, type SupportSurface } from "./checkApi";
+import { loadSupport, loadSupportMesh, type SupportAnswer, type SupportSurface } from "./checkApi";
 import { parseField } from "./CheckState";
-import { hideSupport, loadSurface, repaint, showSupport, supportShown } from "./supportScene";
-import { countBeyond, surfaceLine } from "./supportModel";
+import { hideSupport, repaint, showSupport, supportShown } from "./supportScene";
+import { countBeyond, meshData, surfaceLine } from "./supportModel";
 
 export interface SupportWin {
   modelId: number | null;
@@ -109,7 +109,7 @@ export async function applyThreshold(): Promise<void> {
   supportStore.set({ repaintMs: ms, counts: { ...countBeyond(distances, used), vertices: distances.length } });
 }
 
-/** «Показать карту в 3D»: the distances of the surface and its part, the surface painted. Returns the line for the status. */
+/** «Показать карту в 3D»: the distances and the whole surface in one answer of the core, the surface painted. Returns the line for the status. */
 export async function showMap(surfaceId?: number): Promise<string> {
   const s = supportStore.get();
   const id = surfaceId ?? s.surfaceId;
@@ -122,12 +122,10 @@ export async function showMap(surfaceId?: number): Promise<string> {
   const mine = ++paint;
   supportStore.set({ painting: true, note: null });
   try {
-    const got = await loadSupportValues(s.modelId, id, t);
+    const got = await loadSupportMesh(s.modelId, id, t);
     if (mine !== paint) return "Отменено";
     const threshold = got.threshold > 0 ? got.threshold : (t ?? 0);
-    const mesh = await loadSurface(id, got.values.length);
-    if (mine !== paint) return "Отменено";
-    showSupport({ wireframeId: id, mesh, values: got.values, threshold });
+    showSupport({ wireframeId: id, mesh: meshData(got.mesh), values: got.values, threshold });
     distances = got.values;
     const counts = { ...countBeyond(got.values, threshold), vertices: got.values.length };
     const surf = got.surface ?? surfaceOf(id);
