@@ -5,11 +5,13 @@ end — one file, `core/tests/data/implicit/contract_answers.json`, with the sam
 
 Regenerate: `BF_REGEN_IMPLICIT=1 uv run pytest -q tests/test_implicit_contract.py` — the keys of this test replace
 the samples, the others stay as they are: `defaults`, `bad_param`, `refusals` are written by `spec.py`
-(`test_implicit_spec.py`), the checks, the support, the comparison with the holes, `drillholes.from_model`, the
-structural trend (19.17–19.19, 19.8) and the keys `*_b` (Э19б) are samples of the contract until their routes write
-them. Without the variable the test checks that the core still answers what the file holds; the times, the
-fingerprints, the versions of the libraries and the numbers a machine may round otherwise (the residuals, the
-conditions, the lines of the journal) are left out, the floats are compared to 1e−7."""
+(`test_implicit_spec.py`); the structural trend (19.8) and the keys `*_b` (Э19б) are samples of the contract until
+their routes write them. The checks, the support, the comparison with the holes and `drillholes.from_model` (19.25)
+are the real answers: the check by `sort=source` (the order of the residuals is a machine's), the vector of the
+support is cut to its first 12 numbers (`support_one`) or given as its bytes (`support_f4`). Without the variable the
+test checks that the core still answers what the file holds; the times, the fingerprints, the versions of the
+libraries and the numbers a machine may round otherwise (the residuals, the conditions, the lines of the journal) are
+left out, the floats are compared to 1e−7."""
 
 from __future__ import annotations
 
@@ -27,23 +29,39 @@ from bf_core.db.schema import object_refs
 from tests import modapi_world as W
 from tests.estapi_util import finish, read_only
 from tests.modapi_world import IMP, body, im, reg  # noqa: F401 - the fixtures
+from tests.test_import_job import API
 
 DATA = Path(__file__).parent / "data" / "implicit" / "contract_answers.json"
 REGEN = os.environ.get("BF_REGEN_IMPLICIT") == "1"
 NOTE = ("ЧАСТЬ КЛЮЧЕЙ — ответы настоящего ядра (BF_REGEN_IMPLICIT=1 uv run pytest -q tests/test_implicit_contract.py, "
         "19.16, фикстура tests/modapi_world.py), части ключей — ЧЕРНОВИК форм (docs/progress/e19-api.md §5–§10): "
-        "check, support, compare_holes, from_model_*, trend_*, build_iso_error и ключи *_b пишут подшаги 19.8, 19.17–"
-        "19.19, 19.32+; defaults, bad_param, refusals пишет spec.py (BF_REGEN_IMPLICIT=1 uv run pytest -q "
+        "trend_*, build_iso_error и ключи *_b пишут подшаги 19.8, "
+        "19.32+; defaults, bad_param, refusals пишет spec.py (BF_REGEN_IMPLICIT=1 uv run pytest -q "
         "tests/test_implicit_spec.py). Интерфейс принимается только на настоящих ответах.")  # fmt: skip
 #: the keys this test writes, in the order of the file (the samples of the others follow)
 KEYS = ("defaults", "bad_param", "refusals", "models", "model_post", "name_taken", "model_not_found",
         "model_put", "model_put_conflict", "group_post", "group_put", "group_delete", "group_not_found", "preview",
         "preview_group", "preview_no_contacts", "not_ready", "build_submit", "model_building", "build_result", "model",
-        "outputs", "model_stale", "update_submit", "update_result", "to_wireframe", "build_failed", "model_error",
-        "delete_conflict", "delete", "read_only")  # fmt: skip
+        "outputs", "model_stale", "update_submit", "update_result", "to_wireframe", "check", "check_csv", "check_bad",
+        "support", "support_one", "support_f4", "support_bad", "compare_holes", "compare_bad", "from_model_submit",
+        "from_model_result", "from_model_exists", "from_model_bad", "build_failed", "model_error", "delete_conflict",
+        "delete", "read_only")  # fmt: skip
 MINE = tuple(k for k in KEYS if k not in ("defaults", "bad_param", "refusals"))
 SKIP = ("versions", "seconds", "stages", "fp", "sha", "token", "params", "created_at", "updated_at", "at", "job")
-LOOSE = ("max_residual", "cond_max", "cond", "eta_min", "eta_max", "h_bar")  # a machine may round these otherwise
+LOOSE = (
+    "max_residual",
+    "cond_max",
+    "cond",
+    "eta_min",
+    "eta_max",
+    "h_bar",
+    "max_abs_residual",
+    "f_model",
+    "residual",
+    "over",
+    "highlight",
+    "f_data",
+)  # a machine may round these otherwise
 
 
 def answer(r: Any) -> dict[str, Any]:
@@ -111,6 +129,7 @@ def build(c: Any) -> dict[str, Any]:  # noqa: PLR0915 - one scene, told in order
     out["update_submit"], out["update_result"] = submit, result
     shown = c.get(f"{IMP}/models/{mid}").json()["outputs"][1]["wireframe_id"]
     out["to_wireframe"] = answer(c.post(f"{IMP}/models/{mid}/to_wireframe", json={"wireframe_id": shown}))
+    checks(c, mid, out)
     # a job that fails: the state `error` and what the window shows
     ghost = {"name": "Призрак", "type": "domain", "codes": ["НЕТ"]}
     bad_id = c.post(f"{IMP}/models", json=body(w, groups=[W.domain("INT"), ghost], name="Не построится")).json()["id"]
@@ -133,6 +152,45 @@ def build(c: Any) -> dict[str, Any]:  # noqa: PLR0915 - one scene, told in order
     return json.loads(json.dumps(out, ensure_ascii=False))  # type: ignore[no-any-return]
 
 
+def checks(c: Any, mid: int, out: dict[str, Any]) -> None:
+    """The check against the data (Д-32), the support, the comparison with the holes (Д-33), the model on the holes
+    (Д-34 ч. 1): the model `mid` is built and its surfaces are written."""
+    w = c.w
+    out["check"] = answer(c.get(f"{IMP}/models/{mid}/check", params={"sort": "source", "size": 6, "highlight": 0.5}))
+    csv = c.get(f"{IMP}/models/{mid}/check.csv", params={"sort": "source"})
+    lines = csv.content.decode("utf-8-sig").splitlines()
+    out["check_csv"] = {"status": csv.status_code, "body": {"type": csv.headers["content-type"], "bom": csv.content[:3]
+                        == b"\xef\xbb\xbf", "lines": len(lines), "head": lines[:3]}}  # fmt: skip
+    out["check_bad"] = answer(c.get(f"{IMP}/models/{mid}/check", params={"sort": "no"}))
+    allv = c.post(f"{IMP}/models/{mid}/support", json={})
+    out["support"] = answer(allv)
+    one = allv.json()["surfaces"][0]["wireframe_id"]
+    full = c.post(f"{IMP}/models/{mid}/support", json={"wireframe_id": one})
+    cut = full.json()
+    vals = cut.pop("values")
+    out["support_one"] = {"status": full.status_code, "body": {**cut, "values": vals[:12], "values_n": len(vals)}}
+    f4 = c.post(f"{IMP}/models/{mid}/support", json={"wireframe_id": one, "format": "f4"})
+    head = json.loads(f4.headers["x-bf-support"])
+    out["support_f4"] = {
+        "status": 200,
+        "body": {"type": f4.headers["content-type"], "bytes": len(f4.content), "head": head},
+    }
+    out["support_bad"] = answer(c.post(f"{IMP}/models/{mid}/support", json={"threshold": -1}))
+    cmp_url = f"{IMP}/models/{mid}/compare_holes"
+    cmp_body = {"set_id": w.set_id, "table": str(w.litho), "field": "CODE", "size": 6}
+    out["compare_holes"] = answer(c.post(cmp_url, json=cmp_body))
+    out["compare_bad"] = answer(c.post(cmp_url, json={**cmp_body, "table": "нет такой"}))
+    url = f"{API}/drillholes/from_model"
+    submit, result = job_answer(
+        c, c.post(url, json={"set_id": w.set_id, "model_id": mid, "name": "Модель на скважины"})
+    )
+    out["from_model_submit"], out["from_model_result"] = submit, result
+    out["from_model_exists"] = answer(
+        c.post(url, json={"set_id": w.set_id, "model_id": mid, "name": "Модель на скважины"})
+    )
+    out["from_model_bad"] = answer(c.post(url, json={"set_id": w.set_id, "name": "Пусто"}))
+
+
 def norm(x: Any, key: str = "") -> Any:
     """What two runs must agree on: the skipped keys go, the numbers a machine may round are marks, the lines of the
     journal have their numbers cut out."""
@@ -140,7 +198,7 @@ def norm(x: Any, key: str = "") -> Any:
         return {k: norm(v, k) for k, v in x.items() if k not in SKIP}
     if isinstance(x, list):
         return [norm(v, key) for v in x]
-    if key in LOOSE and isinstance(x, float | int) and not isinstance(x, bool):
+    if key in LOOSE and isinstance(x, float | int):
         return "<число>"
     if key == "journal" and isinstance(x, str):
         return re.sub(r"[-+]?\d[\d  .,]*(?:e[-+]?\d+)?", "#", x)

@@ -1,5 +1,5 @@
 {
- "_note": "ЧАСТЬ КЛЮЧЕЙ — ответы настоящего ядра (BF_REGEN_IMPLICIT=1 uv run pytest -q tests/test_implicit_contract.py, 19.16, фикстура tests/modapi_world.py), части ключей — ЧЕРНОВИК форм (docs/progress/e19-api.md §5–§10): check, support, compare_holes, from_model_*, trend_*, build_iso_error и ключи *_b пишут подшаги 19.8, 19.17–19.19, 19.32+; defaults, bad_param, refusals пишет spec.py (BF_REGEN_IMPLICIT=1 uv run pytest -q tests/test_implicit_spec.py). Интерфейс принимается только на настоящих ответах.",
+ "_note": "ЧАСТЬ КЛЮЧЕЙ — ответы настоящего ядра (BF_REGEN_IMPLICIT=1 uv run pytest -q tests/test_implicit_contract.py, 19.16, фикстура tests/modapi_world.py), части ключей — ЧЕРНОВИК форм (docs/progress/e19-api.md §5–§10): trend_*, build_iso_error и ключи *_b пишут подшаги 19.8, 19.32+; defaults, bad_param, refusals пишет spec.py (BF_REGEN_IMPLICIT=1 uv run pytest -q tests/test_implicit_spec.py). Интерфейс принимается только на настоящих ответах.",
  "defaults": {
   "status": 200,
   "body": {
@@ -485,10 +485,10 @@
      "stats": {
       "points": 3316,
       "patches": 16,
-      "seconds": 4.216
+      "seconds": 11.045
      },
-     "created_at": "2026-11-25T20:18:29.315473Z",
-     "updated_at": "2026-11-25T20:18:30.285198Z"
+     "created_at": "2026-11-25T20:31:37.620333Z",
+     "updated_at": "2026-11-25T20:31:47.600099Z"
     }
    ]
   }
@@ -841,7 +841,7 @@
     "max_residual": 2.653877118063974e-12,
     "cond_max": 24344100.0,
     "eta_max": 0.0,
-    "seconds": 4.216,
+    "seconds": 11.045,
     "reused": {
      "patches": 0,
      "bricks": 0
@@ -887,13 +887,13 @@
     "Сумма объёмов доменов и «Прочее» отличается от объёма границы на 0 (доля)."
    ],
    "stages": {
-    "Данные": 1.094,
-    "Тела": 0.182,
-    "Участки": 0.544,
-    "Изоповерхности": 2.395,
+    "Данные": 1.769,
+    "Тела": 4.956,
+    "Участки": 1.685,
+    "Изоповерхности": 2.634,
     "Проверки": 0.001,
-    "Запись": 0.193,
-    "total": 4.409
+    "Запись": 0.122,
+    "total": 11.167
    },
    "events": [
     [
@@ -1016,7 +1016,7 @@
      "clip_id": null
     },
     "algo": "rbf-1",
-    "created_at": "2026-11-25T20:18:29.315473+00:00",
+    "created_at": "2026-11-25T20:31:37.620333+00:00",
     "extent": [
      0.0,
      0.0,
@@ -1035,7 +1035,7 @@
      {
       "kind": "dh_table",
       "id": 1,
-      "fp": "6611f87a79d96:1",
+      "fp": "6611fb6a0bf9f:1",
       "name": "Литология"
      }
     ],
@@ -1084,7 +1084,7 @@
      "max_residual": 2.653877118063974e-12,
      "cond_max": 24344100.0,
      "eta_max": 0.0,
-     "seconds": 4.216,
+     "seconds": 11.045,
      "reused": {
       "patches": 0,
       "bricks": 0
@@ -1118,10 +1118,10 @@
      "balance": 0.0
     },
     "last_run": {
-     "at": "2026-11-25T20:18:34.859808+00:00",
+     "at": "2026-11-25T20:31:58.901430+00:00",
      "job": 1,
      "mode": "build",
-     "seconds": 4.216,
+     "seconds": 11.045,
      "params": "09b8f78b26a604fd97eba4730219c0da3a1b99b01469750db71c94af2518d9de"
     },
     "versions": {
@@ -1194,8 +1194,8 @@
      "triangles": 16162
     }
    ],
-   "created_at": "2026-11-25T20:18:29.315473Z",
-   "updated_at": "2026-11-25T20:18:30.285198Z"
+   "created_at": "2026-11-25T20:31:37.620333Z",
+   "updated_at": "2026-11-25T20:31:47.600099Z"
   }
  },
  "outputs": {
@@ -1335,7 +1335,7 @@
      "clip_id": null
     },
     "algo": "rbf-1",
-    "created_at": "2026-11-25T20:18:29.315473+00:00",
+    "created_at": "2026-11-25T20:31:37.620333+00:00",
     "extent": [
      0.0,
      0.0,
@@ -1354,7 +1354,7 @@
      {
       "kind": "dh_table",
       "id": 1,
-      "fp": "6611f87a79d96:1",
+      "fp": "6611fb6a0bf9f:1",
       "name": "Литология"
      }
     ],
@@ -1403,7 +1403,7 @@
      "max_residual": 2.653877118063974e-12,
      "cond_max": 24344100.0,
      "eta_max": 0.0,
-     "seconds": 4.216,
+     "seconds": 11.045,
      "reused": {
       "patches": 0,
       "bricks": 0
@@ -1437,10 +1437,10 @@
      "balance": 0.0
     },
     "last_run": {
-     "at": "2026-11-25T20:18:34.859808+00:00",
+     "at": "2026-11-25T20:31:58.901430+00:00",
      "job": 1,
      "mode": "build",
-     "seconds": 4.216,
+     "seconds": 11.045,
      "params": "09b8f78b26a604fd97eba4730219c0da3a1b99b01469750db71c94af2518d9de"
     },
     "versions": {
@@ -1513,8 +1513,8 @@
      "triangles": 16162
     }
    ],
-   "created_at": "2026-11-25T20:18:29.315473Z",
-   "updated_at": "2026-11-25T20:18:35.011843Z"
+   "created_at": "2026-11-25T20:31:37.620333Z",
+   "updated_at": "2026-11-25T20:31:59.010832Z"
   }
  },
  "update_submit": {
@@ -1594,7 +1594,7 @@
     "max_residual": 2.653877118063974e-12,
     "cond_max": 24344100.0,
     "eta_max": 0.0,
-    "seconds": 0.655,
+    "seconds": 0.492,
     "reused": {
      "patches": 16,
      "bricks": 4608
@@ -1642,13 +1642,13 @@
     "Обновление: из кеша взято участков 16 из 16, кирпичей 4608."
    ],
    "stages": {
-    "Данные": 0.073,
-    "Тела": 0.146,
-    "Участки": 0.035,
-    "Изоповерхности": 0.392,
-    "Проверки": 0.01,
-    "Запись": 0.199,
-    "total": 0.854
+    "Данные": 0.053,
+    "Тела": 0.093,
+    "Участки": 0.033,
+    "Изоповерхности": 0.312,
+    "Проверки": 0.001,
+    "Запись": 0.107,
+    "total": 0.599
    },
    "events": [
     [
@@ -1701,6 +1701,657 @@
   "body": {
    "wireframe_id": 12,
    "name": "Литология · INT (копия)"
+  }
+ },
+ "check": {
+  "status": 200,
+  "body": {
+   "model": {
+    "id": 6,
+    "name": "Литология",
+    "version": 8,
+    "state": "ready",
+    "stale": false,
+    "stale_reason": null,
+    "source_lost": false
+   },
+   "warnings": [],
+   "group": null,
+   "n": 3316,
+   "total": 3316,
+   "max_abs_residual": 2.653877118063974e-12,
+   "highlight": 0.5,
+   "over": 0,
+   "page": 1,
+   "size": 6,
+   "sort": "source",
+   "groups": [
+    {
+     "group": 1,
+     "name": "INT",
+     "type": "domain",
+     "wing": null,
+     "threshold": null,
+     "points": 1241,
+     "method": "field",
+     "max_abs_residual": 1.744382416291046e-12,
+     "wireframes": [
+      8
+     ]
+    },
+    {
+     "group": 3,
+     "name": "SS",
+     "type": "domain",
+     "wing": null,
+     "threshold": null,
+     "points": 2075,
+     "method": "field",
+     "max_abs_residual": 2.653877118063974e-12,
+     "wireframes": [
+      10
+     ]
+    }
+   ],
+   "rows": [
+    {
+     "i": 50,
+     "group": 1,
+     "group_name": "INT",
+     "wing": null,
+     "threshold": null,
+     "type": "снаружи",
+     "source": "H001",
+     "from": 0.0,
+     "to": 35.11,
+     "vertex": null,
+     "x": 17.60373529939,
+     "y": 16.542919789194446,
+     "z": 296.2102298922072,
+     "f_model": 30.00000000000048,
+     "f_data": 30.0,
+     "residual": 4.796163466380676e-13,
+     "distance": 224.6974085959539,
+     "over": false
+    },
+    {
+     "i": 68,
+     "group": 1,
+     "group_name": "INT",
+     "wing": null,
+     "threshold": null,
+     "type": "снаружи",
+     "source": "H001",
+     "from": 0.0,
+     "to": 35.11,
+     "vertex": null,
+     "x": 19.35120589817,
+     "y": 17.58875936758334,
+     "z": 286.71068967662166,
+     "f_model": 30.000000000000274,
+     "f_data": 30.0,
+     "residual": 2.7355895326763857e-13,
+     "distance": 219.28849929785758,
+     "over": false
+    },
+    {
+     "i": 73,
+     "group": 1,
+     "group_name": "INT",
+     "wing": null,
+     "threshold": null,
+     "type": "снаружи",
+     "source": "H001",
+     "from": 0.0,
+     "to": 35.11,
+     "vertex": null,
+     "x": 21.098676496950002,
+     "y": 18.634598945972233,
+     "z": 277.21114946103614,
+     "f_model": 30.00000000000018,
+     "f_data": 30.0,
+     "residual": 1.8118839761882555e-13,
+     "distance": 214.1839018584862,
+     "over": false
+    },
+    {
+     "i": 80,
+     "group": 1,
+     "group_name": "INT",
+     "wing": null,
+     "threshold": null,
+     "type": "снаружи",
+     "source": "H001",
+     "from": 0.0,
+     "to": 35.11,
+     "vertex": null,
+     "x": 22.846147095730004,
+     "y": 19.680438524361126,
+     "z": 267.71160924545063,
+     "f_model": 29.999999999999993,
+     "f_data": 30.0,
+     "residual": -7.105427357601002e-15,
+     "distance": 209.29014662748708,
+     "over": false
+    },
+    {
+     "i": 1323,
+     "group": 3,
+     "group_name": "SS",
+     "wing": null,
+     "threshold": null,
+     "type": "снаружи",
+     "source": "H001",
+     "from": 0.0,
+     "to": 35.11,
+     "vertex": null,
+     "x": 17.649116958645727,
+     "y": 16.570080151958624,
+     "z": 295.9635276601635,
+     "f_model": 30.000000000001386,
+     "f_data": 30.0,
+     "residual": 1.3855583347321954e-12,
+     "distance": 29.362454546171264,
+     "over": false
+    },
+    {
+     "i": 1343,
+     "group": 3,
+     "group_name": "SS",
+     "wing": null,
+     "threshold": null,
+     "type": "снаружи",
+     "source": "H001",
+     "from": 0.0,
+     "to": 35.11,
+     "vertex": null,
+     "x": 18.548448620725697,
+     "y": 17.108319048199938,
+     "z": 291.0746114763705,
+     "f_model": 25.000000000000608,
+     "f_data": 25.0,
+     "residual": 6.075140390748857e-13,
+     "distance": 24.44560079992229,
+     "over": false
+    }
+   ]
+  }
+ },
+ "check_csv": {
+  "status": 200,
+  "body": {
+   "type": "text/csv; charset=utf-8",
+   "bom": true,
+   "lines": 3317,
+   "head": [
+    "№;Группа;Порог;Тип;Источник;От, м;До, м;Вершина;X;Y;Z;f модели;f данных;Невязка;Расстояние до каркаса, м;Выше порога",
+    "50;INT;;снаружи;H001;0;35,11;;17,60373529939;16,542919789194446;296,2102298922072;30,00000000000048;30;4,796163466380676e-13;224,6974085959539;",
+    "68;INT;;снаружи;H001;0;35,11;;19,35120589817;17,58875936758334;286,71068967662166;30,000000000000274;30;2,7355895326763857e-13;219,28849929785758;"
+   ]
+  }
+ },
+ "check_bad": {
+  "status": 422,
+  "body": {
+   "param": "sort",
+   "code": "bad_param",
+   "message": "Сортировка: неизвестное значение «no».",
+   "hint": "Допустимо: residual, source."
+  }
+ },
+ "support": {
+  "status": 200,
+  "body": {
+   "model": {
+    "id": 6,
+    "name": "Литология",
+    "version": 8,
+    "state": "ready",
+    "stale": false,
+    "stale_reason": null,
+    "source_lost": false
+   },
+   "warnings": [],
+   "threshold": 60.0,
+   "d_max": 30.0,
+   "recorded": true,
+   "surfaces": [
+    {
+     "wireframe_id": 7,
+     "name": "Литология · INT · поверхность",
+     "group": 1,
+     "wing": null,
+     "kind": "surface",
+     "vertices": 658,
+     "area": 27711.098083253655,
+     "area_beyond": 133.29814719000106,
+     "share_beyond": 0.004810280227421073,
+     "max_distance": 61.259282860666076
+    },
+    {
+     "wireframe_id": 9,
+     "name": "Литология · SS · поверхность",
+     "group": 3,
+     "wing": null,
+     "kind": "surface",
+     "vertices": 7433,
+     "area": 360635.056095558,
+     "area_beyond": 0.0,
+     "share_beyond": 0.0,
+     "max_distance": 46.8669820009984
+    }
+   ]
+  }
+ },
+ "support_one": {
+  "status": 200,
+  "body": {
+   "model": {
+    "id": 6,
+    "name": "Литология",
+    "version": 8,
+    "state": "ready",
+    "stale": false,
+    "stale_reason": null,
+    "source_lost": false
+   },
+   "warnings": [],
+   "threshold": 60.0,
+   "d_max": 30.0,
+   "recorded": true,
+   "surfaces": [
+    {
+     "wireframe_id": 7,
+     "name": "Литология · INT · поверхность",
+     "group": 1,
+     "wing": null,
+     "kind": "surface",
+     "vertices": 658,
+     "area": 27711.098083253655,
+     "area_beyond": 133.29814719000106,
+     "share_beyond": 0.004810280227421073,
+     "max_distance": 61.259282860666076
+    }
+   ],
+   "values": [
+    35.90011933802379,
+    33.707878236273096,
+    35.37197152517701,
+    35.6995016968515,
+    40.01111436634153,
+    33.196671693977926,
+    39.70724470659007,
+    30.524843355302853,
+    32.527345949040075,
+    41.426858982800915,
+    29.7545356922311,
+    33.2000276699662
+   ],
+   "values_n": 658
+  }
+ },
+ "support_f4": {
+  "status": 200,
+  "body": {
+   "type": "application/octet-stream",
+   "bytes": 2632,
+   "head": {
+    "threshold": 60.0,
+    "surface": {
+     "wireframe_id": 7,
+     "name": "Литология · INT · поверхность",
+     "group": 1,
+     "wing": null,
+     "kind": "surface",
+     "vertices": 658,
+     "area": 27711.098083253655,
+     "area_beyond": 133.29814719000106,
+     "share_beyond": 0.004810280227421073,
+     "max_distance": 61.259282860666076
+    },
+    "warnings": [],
+    "recorded": true
+   }
+  }
+ },
+ "support_bad": {
+  "status": 422,
+  "body": {
+   "param": "threshold",
+   "code": "bad_param",
+   "message": "Порог опоры D_оп: значение вне диапазона больше 0 до 100000 м.",
+   "hint": "Задайте больше 0 до 100000 м."
+  }
+ },
+ "compare_holes": {
+  "status": 200,
+  "body": {
+   "model": {
+    "id": 6,
+    "name": "Литология",
+    "stale_reason": null
+   },
+   "table": {
+    "id": 1,
+    "name": "Литология",
+    "field": "CODE"
+   },
+   "model_codes": [
+    "INT",
+    "SS",
+    "Прочее",
+    "Вне модели"
+   ],
+   "other_col": 2,
+   "outside_col": 3,
+   "data_codes": [
+    "ALV",
+    "GR",
+    "INT",
+    "SH",
+    "SS",
+    "VN"
+   ],
+   "no_code_row": null,
+   "length": [
+    [
+     0.0,
+     0.0,
+     4097.699999999998,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     240.26000000000008,
+     1.1299999999999955
+    ],
+    [
+     265.41,
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     3166.5900000000006,
+     40.41999999999999
+    ],
+    [
+     0.0,
+     4011.739999999999,
+     0.0,
+     40.7
+    ],
+    [
+     0.0,
+     12.670000000000002,
+     45.080000000000005,
+     0.0
+    ]
+   ],
+   "count": [
+    [
+     0,
+     0,
+     106,
+     0
+    ],
+    [
+     0,
+     0,
+     30,
+     1
+    ],
+    [
+     5,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     98,
+     1
+    ],
+    [
+     0,
+     102,
+     0,
+     1
+    ],
+    [
+     0,
+     3,
+     10,
+     0
+    ]
+   ],
+   "agree": [
+    [
+     false,
+     false,
+     false,
+     false
+    ],
+    [
+     false,
+     false,
+     false,
+     false
+    ],
+    [
+     true,
+     false,
+     false,
+     false
+    ],
+    [
+     false,
+     false,
+     false,
+     false
+    ],
+    [
+     false,
+     true,
+     false,
+     false
+    ],
+    [
+     false,
+     false,
+     false,
+     false
+    ]
+   ],
+   "agree_length": 4277.149999999999,
+   "total_length": 11921.699999999997,
+   "coded_length": 11921.699999999997,
+   "agree_share": 0.3587701418421869,
+   "no_code": {
+    "count": 0,
+    "length": 0.0
+   },
+   "no_trajectory": {
+    "holes": 0,
+    "intervals": 0,
+    "length": 0.0
+   },
+   "intervals": 357,
+   "holes": 100,
+   "notes": [],
+   "mismatches": {
+    "page": 1,
+    "size": 6,
+    "total": 250,
+    "rows": [
+     {
+      "hole": "H096",
+      "hole_id": 96,
+      "from": 0.0,
+      "to": 59.33,
+      "depth": 29.665,
+      "data_code": "ALV",
+      "model_code": "Прочее",
+      "length": 59.33
+     },
+     {
+      "hole": "H059",
+      "hole_id": 59,
+      "from": 0.0,
+      "to": 57.48,
+      "depth": 28.74,
+      "data_code": "ALV",
+      "model_code": "Прочее",
+      "length": 57.48
+     },
+     {
+      "hole": "H040",
+      "hole_id": 40,
+      "from": 0.0,
+      "to": 57.3,
+      "depth": 28.65,
+      "data_code": "ALV",
+      "model_code": "Прочее",
+      "length": 57.3
+     },
+     {
+      "hole": "H005",
+      "hole_id": 5,
+      "from": 0.0,
+      "to": 56.91,
+      "depth": 28.455,
+      "data_code": "ALV",
+      "model_code": "Прочее",
+      "length": 56.91
+     },
+     {
+      "hole": "H043",
+      "hole_id": 43,
+      "from": 0.0,
+      "to": 56.42,
+      "depth": 28.21,
+      "data_code": "ALV",
+      "model_code": "Прочее",
+      "length": 56.42
+     },
+     {
+      "hole": "H050",
+      "hole_id": 50,
+      "from": 0.0,
+      "to": 56.23,
+      "depth": 28.115,
+      "data_code": "ALV",
+      "model_code": "Прочее",
+      "length": 56.23
+     }
+    ]
+   }
+  }
+ },
+ "compare_bad": {
+  "status": 404,
+  "body": {
+   "code": "table_not_found",
+   "message": "Таблица не найдена.",
+   "hint": "Выберите интервальную таблицу набора."
+  }
+ },
+ "from_model_submit": {
+  "status": 200,
+  "body": {
+   "source": "project",
+   "id": 3
+  }
+ },
+ "from_model_result": {
+  "status": 200,
+  "body": {
+   "set_id": 1,
+   "table_id": 3,
+   "name": "Модель на скважины",
+   "rows": 306,
+   "holes": 100,
+   "no_trajectory": 0,
+   "report": {
+    "mode": "bodies",
+    "model": {
+     "id": 6,
+     "name": "Литология",
+     "stale_reason": null
+    },
+    "bodies": [
+     {
+      "name": "Литология · INT",
+      "triangles": 1312,
+      "holes": 5,
+      "inside": 0,
+      "length": 252.71329477682286,
+      "code": "INT"
+     },
+     {
+      "name": "Литология · SS",
+      "triangles": 14934,
+      "holes": 100,
+      "inside": 0,
+      "length": 4067.5797003762136,
+      "code": "SS"
+     }
+    ],
+    "codes": [
+     {
+      "code": "INT",
+      "rows": 5,
+      "length": 252.71329477682286
+     },
+     {
+      "code": "SS",
+      "rows": 100,
+      "length": 4067.5797003762136
+     }
+    ],
+    "holes": 100,
+    "no_trajectory": 0,
+    "stretches": 105,
+    "length_inside": 4320.292995153036,
+    "length": 11921.7,
+    "rows": 306,
+    "journal": [],
+    "seconds": 0.092
+   },
+   "journal": [],
+   "events": [
+    [
+     "drillholes.changed",
+     {
+      "set_id": 1,
+      "table": "3",
+      "rev": 1
+     }
+    ]
+   ]
+  }
+ },
+ "from_model_exists": {
+  "status": 409,
+  "body": {
+   "name": "Модель на скважины",
+   "suggested": "Модель на скважины (2)",
+   "code": "table_exists",
+   "message": "В наборе уже есть таблица «Модель на скважины».",
+   "hint": "Задайте другое название."
+  }
+ },
+ "from_model_bad": {
+  "status": 422,
+  "body": {
+   "param": "model_id",
+   "code": "bad_param",
+   "message": "Выберите одно: модель, каркасы или поле блочной модели.",
+   "hint": "Задайте ровно одно из model_id, mesh_ids, block_model_id."
   }
  },
  "build_failed": {
@@ -1789,7 +2440,7 @@
      "clip_id": null
     },
     "algo": "rbf-1",
-    "created_at": "2026-11-25T20:18:36.169472+00:00",
+    "created_at": "2026-11-25T20:32:10.201936+00:00",
     "extent": [
      0.0,
      0.0,
@@ -1802,13 +2453,13 @@
      {
       "kind": "dh_set",
       "id": 1,
-      "fp": "traj:1:2:2:minimum_curvature",
+      "fp": "traj:1:3:3:minimum_curvature",
       "name": "Скважины"
      },
      {
       "kind": "dh_table",
       "id": 1,
-      "fp": "6611f87a79d96:1",
+      "fp": "6611fb6a0bf9f:1",
       "name": "Литология"
      }
     ],
@@ -1841,8 +2492,8 @@
    "stale_reason": null,
    "source_lost": false,
    "outputs": [],
-   "created_at": "2026-11-25T20:18:36.169472Z",
-   "updated_at": "2026-11-25T20:18:36.169472Z"
+   "created_at": "2026-11-25T20:32:10.201936Z",
+   "updated_at": "2026-11-25T20:32:10.201936Z"
   }
  },
  "delete_conflict": {
@@ -1955,173 +2606,6 @@
     "message": "Поверхность группы «Алевролит» не прошла проверки: самопересечения.",
     "hint": "Уменьшите шаг h или проверьте данные группы."
    }
-  }
- },
- "check": {
-  "status": 200,
-  "body": {
-   "group": 1,
-   "n": 8120,
-   "max_abs_residual": 3.2e-09,
-   "page": 1,
-   "size": 500,
-   "total": 8120,
-   "rows": [
-    {
-     "i": 517,
-     "group": 1,
-     "type": "контакт",
-     "source": "A-1",
-     "from": 12.0,
-     "to": 12.0,
-     "vertex": -1,
-     "x": 10.0,
-     "y": 5.0,
-     "z": -12.0,
-     "f_model": 3.2e-09,
-     "f_data": 0.0,
-     "residual": 3.2e-09,
-     "distance": 0.004
-    }
-   ]
-  }
- },
- "support": {
-  "status": 200,
-  "body": {
-   "threshold": 60.0,
-   "surfaces": [
-    {
-     "wireframe_id": 301,
-     "group": 1,
-     "area": 81234.5,
-     "area_beyond": 9748.1,
-     "share_beyond": 0.12,
-     "max_distance": 143.2
-    }
-   ],
-   "values": [
-    0.5,
-    12.25,
-    61.0
-   ]
-  }
- },
- "compare_holes": {
-  "status": 200,
-  "body": {
-   "model_codes": [
-    "Дайка",
-    "Песчаник",
-    "Алевролит",
-    "Прочее",
-    "Вне модели"
-   ],
-   "data_codes": [
-    "AL",
-    "DY",
-    "SS"
-   ],
-   "length": [
-    [
-     0,
-     0,
-     512.0,
-     1.5,
-     0
-    ],
-    [
-     98.0,
-     0,
-     0,
-     0,
-     0
-    ],
-    [
-     0,
-     1630.5,
-     2.0,
-     0,
-     0
-    ]
-   ],
-   "count": [
-    [
-     0,
-     0,
-     41,
-     1,
-     0
-    ],
-    [
-     9,
-     0,
-     0,
-     0,
-     0
-    ],
-    [
-     0,
-     120,
-     1,
-     0,
-     0
-    ]
-   ],
-   "agree_length": 2240.5,
-   "total_length": 2244.0,
-   "agree_share": 0.99844,
-   "mismatches": {
-    "page": 1,
-    "size": 500,
-    "total": 2,
-    "rows": [
-     {
-      "hole": "B-7",
-      "hole_id": 207,
-      "from": 40.0,
-      "to": 42.0,
-      "data_code": "SS",
-      "model_code": "Алевролит",
-      "length": 2.0
-     }
-    ]
-   }
-  }
- },
- "from_model_submit": {
-  "status": 200,
-  "body": {
-   "source": "jobs",
-   "id": 113
-  }
- },
- "from_model_result": {
-  "status": 200,
-  "body": {
-   "set_id": 3,
-   "table_id": 44,
-   "name": "Модель на скважины",
-   "rows": 412,
-   "holes": 100,
-   "no_trajectory": 0,
-   "report": {
-    "bodies": [
-     {
-      "name": "Дайка",
-      "holes": 37,
-      "length": 98.0
-     }
-    ]
-   },
-   "events": [
-    [
-     "drillholes.changed",
-     {
-      "set_id": 3
-     }
-    ]
-   ]
   }
  },
  "trend_structural_post": {
