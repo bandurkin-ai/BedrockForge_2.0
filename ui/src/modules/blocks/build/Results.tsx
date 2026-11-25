@@ -94,7 +94,7 @@ export function RegularizeResultView({ r }: { r: RegularizeResult }) {
       </div>
       {anyDiffers(r) && (
         <p className={css.note} data-testid="build-regularize-differs">
-          Итоги до и после расходятся: у части блоков нет значения поля, а пропуск не считается нулём, поэтому среднее и металл считаются только по блокам со значением.
+          Итоги до и после расходятся. Если у части блоков нет значения поля, пропуск не считается нулём: среднее и металл считаются только по блокам со значением.
         </p>
       )}
       <Warnings list={r.warnings} testId="build-regularize-warnings" />
