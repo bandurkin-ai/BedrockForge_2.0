@@ -96,6 +96,17 @@ def sub_chunks(
         yield p, s, w, values
 
 
+def smooth(p: np.ndarray, counts: tuple[int, int, int] | list[int], seed: int = 1) -> np.ndarray:
+    """A smooth field over the parents `p` (order F: X fastest) of a grid of `counts`: waves of about 100–400 m
+    (sin(i/37)·cos(j/29) + ½·sin(k/11)) and a rough edge (noise of 0.12) — a filter at a level (≈ 0.78) takes
+    bodies with rough sides, not white noise. float64; the noise follows `seed` and the first parent of `p`."""
+    nx, ny = int(counts[0]), int(counts[1])
+    q = np.asarray(p, dtype=np.int64)
+    i, j, k = q % nx, (q // nx) % ny, q // (nx * ny)
+    noise = np.random.default_rng([seed, int(q[0]) if q.size else 0]).standard_normal(q.size)  # by the first parent
+    return np.sin(i / 37.0) * np.cos(j / 29.0) + 0.5 * np.sin(k / 11.0) + 0.12 * noise
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Generate a synthetic block model (Parquet)")
     ap.add_argument("--nx", type=int, default=100)
