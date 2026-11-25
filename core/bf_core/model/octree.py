@@ -2,8 +2,12 @@
 
 The model extent (+10 %, in the space after the global anisotropy matrix A) is divided into octree leaves until each
 leaf holds at most `n_patch` points; a patch is the ball around a leaf centre with R = (1 + delta) * half the leaf
-diagonal, grown by x1.25 until it holds at least `n_min` points. The result depends only on the points and the
-parameters: not on the input order of canonically ordered points, not on threads, no global state, no side effects.
+diagonal, grown by x1.25 until it holds at least `n_min` points. A second splitting criterion bounds the work of a
+patch (19.4b): a leaf is split further while the ball of its patch (before the growth for `n_min`) holds more than
+`ball_factor * n_patch` points, so a big sparse leaf next to a dense area does not give a patch of tens of thousands of
+points; the interpolant is the same in kind, only the patches are smaller and more numerous. The result depends
+only on the points and the parameters: not on the input order of canonically ordered points, not on threads, no
+global state, no side effects.
 
 Contract with the callers
 - `points` are float64 (n, 3), already in the canonical order (x, y, z, f, type) set by the caller; the numbers in the
@@ -42,6 +46,8 @@ Tick = Callable[[], None]
 GROWTH = 1.25
 #: The extent grows by this share of its size on each side (ТЗ 8.9.2: «охват +10 %»).
 MARGIN = 0.10
+#: A leaf is split while its ball holds more than BALL_FACTOR * n_patch points (an engineering bound, not in the UI).
+BALL_FACTOR = 3.0
 #: Octree depth cap: coincident or near-coincident points beyond `n_patch` cannot be split further.
 MAX_DEPTH = 20
 #: A flat extent (planar or collinear data) gets this share of the largest span along its thin axes.
@@ -107,7 +113,8 @@ def transform_extent(extent_min: ArrayLike, extent_max: ArrayLike, matrix: Array
     return moved.min(axis=0), moved.max(axis=0)
 
 
-def _check_params(n_patch: int, n_min: int, delta: float, margin: float, max_depth: int) -> None:
+def _check_params(n_patch: int, n_min: int, delta: float, margin: float, max_depth: int,
+                  ball_factor: float | None = None) -> None:  # fmt: skip
     """Sanity only: the ranges of ТЗ 8.9.4 (N_уч 300–4000, N_min 20–500, δ 0,1–1) are checked by `spec`."""
     if int(n_patch) < 1 or int(n_min) < 1:
         raise _bad("bad_param", "Число точек участка и минимум точек должны быть положительными.",
@@ -121,6 +128,9 @@ def _check_params(n_patch: int, n_min: int, delta: float, margin: float, max_dep
     if int(max_depth) < 1:
         raise _bad("bad_param", "Предельная глубина октодерева должна быть не меньше 1.",
                    "Оставьте значение по умолчанию.", param="max_depth")  # fmt: skip
+    if ball_factor is not None and not (np.isfinite(ball_factor) and ball_factor >= 1.0):
+        raise _bad("bad_param", "Предел числа точек в шаре участка должен быть числом не меньше 1 (в долях N_уч).",
+                   "Оставьте значение по умолчанию.", param="ball_factor")  # fmt: skip
 
 
 def _check_points(points: ArrayLike, n_min: int) -> F8:
@@ -177,32 +187,66 @@ def _root_box(pts: F8, extent: tuple[ArrayLike, ArrayLike] | None, margin: float
     return lo - margin * span, hi + margin * span
 
 
-def _leaves(pts: F8, lo: F8, hi: F8, n_patch: int, max_depth: int, tick: Tick | None
-            ) -> tuple[F8, F8, I8]:  # fmt: skip
-    """Depth-first octree split; returns leaf boxes and point counts in Morton order (empty leaves included)."""
-    box_lo: list[F8] = []
-    box_hi: list[F8] = []
-    counts: list[int] = []
+def _split(a: F8, b: F8, idx: I8, pts: F8) -> list[tuple[F8, F8, I8]]:
+    """The eight children of a box in Morton order (child = 4*[x >= mid] + 2*[y >= mid] + [z >= mid])."""
+    mid = 0.5 * (a + b)
+    p = pts[idx]
+    code = (p[:, 0] >= mid[0]).astype(np.int8) * 4 + (p[:, 1] >= mid[1]).astype(np.int8) * 2 \
+        + (p[:, 2] >= mid[2]).astype(np.int8)  # fmt: skip
+    order = np.argsort(code, kind="stable")
+    bounds = np.searchsorted(code[order], np.arange(9))
+    out = []
+    for c in range(8):
+        up = np.array([(c >> 2) & 1, (c >> 1) & 1, c & 1], dtype=bool)
+        out.append((np.where(up, mid, a), np.where(up, b, mid), idx[order[bounds[c] : bounds[c + 1]]]))
+    return out
+
+
+def _leaves(pts: F8, tree: cKDTree, lo: F8, hi: F8, n_patch: int, delta: float, ball_factor: float | None,
+            max_depth: int, tick: Tick | None) -> tuple[F8, F8, I8]:  # fmt: skip
+    """Octree split; returns leaf boxes and point counts in Morton order (empty leaves included).
+
+    Pass 1 (depth first): a leaf holds at most `n_patch` points. Pass 2 (`ball_factor`): level by level, the fresh
+    leaves whose ball R0 = (1 + delta) * half the diagonal holds more than `ball_factor * n_patch` points are replaced
+    in place by their eight children (empty ones too: they are patches that cover the extent). The counts are made
+    in one batch per level by the tree, so the result depends neither on the order nor on threads."""
+    leaves: list[tuple[F8, F8, I8, int]] = []
     stack: list[tuple[F8, F8, I8, int]] = [(lo, hi, np.arange(pts.shape[0], dtype=np.int64), 0)]
     while stack:
         if tick is not None:
             tick()
         a, b, idx, depth = stack.pop()
         if idx.size <= n_patch or depth >= max_depth:
-            box_lo.append(a)
-            box_hi.append(b)
-            counts.append(int(idx.size))
+            leaves.append((a, b, idx, depth))
             continue
-        mid = 0.5 * (a + b)
-        p = pts[idx]
-        code = (p[:, 0] >= mid[0]).astype(np.int8) * 4 + (p[:, 1] >= mid[1]).astype(np.int8) * 2 \
-            + (p[:, 2] >= mid[2]).astype(np.int8)  # fmt: skip
-        order = np.argsort(code, kind="stable")
-        bounds = np.searchsorted(code[order], np.arange(9))
-        for c in range(7, -1, -1):  # pushed in reverse: child 0 is processed first
-            up = np.array([(c >> 2) & 1, (c >> 1) & 1, c & 1], dtype=bool)
-            stack.append((np.where(up, mid, a), np.where(up, b, mid), idx[order[bounds[c] : bounds[c + 1]]], depth + 1))
-    return np.array(box_lo), np.array(box_hi), np.array(counts, dtype=np.int64)
+        for ca, cb, ci in reversed(_split(a, b, idx, pts)):  # child 0 is processed first
+            stack.append((ca, cb, ci, depth + 1))
+    if ball_factor is not None:
+        limit = float(ball_factor) * n_patch
+        fresh = np.arange(len(leaves))
+        while fresh.size:
+            if tick is not None:
+                tick()
+            boxes = [leaves[i] for i in fresh]
+            a = np.array([x[0] for x in boxes])
+            b = np.array([x[1] for x in boxes])
+            r0 = (1.0 + delta) * 0.5 * np.linalg.norm(b - a, axis=1)
+            cnt = np.asarray(tree.query_ball_point(0.5 * (a + b), r0, return_length=True, workers=1), dtype=np.int64)
+            split = {int(i) for i, k in zip(fresh, cnt, strict=True) if k > limit and leaves[int(i)][3] < max_depth}
+            if not split:
+                break
+            nxt: list[tuple[F8, F8, I8, int]] = []
+            fresh_new: list[int] = []
+            for i, leaf in enumerate(leaves):
+                if i not in split:
+                    nxt.append(leaf)
+                    continue
+                for ca, cb, ci in _split(leaf[0], leaf[1], leaf[2], pts):
+                    fresh_new.append(len(nxt))
+                    nxt.append((ca, cb, ci, leaf[3] + 1))
+            leaves, fresh = nxt, np.array(fresh_new, dtype=np.int64)
+    return (np.array([x[0] for x in leaves]), np.array([x[1] for x in leaves]),
+            np.array([x[2].size for x in leaves], dtype=np.int64))  # fmt: skip
 
 
 def _balls(tree: cKDTree, centers: F8, r0: F8, n_min: int, tick: Tick | None) -> F8:
@@ -231,18 +275,20 @@ def build_patches(
     matrix: ArrayLike | None = None,
     margin: float = MARGIN,
     max_depth: int = MAX_DEPTH,
+    ball_factor: float | None = BALL_FACTOR,
     tick: Tick | None = None,
 ) -> PatchSet:
     """Octree leaves, patches and their point lists.
 
     `points` — (n, 3) float64 in the canonical order; `extent` — (min, max) of the model (default: of the points);
     the tree covers extent ∪ points, enlarged by `margin` of its size on each side. `matrix` — global anisotropy A,
-    see the module docstring. `tick` is called regularly (cancellation: it raises). Errors are `ApiError` 422 with
+    see the module docstring. `ball_factor` — the bound of the points in the ball of a patch in `n_patch` (None: off).
+    `tick` is called regularly (cancellation: it raises). Errors are `ApiError` 422 with
     `{code, message, hint}` in Russian: `rbf_no_points`, `rbf_few_points`, `rbf_bad_points`, `bad_param`.
     """
     from scipy.spatial import cKDTree  # lazy: the import is not paid by modules that only load this one
 
-    _check_params(n_patch, n_min, delta, margin, max_depth)
+    _check_params(n_patch, n_min, delta, margin, max_depth, ball_factor)
     pts = _check_points(points, int(n_min))
     a = _check_matrix(matrix)
     if a is not None:
@@ -251,11 +297,12 @@ def build_patches(
             extent = transform_extent(extent[0], extent[1], a)
     lo, hi = _root_box(pts, extent, float(margin))
 
-    box_lo, box_hi, leaf_counts = _leaves(pts, lo, hi, int(n_patch), int(max_depth), tick)
+    tree = cKDTree(pts)
+    bound = None if ball_factor is None else float(ball_factor)
+    box_lo, box_hi, leaf_counts = _leaves(pts, tree, lo, hi, int(n_patch), float(delta), bound, int(max_depth), tick)
     centers = 0.5 * (box_lo + box_hi)
     r0 = (1.0 + float(delta)) * 0.5 * np.linalg.norm(box_hi - box_lo, axis=1)
 
-    tree = cKDTree(pts)
     radii = _balls(tree, centers, r0, int(n_min), tick)
     lists = tree.query_ball_point(centers, radii, return_sorted=True, workers=1)
     sizes = np.fromiter((len(x) for x in lists), dtype=np.int64, count=len(lists))

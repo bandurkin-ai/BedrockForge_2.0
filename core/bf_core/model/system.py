@@ -229,6 +229,14 @@ def _check_geometry(xn: np.ndarray, eta: float) -> None:
             )
 
 
+def _one_norm(a: np.ndarray, block: int = 256) -> float:
+    """max_j sum_i |a_ij| by column blocks: no full-size temporary |a| (it would double the memory of a big patch)."""
+    best = 0.0
+    for j in range(0, a.shape[1], block):
+        best = max(best, float(np.max(np.sum(np.abs(a[:, j : j + block]), axis=0))))
+    return best
+
+
 def solve_patch(
     xyz: Any,
     values: Any,
@@ -264,7 +272,7 @@ def solve_patch(
 
     s = r ** kn.homogeneity(code)
     a = assemble(xn, code, None if radius is None else radius / r, eta / s)
-    anorm = float(np.max(np.sum(np.abs(a), axis=0)))
+    anorm = _one_norm(a)
     rhs = _aligned(n + 4)
     rhs[:n], rhs[n:] = f, 0.0
     try:

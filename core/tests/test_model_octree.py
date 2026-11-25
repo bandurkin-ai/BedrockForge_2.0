@@ -145,13 +145,42 @@ def test_leaves_have_at_most_n_patch_points() -> None:
     assert ps.n_patches >= len(pts) // 300
 
 
+def sheet_and_core() -> F8:
+    """Hard data of 19.4b: a big sparse leaf beside a dense plane (drill holes through wavy surfaces)."""
+    rng = np.random.default_rng(5)
+    dense = np.column_stack([rng.random(6000) * 100, rng.random(6000) * 100, rng.normal(0, 1.0, 6000)])
+    sparse = rng.random((400, 3)) * np.array([600.0, 600.0, 150.0]) + np.array([0.0, 0.0, 20.0])
+    return np.vstack([dense, sparse])
+
+
+def test_ball_of_a_patch_is_bounded_in_n_patch() -> None:
+    pts, _ = canonical(sheet_and_core())
+    old = build_patches(pts, n_patch=300, n_min=40, ball_factor=None)
+    new = build_patches(pts, n_patch=300, n_min=40, ball_factor=3.0)
+    assert old.sizes.max() > 3 * 300  # the case exists: without the bound the patch is far larger
+    # the count is taken before the x1.25 growth for n_min: a patch that did not grow obeys the bound exactly
+    # (a sparse leaf grown until it reaches a dense area may jump over it, the spec has no bound for that case)
+    r0 = 1.25 * 0.5 * np.linalg.norm(new.leaf_max - new.leaf_min, axis=1)
+    assert (new.sizes[new.radii == r0] <= 3 * 300).all()
+    assert new.sizes.max() < old.sizes.max() / 2
+    assert new.n_patches > old.n_patches
+    assert new.leaf_counts.sum() == len(pts) and membership(new, len(pts)).min() >= 1
+    lo, hi = new.leaf_min, new.leaf_max  # leaves still tile the extent exactly
+    vol = float(np.sum(np.prod(hi - lo, axis=1)))
+    assert vol == pytest.approx(float(np.prod(new.extent_max - new.extent_min)), rel=1e-9)
+    again = build_patches(pts, n_patch=300, n_min=40, ball_factor=3.0)
+    assert same(new, again)
+
+
 def test_dense_duplicates_stop_at_max_depth() -> None:
     """2000 coincident points cannot be split: the depth cap stops the descent, no hang, every point is covered."""
     pts = np.vstack([np.full((2000, 3), 5.0), cloud(500, seed=3)])
     ps = build_patches(pts, n_patch=300, n_min=40, max_depth=12)
     assert membership(ps, len(pts)).min() >= 1
     assert ps.leaf_counts.max() >= 2000
-    assert ps.n_patches < 200
+    assert ps.n_patches < 1000  # the ball bound keeps splitting the empty neighbours of the cluster down to the cap
+    off = build_patches(pts, n_patch=300, n_min=40, max_depth=12, ball_factor=None)
+    assert off.n_patches < 200
 
 
 def test_patch_order_is_morton_depth_first_and_stable() -> None:
@@ -235,7 +264,15 @@ def test_bad_points_shape_or_values(bad: F8) -> None:
 
 @pytest.mark.parametrize(
     "kw",
-    [{"n_patch": 0}, {"n_min": 0}, {"delta": -0.1}, {"delta": float("nan")}, {"max_depth": 0}],
+    [
+        {"n_patch": 0},
+        {"n_min": 0},
+        {"delta": -0.1},
+        {"delta": float("nan")},
+        {"max_depth": 0},
+        {"ball_factor": 0.5},
+        {"ball_factor": float("nan")},
+    ],
 )
 def test_bad_parameters(kw: dict[str, float]) -> None:
     assert _err(points=cloud(500), **kw).code == "bad_param"
