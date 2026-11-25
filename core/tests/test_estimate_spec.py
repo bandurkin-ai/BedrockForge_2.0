@@ -279,7 +279,7 @@ def test_contract_answers_are_consistent() -> None:
     assert answers["estimation"]["body"]["columns"] == s.columns()
     assert answers["run_result"]["body"]["fields"] == [c["name"] for c in s.columns()]
     pv = answers["preview"]["body"]  # Э-ОК-1 (Т8.8-1): Σλ = 1
-    assert abs(sum(c["lambda"] for c in pv["samples"]) - 1.0) < 1e-6
+    assert abs(sum(c["lambda"] for c in pv["samples"] if c["lambda"] is not None) - 1.0) < 1e-6
     reasons = {"selected", "hy_capped", "outside", "hole_limit", "octant_limit", "over_n_max", "other_domain",
                "soft_far", "hy_dropped", "merged"}  # fmt: skip
     assert {c["reason"] for c in pv["samples"]} <= reasons

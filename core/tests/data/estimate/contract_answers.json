@@ -1,15 +1,377 @@
 {
- "_note": "Образцы ответов контракта Э18 (18.1, docs/progress/e18-api.md); интерфейс работает на них до готовности ядра. Числа preview/inspect — эталон Э-ОК-1 (Т8.8-1). Заменяются настоящими ответами: BF_REGEN_ESTIMATE=1 (18.13, 18.14–18.16, 18.32).",
+ "_note": "Ответы настоящего ядра (BF_REGEN_ESTIMATE=1 uv run pytest -q tests/test_estimate_api_answers.py, 18.13) на синтетическом проекте tests/estapi_world.py; inspect, simulation* — образцы контракта до 18.Д3 и 18.32. Формы: docs/progress/e18-api.md §3–§8.",
+ "inspect": {
+  "status": 200,
+  "body": {
+   "model_id": 7,
+   "block": {
+    "ijk": [
+     0,
+     0,
+     0
+    ],
+    "p": 0,
+    "rows": [
+     0
+    ],
+    "centre": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "size": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   },
+   "label": "окисл",
+   "results": [
+    {
+     "estimation_id": 41,
+     "name": "AU · OK · окисл",
+     "prefix": "AU_OK_",
+     "method": "ok",
+     "status": 0,
+     "pass": 1,
+     "values": {
+      "EST": 1.99288,
+      "KV": 0.544418,
+      "NS": 4,
+      "NH": 4,
+      "AD": 14.571067811865476,
+      "PASS": 1,
+      "SLOPE": 0.954774,
+      "KE": 0.455582
+     },
+     "stored": {
+      "EST": 1.99288,
+      "KV": 0.544418,
+      "NS": 4,
+      "NH": 4,
+      "AD": 14.571067811865476,
+      "PASS": 1,
+      "SLOPE": 0.954774,
+      "KE": 0.455582
+     },
+     "same": true,
+     "changed": false,
+     "warning": null,
+     "mu": -0.022653,
+     "samples": [
+      {
+       "i": 0,
+       "row_id": 101,
+       "hole": "A-1",
+       "from": 9.0,
+       "to": 11.0,
+       "xyz": [
+        0.0,
+        10.0,
+        0.0
+       ],
+       "z_raw": 1.0,
+       "z": 1.0,
+       "h": 10.0,
+       "dist": 10.0,
+       "octant": 3,
+       "lambda": 0.33289,
+       "reason": "selected"
+      },
+      {
+       "i": 1,
+       "row_id": 102,
+       "hole": "B-2",
+       "from": 9.0,
+       "to": 11.0,
+       "xyz": [
+        10.0,
+        0.0,
+        0.0
+       ],
+       "z_raw": 2.0,
+       "z": 2.0,
+       "h": 10.0,
+       "dist": 10.0,
+       "octant": 1,
+       "lambda": 0.316318,
+       "reason": "selected"
+      },
+      {
+       "i": 2,
+       "row_id": 103,
+       "hole": "C-3",
+       "from": 9.0,
+       "to": 11.0,
+       "xyz": [
+        -6.0,
+        -8.0,
+        0.0
+       ],
+       "z_raw": 3.0,
+       "z": 3.0,
+       "h": 10.0,
+       "dist": 10.0,
+       "octant": 4,
+       "lambda": 0.375815,
+       "reason": "selected"
+      },
+      {
+       "i": 3,
+       "row_id": 104,
+       "hole": "D-4",
+       "from": 9.0,
+       "to": 11.0,
+       "xyz": [
+        20.0,
+        20.0,
+        0.0
+       ],
+       "z_raw": 4.0,
+       "z": 4.0,
+       "h": 28.284271247461902,
+       "dist": 28.284271247461902,
+       "octant": 3,
+       "lambda": -0.025022,
+       "reason": "selected"
+      }
+     ],
+     "ellipsoid": {
+      "centre": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "ang1": 0.0,
+      "ang2": 0.0,
+      "ang3": 0.0,
+      "r1": 30.0,
+      "r2": 30.0,
+      "r3": 30.0,
+      "pass": 1
+     },
+     "passes": [
+      {
+       "pass": 1,
+       "ok": true,
+       "n": 4,
+       "reason": null
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "simulation": {
+  "status": 200,
+  "body": {
+   "id": 61,
+   "name": "AU · SGS · окисл",
+   "version": 1,
+   "meta": {
+    "v": 1,
+    "kind": "sgs",
+    "model_id": 7,
+    "target": {
+     "domain_field": "ZONE",
+     "label": "окисл",
+     "filter_id": null,
+     "rules": null
+    },
+    "samples": {
+     "set_id": 3,
+     "table": "12",
+     "field": "AU",
+     "unit": "г/т",
+     "domain": {
+      "table": "14",
+      "field": "ZONE",
+      "values": [
+       "окисл"
+      ]
+     },
+     "soft": null,
+     "topcut": null,
+     "weights": null
+    },
+    "variogram": {
+     "model_id": 21,
+     "snapshot": {
+      "type": "semivariogram",
+      "c0": 0.1,
+      "structures": [
+       {
+        "type": "spherical",
+        "c": 0.9,
+        "ang1": 0.0,
+        "ang2": 0.0,
+        "ang3": 0.0,
+        "a1": 30.0,
+        "a2": 30.0,
+        "a3": 30.0
+       }
+      ],
+      "common_axes": true
+     },
+     "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "scale": "y",
+     "share": null
+    },
+    "variograms": null,
+    "method": null,
+    "search": {
+     "from": "model",
+     "ang1": 0.0,
+     "ang2": 0.0,
+     "ang3": 0.0,
+     "r1": 30.0,
+     "r2": 30.0,
+     "r3": 30.0,
+     "passes": [
+      {
+       "factor": 1.0,
+       "n_min": 4,
+       "n_max": 24,
+       "n_hole": 0,
+       "n_oct": 0,
+       "k_oct": 0,
+       "n_holes_min": 0,
+       "hy": null
+      }
+     ]
+    },
+    "nodes": 12,
+    "seed": 12345,
+    "n_real": 20,
+    "secondary": null,
+    "nscore": {
+     "ltail": "linear",
+     "utail": "linear",
+     "ltpar": null,
+     "utpar": null
+    },
+    "origin": [
+     7.0,
+     6.0,
+     0.0
+    ],
+    "inputs": [
+     {
+      "kind": "dh_table",
+      "id": 12,
+      "fp": "tok-12:5",
+      "name": "Композиты"
+     },
+     {
+      "kind": "dh_table",
+      "id": 14,
+      "fp": "tok-14:2",
+      "name": "Литология"
+     },
+     {
+      "kind": "dh_set",
+      "id": 3,
+      "fp": "traj:9f2c",
+      "name": "Скважины"
+     },
+     {
+      "kind": "object:variogram_model",
+      "id": 21,
+      "fp": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "name": "AU · окисл"
+     },
+     {
+      "kind": "object:block_model",
+      "id": 7,
+      "fp": "cells:1111111111111111111111111111111111111111111111111111111111111111",
+      "name": "Модель"
+     },
+     {
+      "kind": "bm_field",
+      "id": "7:ZONE",
+      "fp": "cells:1111111111111111111111111111111111111111111111111111111111111111",
+      "name": "Модель · ZONE"
+     }
+    ],
+    "algo": "sim-1",
+    "last_run": {
+     "at": "2026-11-25T10:00:00+00:00",
+     "job": "j-0003",
+     "nodes": 1000,
+     "realizations": 20
+    }
+   },
+   "file": {
+    "role": "real",
+    "sha": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "rows": 1000,
+    "columns": [
+     "p",
+     "dom",
+     "r001",
+     "r002"
+    ]
+   },
+   "stale": false,
+   "stale_reason": null,
+   "source_lost": false,
+   "created_at": "2026-11-25T10:00:00+00:00",
+   "updated_at": "2026-11-25T10:00:00+00:00"
+  }
+ },
+ "simulate_result": {
+  "status": 200,
+  "body": {
+   "simulation_id": 61,
+   "nodes": 1000,
+   "realizations": 20,
+   "seconds": 3.2,
+   "events": [
+    [
+     "geostat.changed",
+     {
+      "kind": "simulation",
+      "id": 61
+     }
+    ]
+   ]
+  }
+ },
+ "simulate_post_result": {
+  "status": 200,
+  "body": {
+   "simulation_id": 61,
+   "model_id": 7,
+   "version": 6,
+   "fields": [
+    "AU_SGS_MEAN",
+    "AU_SGS_STD",
+    "AU_SGS_P10",
+    "AU_SGS_P50",
+    "AU_SGS_P90",
+    "AU_SGS_PROB_GT_1"
+   ],
+   "events": [
+    [
+     "objects.changed",
+     {
+      "kind": "block_model",
+      "id": 7
+     }
+    ]
+   ]
+  }
+ },
  "defaults": {
   "status": 200,
   "body": {
    "model": {
-    "id": 7,
-    "name": "Модель",
-    "version": 4,
-    "rows": 1200,
-    "parents": 1000,
-    "sub": true,
+    "id": 2,
+    "name": "Модель оценки",
+    "version": 1,
+    "rows": 800,
+    "parents": 800,
+    "sub": false,
     "regular": true,
     "rotation": 0.0,
     "size": [
@@ -30,44 +392,44 @@
     ]
    },
    "samples": {
-    "set_id": 3,
-    "table": "12",
+    "set_id": 1,
+    "table": "1",
     "table_name": "Композиты",
     "field": "AU",
     "unit": "г/т",
     "weights": "DECL_W",
     "counts": {
-     "rows": 1196,
-     "missing": 4,
+     "rows": 500,
+     "missing": 11,
      "no_position": 0,
-     "outside_domain": 0,
-     "used": 1192
+     "outside_domain": 342,
+     "used": 147
     },
     "mean": {
-     "naive": 1.84,
-     "declus": 1.62
+     "naive": 1.2030617500336696,
+     "declus": 1.1874132779515134
     },
     "domain": {
-     "table": "14",
+     "table": "2",
      "field": "ZONE",
      "values": [
       {
        "value": "окисл",
-       "n": 880,
-       "naive": 2.01,
-       "declus": 1.77
-      },
-      {
-       "value": "перех",
-       "n": 200,
-       "naive": 1.3,
-       "declus": 1.21
+       "n": 147,
+       "naive": 1.2030617500336696,
+       "declus": 1.1874132779515134
       },
       {
        "value": "перв",
-       "n": 112,
-       "naive": 0.9,
-       "declus": null
+       "n": 245,
+       "naive": 1.1343916816356268,
+       "declus": 1.1133686848903719
+      },
+      {
+       "value": "перех",
+       "n": 97,
+       "naive": 1.022071530654385,
+       "declus": 1.0281965810662026
       }
      ]
     }
@@ -84,7 +446,7 @@
     ]
    },
    "variogram": {
-    "id": 21,
+    "id": 3,
     "name": "AU · окисл",
     "scale": "z",
     "share": null,
@@ -99,22 +461,22 @@
        "ang1": 0.0,
        "ang2": 0.0,
        "ang3": 0.0,
-       "a1": 30.0,
-       "a2": 30.0,
+       "a1": 60.0,
+       "a2": 60.0,
        "a3": 30.0
       }
      ],
      "common_axes": true
     },
-    "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    "sha": "0e6ff29b8ee090388611987737e2ee0ba0cefdec9d454c918a842d3789dd00bb"
    },
    "search": {
     "from": "model",
     "ang1": 0.0,
     "ang2": 0.0,
     "ang3": 0.0,
-    "r1": 30.0,
-    "r2": 30.0,
+    "r1": 60.0,
+    "r2": 60.0,
     "r3": 30.0
    },
    "params": {
@@ -473,49 +835,191 @@
    }
   }
  },
- "estimations": {
+ "estimation_post": {
   "status": 200,
   "body": {
-   "estimations": [
+   "id": 4,
+   "name": "AU · OK · окисл",
+   "version": 1
+  }
+ },
+ "estimation_put_conflict": {
+  "status": 409,
+  "body": {
+   "version": 2,
+   "code": "version_conflict",
+   "message": "Параметры оценки изменены в другом окне.",
+   "hint": "Перечитайте параметры или сохраните как новые."
+  }
+ },
+ "bad_param": {
+  "status": 422,
+  "body": {
+   "param": "search.passes.1.n_max",
+   "code": "bad_param",
+   "message": "Наибольшее число проб n_max: значение вне диапазона от 1 до 128.",
+   "hint": "Задайте от 1 до 128."
+  }
+ },
+ "variogram_scale": {
+  "status": 422,
+  "body": {
+   "param": "variogram.model_id",
+   "code": "variogram_scale",
+   "message": "Модель построена в нормальных оценках",
+   "hint": "Выполните обратное преобразование модели или выберите модель в исходных единицах"
+  }
+ },
+ "run_submit": {
+  "status": 200,
+  "body": {
+   "source": "project",
+   "id": 1
+  }
+ },
+ "run_result": {
+  "status": 200,
+  "body": {
+   "model_id": 2,
+   "version": 2,
+   "plan_id": 7,
+   "fields": [
+    "AU_OK_STATUS",
+    "AU_OK_EST",
+    "AU_OK_KV",
+    "AU_OK_NS",
+    "AU_OK_NH",
+    "AU_OK_AD",
+    "AU_OK_PASS",
+    "AU_OK_SLOPE",
+    "AU_OK_KE"
+   ],
+   "rows": [
     {
-     "id": 41,
-     "name": "AU · OK · окисл",
-     "model_id": 7,
-     "method": "ok",
+     "estimation_id": 4,
      "prefix": "AU_OK_",
      "label": "окисл",
-     "version": 2,
-     "stale": false,
-     "stale_reason": null,
-     "source_lost": false,
-     "plans": [
-      51
-     ],
-     "last_run": {
-      "at": "2026-11-25T10:00:00+00:00",
+     "counts": {
+      "targets": 800,
       "by_status": [
-       1100,
-       60,
-       35,
-       5
-      ]
-     },
-     "created_at": "2026-11-25T10:00:00+00:00",
-     "updated_at": "2026-11-25T10:00:00+00:00"
+       200,
+       600,
+       0,
+       0
+      ],
+      "by_pass": [
+       200,
+       0,
+       0
+      ],
+      "singular": [
+       0,
+       0,
+       0
+      ],
+      "samples": {
+       "rows": 500,
+       "missing": 11,
+       "no_position": 0,
+       "outside_domain": 342,
+       "used": 147,
+       "merged": 0,
+       "topcut": 0,
+       "soft": 0,
+       "no_weight": 0
+      }
+     }
+    },
+    {
+     "estimation_id": 5,
+     "prefix": "AU_OK_",
+     "label": "перех",
+     "counts": {
+      "targets": 800,
+      "by_status": [
+       200,
+       600,
+       0,
+       0
+      ],
+      "by_pass": [
+       200,
+       0,
+       0
+      ],
+      "singular": [
+       0,
+       0,
+       0
+      ],
+      "samples": {
+       "rows": 500,
+       "missing": 11,
+       "no_position": 0,
+       "outside_domain": 392,
+       "used": 97,
+       "merged": 0,
+       "topcut": 0,
+       "soft": 0,
+       "no_weight": 0
+      }
+     }
     }
+   ],
+   "merged": [
+    {
+     "prefix": "AU_OK_",
+     "estimation_ids": [
+      4,
+      5
+     ]
+    }
+   ],
+   "log": [
+    "«AU · OK · окисл»: оценено 200 блоков; вне домена или ограничителя — 600, мало проб — 0, вырожденная система — 0.",
+    "«AU · OK · перех»: оценено 200 блоков; вне домена или ограничителя — 600, мало проб — 0, вырожденная система — 0."
+   ],
+   "stages": {
+    "samples": 8.014,
+    "search": 7.145,
+    "write": 0.035,
+    "total": 15.194
+   },
+   "events": [
+    [
+     "objects.changed",
+     {
+      "kind": "block_model",
+      "id": 2
+     }
+    ],
+    [
+     "geostat.changed",
+     {
+      "kind": "estimation",
+      "id": 4
+     }
+    ],
+    [
+     "geostat.changed",
+     {
+      "kind": "estimation",
+      "id": 5
+     }
+    ]
    ]
   }
  },
  "estimation": {
   "status": 200,
   "body": {
-   "id": 41,
+   "id": 4,
    "name": "AU · OK · окисл",
    "version": 2,
    "meta": {
     "v": 1,
     "name": "AU · OK · окисл",
-    "model_id": 7,
+    "model_id": 2,
     "target": {
      "domain_field": "ZONE",
      "label": "окисл",
@@ -524,17 +1028,17 @@
     },
     "sub": "parent",
     "disc": [
-     1,
-     1,
+     2,
+     2,
      1
     ],
     "samples": {
-     "set_id": 3,
-     "table": "12",
+     "set_id": 1,
+     "table": "1",
      "field": "AU",
      "unit": "г/т",
      "domain": {
-      "table": "14",
+      "table": "2",
       "field": "ZONE",
       "values": [
        "окисл"
@@ -554,7 +1058,7 @@
      "ik": null
     },
     "variogram": {
-     "model_id": 21,
+     "model_id": 3,
      "snapshot": {
       "type": "semivariogram",
       "c0": 0.1,
@@ -565,14 +1069,14 @@
         "ang1": 0.0,
         "ang2": 0.0,
         "ang3": 0.0,
-        "a1": 30.0,
-        "a2": 30.0,
+        "a1": 60.0,
+        "a2": 60.0,
         "a3": 30.0
        }
       ],
       "common_axes": true
      },
-     "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "sha": "0e6ff29b8ee090388611987737e2ee0ba0cefdec9d454c918a842d3789dd00bb",
      "scale": "z",
      "share": null
     },
@@ -583,8 +1087,8 @@
      "ang1": 0.0,
      "ang2": 0.0,
      "ang3": 0.0,
-     "r1": 30.0,
-     "r2": 30.0,
+     "r1": 60.0,
+     "r2": 60.0,
      "r3": 30.0,
      "passes": [
       {
@@ -634,92 +1138,93 @@
      ]
     },
     "origin": [
-     7.0,
-     6.0,
-     0.0
+     500050.0,
+     6700050.0,
+     294.0
     ],
     "inputs": [
      {
       "kind": "dh_table",
-      "id": 12,
-      "fp": "tok-12:5",
+      "id": 1,
+      "fp": "66115a1943e78:1",
       "name": "Композиты"
      },
      {
       "kind": "dh_table",
-      "id": 14,
-      "fp": "tok-14:2",
+      "id": 2,
+      "fp": "66115a1984107:1",
       "name": "Литология"
      },
      {
       "kind": "dh_set",
-      "id": 3,
-      "fp": "traj:9f2c",
+      "id": 1,
+      "fp": "traj:1:2:2:minimum_curvature",
       "name": "Скважины"
      },
      {
       "kind": "object:variogram_model",
-      "id": 21,
-      "fp": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "id": 3,
+      "fp": "0e6ff29b8ee090388611987737e2ee0ba0cefdec9d454c918a842d3789dd00bb",
       "name": "AU · окисл"
      },
      {
       "kind": "object:block_model",
-      "id": 7,
-      "fp": "cells:1111111111111111111111111111111111111111111111111111111111111111",
-      "name": "Модель"
+      "id": 2,
+      "fp": "cells:b210a36cf6532ec75dd04f81b080e659afacf9a74275d70e9270f6d45b5bc280",
+      "name": "Модель оценки"
      },
      {
       "kind": "bm_field",
-      "id": "7:ZONE",
-      "fp": "cells:1111111111111111111111111111111111111111111111111111111111111111",
-      "name": "Модель · ZONE"
+      "id": "2:ZONE",
+      "fp": "cells:b210a36cf6532ec75dd04f81b080e659afacf9a74275d70e9270f6d45b5bc280",
+      "name": "Модель оценки · ZONE"
      }
     ],
     "algo": "est-1",
     "versions": {
-     "numpy": "2.1.3",
-     "scipy": "1.14.1",
-     "numba": "0.60.0"
+     "numpy": "2.3.5",
+     "scipy": "1.18.1",
+     "numba": "0.68.1"
     },
+    "created_at": "2026-11-25T08:29:54.128566+00:00",
     "last_run": {
-     "at": "2026-11-25T10:00:00+00:00",
-     "job": "j-0001",
-     "version": 4,
+     "at": "2026-11-25T08:30:09.975566+00:00",
+     "job": 1,
+     "version": 2,
      "counts": {
-      "targets": 1200,
+      "targets": 800,
       "by_status": [
-       1100,
-       60,
-       35,
-       5
+       200,
+       600,
+       0,
+       0
       ],
       "by_pass": [
-       990,
-       90,
-       20
+       200,
+       0,
+       0
       ],
       "singular": [
-       3,
-       1,
-       5
+       0,
+       0,
+       0
       ],
       "samples": {
-       "rows": 1196,
-       "missing": 4,
+       "rows": 500,
+       "missing": 11,
        "no_position": 0,
-       "outside_domain": 310,
-       "used": 880,
-       "merged": 2,
+       "outside_domain": 342,
+       "used": 147,
+       "merged": 0,
        "topcut": 0,
        "soft": 0,
        "no_weight": 0
       }
      },
-     "merged": null,
-     "class_means": null
-    },
-    "created_at": "2026-11-25T10:00:00+00:00"
+     "merged": 0,
+     "class_means": null,
+     "params": "6325e7b10516f25a9686db98d3937587315d2097d291ce833acc8534efcb72ee"
+    }
    },
    "columns": [
     {
@@ -796,105 +1301,6 @@
     }
    ],
    "fields_exist": [
-    "AU_OK_EST"
-   ],
-   "stale": false,
-   "stale_reason": null,
-   "source_lost": false,
-   "plans": [
-    51
-   ],
-   "created_at": "2026-11-25T10:00:00+00:00",
-   "updated_at": "2026-11-25T10:00:00+00:00"
-  }
- },
- "estimation_post": {
-  "status": 200,
-  "body": {
-   "id": 41,
-   "name": "AU · OK · окисл",
-   "version": 1
-  }
- },
- "estimation_put_conflict": {
-  "status": 409,
-  "body": {
-   "version": 3,
-   "code": "version_conflict",
-   "message": "Параметры оценки изменены в другом окне.",
-   "hint": "Перечитайте параметры или сохраните как новые."
-  }
- },
- "bad_param": {
-  "status": 422,
-  "body": {
-   "param": "search.passes.1.n_max",
-   "code": "bad_param",
-   "message": "Наибольшее число проб n_max: значение вне диапазона от 1 до 128.",
-   "hint": "Задайте от 1 до 128."
-  }
- },
- "variogram_scale": {
-  "status": 422,
-  "body": {
-   "param": "variogram.model_id",
-   "code": "variogram_scale",
-   "message": "Модель построена в нормальных оценках",
-   "hint": "Выполните обратное преобразование модели или выберите модель в исходных единицах"
-  }
- },
- "plan": {
-  "status": 200,
-  "body": {
-   "id": 51,
-   "name": "План · Модель",
-   "model_id": 7,
-   "version": 1,
-   "items": [
-    {
-     "id": 41,
-     "name": "AU · OK · окисл",
-     "method": "ok",
-     "prefix": "AU_OK_",
-     "label": "окисл",
-     "stale": false
-    },
-    {
-     "id": 42,
-     "name": "AU · OK · перех",
-     "method": "ok",
-     "prefix": "AU_OK_",
-     "label": "перех",
-     "stale": true
-    }
-   ],
-   "created_at": "2026-11-25T10:00:00+00:00",
-   "updated_at": "2026-11-25T10:00:00+00:00"
-  }
- },
- "run_submit": {
-  "status": 200,
-  "body": {
-   "source": "jobs",
-   "id": "j-0001"
-  }
- },
- "run_field_exists": {
-  "status": 409,
-  "body": {
-   "field": "AU_OK_EST",
-   "code": "field_exists",
-   "message": "Поле «AU_OK_EST» уже есть в модели.",
-   "hint": "Подтвердите замену полей или задайте другой префикс."
-  }
- },
- "run_result": {
-  "status": 200,
-  "body": {
-   "model_id": 7,
-   "version": 5,
-   "plan_id": 51,
-   "fields": [
     "AU_OK_STATUS",
     "AU_OK_EST",
     "AU_OK_KV",
@@ -905,240 +1311,2955 @@
     "AU_OK_SLOPE",
     "AU_OK_KE"
    ],
-   "rows": [
+   "stale": false,
+   "stale_reason": null,
+   "source_lost": false,
+   "plans": [
+    7
+   ],
+   "created_at": "2026-11-25T08:29:54.128566Z",
+   "updated_at": "2026-11-25T08:29:54.236558Z"
+  }
+ },
+ "estimations": {
+  "status": 200,
+  "body": {
+   "estimations": [
     {
-     "estimation_id": 41,
+     "id": 4,
+     "name": "AU · OK · окисл",
+     "model_id": 2,
+     "method": "ok",
      "prefix": "AU_OK_",
      "label": "окисл",
-     "counts": {
-      "targets": 1200,
+     "version": 2,
+     "stale": false,
+     "stale_reason": null,
+     "source_lost": false,
+     "plans": [
+      7
+     ],
+     "last_run": {
+      "at": "2026-11-25T08:30:09.975566+00:00",
       "by_status": [
-       1100,
-       60,
-       35,
-       5
-      ],
-      "by_pass": [
-       990,
-       90,
-       20
-      ],
-      "singular": [
-       3,
-       1,
-       5
-      ],
-      "samples": {
-       "rows": 1196,
-       "missing": 4,
-       "no_position": 0,
-       "outside_domain": 310,
-       "used": 880,
-       "merged": 2,
-       "topcut": 0,
-       "soft": 0,
-       "no_weight": 0
-      }
-     }
-    },
-    {
-     "estimation_id": 42,
-     "prefix": "AU_OK_",
-     "label": "перех",
-     "counts": {
-      "targets": 1200,
-      "by_status": [
-       180,
-       1020,
+       200,
+       600,
        0,
        0
-      ],
-      "by_pass": [
-       990,
-       90,
-       20
-      ],
-      "singular": [
-       3,
-       1,
-       5
-      ],
-      "samples": {
-       "rows": 1196,
-       "missing": 4,
-       "no_position": 0,
-       "outside_domain": 310,
-       "used": 880,
-       "merged": 2,
-       "topcut": 0,
-       "soft": 0,
-       "no_weight": 0
-      }
-     }
-    }
-   ],
-   "merged": [
+      ]
+     },
+     "created_at": "2026-11-25T08:29:54.128566Z",
+     "updated_at": "2026-11-25T08:29:54.236558Z"
+    },
     {
+     "id": 5,
+     "name": "AU · OK · перех",
+     "model_id": 2,
+     "method": "ok",
      "prefix": "AU_OK_",
-     "estimation_ids": [
-      41,
-      42
-     ]
+     "label": "перех",
+     "version": 1,
+     "stale": false,
+     "stale_reason": null,
+     "source_lost": false,
+     "plans": [
+      7
+     ],
+     "last_run": {
+      "at": "2026-11-25T08:30:09.975566+00:00",
+      "by_status": [
+       200,
+       600,
+       0,
+       0
+      ]
+     },
+     "created_at": "2026-11-25T08:29:54.169509Z",
+     "updated_at": "2026-11-25T08:29:54.169509Z"
+    }
+   ]
+  }
+ },
+ "plan": {
+  "status": 200,
+  "body": {
+   "id": 7,
+   "name": "План · Модель оценки",
+   "model_id": 2,
+   "version": 1,
+   "items": [
+    {
+     "id": 4,
+     "name": "AU · OK · окисл",
+     "method": "ok",
+     "prefix": "AU_OK_",
+     "label": "окисл",
+     "stale": false
+    },
+    {
+     "id": 5,
+     "name": "AU · OK · перех",
+     "method": "ok",
+     "prefix": "AU_OK_",
+     "label": "перех",
+     "stale": false
     }
    ],
-   "log": [
-    "Проход 1: 3 блока — вырожденная система, переход к проходу 2."
-   ],
-   "events": [
-    [
-     "objects.changed",
-     {
-      "kind": "block_model",
-      "id": 7
-     }
-    ],
-    [
-     "geostat.changed",
-     {
-      "kind": "estimation",
-      "id": 41
-     }
-    ],
-    [
-     "geostat.changed",
-     {
-      "kind": "estimation",
-      "id": 42
-     }
-    ]
-   ]
+   "created_at": "2026-11-25T08:29:54.609382Z",
+   "updated_at": "2026-11-25T08:29:54.609382Z"
+  }
+ },
+ "run_field_exists": {
+  "status": 409,
+  "body": {
+   "field": "AU_OK_STATUS",
+   "code": "field_exists",
+   "message": "Поле «AU_OK_STATUS» в модели уже есть.",
+   "hint": "Задайте другой префикс или замените поля."
   }
  },
  "preview": {
   "status": 200,
   "body": {
    "at": {
-    "row": 0,
-    "p": 0,
+    "row": 744,
+    "p": 744,
     "ijk": [
-     0,
-     0,
-     0
+     4,
+     4,
+     7
     ]
    },
    "centre": [
-    0.0,
-    0.0,
-    0.0
+    500040.0,
+    6700040.0,
+    297.5
    ],
    "size": [
-    1.0,
-    1.0,
-    1.0
+    10.0,
+    10.0,
+    5.0
    ],
    "label": "окисл",
    "status": 0,
    "pass": 1,
    "values": {
-    "EST": 1.99288,
-    "KV": 0.544418,
-    "NS": 4,
+    "EST": 1.4473542166116893,
+    "KV": 0.22720189748855393,
+    "SLOPE": 1.1308504349670294,
+    "KE": 0.717512325033582,
+    "NS": 24,
     "NH": 4,
-    "AD": 14.571067811865476,
-    "PASS": 1,
-    "SLOPE": 0.954774,
-    "KE": 0.455582
+    "AD": 18.50877938873385,
+    "PASS": 1
    },
-   "mu": -0.022653,
+   "mu": 0.05984950786596408,
    "samples": [
     {
-     "i": 0,
-     "row_id": 101,
-     "hole": "A-1",
-     "from": 9.0,
-     "to": 11.0,
+     "i": 75,
+     "row_id": 242,
+     "hole": "С-12",
+     "from": 2.0,
+     "to": 4.0,
      "xyz": [
-      0.0,
-      10.0,
-      0.0
+      500050.0,
+      6700050.0,
+      297.0
      ],
-     "z_raw": 1.0,
-     "z": 1.0,
-     "h": 10.0,
-     "dist": 10.0,
-     "octant": 3,
-     "lambda": 0.33289,
-     "reason": "selected"
-    },
-    {
-     "i": 1,
-     "row_id": 102,
-     "hole": "B-2",
-     "from": 9.0,
-     "to": 11.0,
-     "xyz": [
-      10.0,
-      0.0,
-      0.0
-     ],
-     "z_raw": 2.0,
-     "z": 2.0,
-     "h": 10.0,
-     "dist": 10.0,
+     "z_raw": 1.1408447618573296,
+     "z": 1.1408447618573296,
+     "h": 14.177446878757825,
+     "dist": 14.150971698084906,
      "octant": 1,
-     "lambda": 0.316318,
+     "lambda": 0.10414247859124695,
      "reason": "selected"
     },
     {
-     "i": 2,
-     "row_id": 103,
-     "hole": "C-3",
-     "from": 9.0,
-     "to": 11.0,
+     "i": 76,
+     "row_id": 241,
+     "hole": "С-12",
+     "from": 0.0,
+     "to": 2.0,
      "xyz": [
-      -6.0,
-      -8.0,
-      0.0
+      500050.0,
+      6700050.0,
+      299.0
      ],
-     "z_raw": 3.0,
-     "z": 3.0,
-     "h": 10.0,
-     "dist": 10.0,
-     "octant": 4,
-     "lambda": 0.375815,
+     "z_raw": 2.169726136346149,
+     "z": 2.169726136346149,
+     "h": 14.45683229480096,
+     "dist": 14.221462653327892,
+     "octant": 5,
+     "lambda": 0.14487174451688678,
      "reason": "selected"
+    },
+    {
+     "i": 74,
+     "row_id": 243,
+     "hole": "С-12",
+     "from": 4.0,
+     "to": 6.0,
+     "xyz": [
+      500050.0,
+      6700050.0,
+      295.0
+     ],
+     "z_raw": 0.8142292663434711,
+     "z": 0.8142292663434711,
+     "h": 15.0,
+     "dist": 14.361406616345072,
+     "octant": 1,
+     "lambda": 0.07556747655715479,
+     "reason": "selected"
+    },
+    {
+     "i": 73,
+     "row_id": 244,
+     "hole": "С-12",
+     "from": 6.0,
+     "to": 8.0,
+     "xyz": [
+      500050.0,
+      6700050.0,
+      293.0
+     ],
+     "z_raw": 1.204255953003596,
+     "z": 1.204255953003596,
+     "h": 16.76305461424021,
+     "dist": 14.84082207965583,
+     "octant": 1,
+     "lambda": 0.046332473956406224,
+     "reason": "selected"
+    },
+    {
+     "i": 46,
+     "row_id": 222,
+     "hole": "С-11",
+     "from": 2.0,
+     "to": 4.0,
+     "xyz": [
+      500025.0,
+      6700050.0,
+      297.0
+     ],
+     "z_raw": 1.6724818049886014,
+     "z": 1.6724818049886014,
+     "h": 18.05547008526779,
+     "dist": 18.034688796871432,
+     "octant": 3,
+     "lambda": 0.06605204216557121,
+     "reason": "selected"
+    },
+    {
+     "i": 69,
+     "row_id": 142,
+     "hole": "С-07",
+     "from": 2.0,
+     "to": 4.0,
+     "xyz": [
+      500050.0,
+      6700025.0,
+      297.0
+     ],
+     "z_raw": 1.2026272313816855,
+     "z": 1.2026272313816855,
+     "h": 18.05547008526779,
+     "dist": 18.034688796871432,
+     "octant": 0,
+     "lambda": 0.06605204216557121,
+     "reason": "selected"
+    },
+    {
+     "i": 47,
+     "row_id": 221,
+     "hole": "С-11",
+     "from": 0.0,
+     "to": 2.0,
+     "xyz": [
+      500025.0,
+      6700050.0,
+      299.0
+     ],
+     "z_raw": 1.3815401713089637,
+     "z": 1.3815401713089637,
+     "h": 18.275666882497067,
+     "dist": 18.090052515125542,
+     "octant": 7,
+     "lambda": 0.09597689265826236,
+     "reason": "selected"
+    },
+    {
+     "i": 70,
+     "row_id": 141,
+     "hole": "С-07",
+     "from": 0.0,
+     "to": 2.0,
+     "xyz": [
+      500050.0,
+      6700025.0,
+      299.0
+     ],
+     "z_raw": 1.305080057283279,
+     "z": 1.305080057283279,
+     "h": 18.275666882497067,
+     "dist": 18.090052515125542,
+     "octant": 4,
+     "lambda": 0.09597689265826234,
+     "reason": "selected"
+    },
+    {
+     "i": 45,
+     "row_id": 223,
+     "hole": "С-11",
+     "from": 4.0,
+     "to": 6.0,
+     "xyz": [
+      500025.0,
+      6700050.0,
+      295.0
+     ],
+     "z_raw": 1.8795423687159483,
+     "z": 1.8795423687159483,
+     "h": 18.708286933869708,
+     "dist": 18.200274723201296,
+     "octant": 3,
+     "lambda": 0.0488609776756846,
+     "reason": "selected"
+    },
+    {
+     "i": 68,
+     "row_id": 143,
+     "hole": "С-07",
+     "from": 4.0,
+     "to": 6.0,
+     "xyz": [
+      500050.0,
+      6700025.0,
+      295.0
+     ],
+     "z_raw": 1.2092529403399903,
+     "z": 1.2092529403399903,
+     "h": 18.708286933869708,
+     "dist": 18.200274723201296,
+     "octant": 0,
+     "lambda": 0.04886097767568465,
+     "reason": "selected"
+    },
+    {
+     "i": 72,
+     "row_id": 245,
+     "hole": "С-12",
+     "from": 8.0,
+     "to": 10.0,
+     "xyz": [
+      500050.0,
+      6700050.0,
+      291.0
+     ],
+     "z_raw": 1.0677882378056236,
+     "z": 1.0677882378056236,
+     "h": 19.209372712298546,
+     "dist": 15.56438241627338,
+     "octant": 1,
+     "lambda": 0.018466107657624194,
+     "reason": "selected"
+    },
+    {
+     "i": 44,
+     "row_id": 224,
+     "hole": "С-11",
+     "from": 6.0,
+     "to": 8.0,
+     "xyz": [
+      500025.0,
+      6700050.0,
+      293.0
+     ],
+     "z_raw": 0.7191807859048789,
+     "z": 0.7191807859048789,
+     "h": 20.149441679609886,
+     "dist": 18.580904176062045,
+     "octant": 3,
+     "lambda": 0.031660762497223036,
+     "reason": "selected"
+    },
+    {
+     "i": 67,
+     "row_id": 144,
+     "hole": "С-07",
+     "from": 6.0,
+     "to": 8.0,
+     "xyz": [
+      500050.0,
+      6700025.0,
+      293.0
+     ],
+     "z_raw": 0.837304002427483,
+     "z": 0.837304002427483,
+     "h": 20.149441679609886,
+     "dist": 18.580904176062045,
+     "octant": 0,
+     "lambda": 0.03166076249722306,
+     "reason": "selected"
+    },
+    {
+     "i": 40,
+     "row_id": 122,
+     "hole": "С-06",
+     "from": 2.0,
+     "to": 4.0,
+     "xyz": [
+      500025.0,
+      6700025.0,
+      297.0
+     ],
+     "z_raw": 1.2608400968490483,
+     "z": 1.2608400968490483,
+     "h": 21.236760581595302,
+     "dist": 21.219095173922945,
+     "octant": 2,
+     "lambda": 0.04431961195671784,
+     "reason": "selected"
+    },
+    {
+     "i": 41,
+     "row_id": 121,
+     "hole": "С-06",
+     "from": 0.0,
+     "to": 2.0,
+     "xyz": [
+      500025.0,
+      6700025.0,
+      299.0
+     ],
+     "z_raw": 2.1029857283188607,
+     "z": 2.1029857283188607,
+     "h": 21.42428528562855,
+     "dist": 21.266170318136737,
+     "octant": 6,
+     "lambda": 0.06518377915681033,
+     "reason": "selected"
+    },
+    {
+     "i": 39,
+     "row_id": 123,
+     "hole": "С-06",
+     "from": 4.0,
+     "to": 6.0,
+     "xyz": [
+      500025.0,
+      6700025.0,
+      295.0
+     ],
+     "z_raw": 1.6274161649635757,
+     "z": 1.6274161649635757,
+     "h": 21.79449471770337,
+     "dist": 21.360009363293827,
+     "octant": 2,
+     "lambda": 0.033095397958677,
+     "reason": "selected"
+    },
+    {
+     "i": 71,
+     "row_id": 246,
+     "hole": "С-12",
+     "from": 10.0,
+     "to": 12.0,
+     "xyz": [
+      500050.0,
+      6700050.0,
+      289.0
+     ],
+     "z_raw": 0.8844589365762794,
+     "z": 0.8844589365762794,
+     "h": 22.11334438749598,
+     "dist": 16.5,
+     "octant": 1,
+     "lambda": -0.016633073301233214,
+     "reason": "selected"
+    },
+    {
+     "i": 43,
+     "row_id": 225,
+     "hole": "С-11",
+     "from": 8.0,
+     "to": 10.0,
+     "xyz": [
+      500025.0,
+      6700050.0,
+      291.0
+     ],
+     "z_raw": 1.908936213692693,
+     "z": 1.908936213692693,
+     "h": 22.22611077089287,
+     "dist": 19.1637678967368,
+     "octant": 3,
+     "lambda": 0.012391366372514758,
+     "reason": "selected"
+    },
+    {
+     "i": 66,
+     "row_id": 145,
+     "hole": "С-07",
+     "from": 8.0,
+     "to": 10.0,
+     "xyz": [
+      500050.0,
+      6700025.0,
+      291.0
+     ],
+     "z_raw": 0.9333604903841218,
+     "z": 0.9333604903841218,
+     "h": 22.22611077089287,
+     "dist": 19.1637678967368,
+     "octant": 0,
+     "lambda": 0.012391366372514713,
+     "reason": "selected"
+    },
+    {
+     "i": 38,
+     "row_id": 124,
+     "hole": "С-06",
+     "from": 6.0,
+     "to": 8.0,
+     "xyz": [
+      500025.0,
+      6700025.0,
+      293.0
+     ],
+     "z_raw": 1.5798180700548765,
+     "z": 1.5798180700548765,
+     "h": 23.043437243605826,
+     "dist": 21.68524844220144,
+     "octant": 2,
+     "lambda": 0.02183349120079367,
+     "reason": "selected"
+    },
+    {
+     "i": 42,
+     "row_id": 226,
+     "hole": "С-11",
+     "from": 10.0,
+     "to": 12.0,
+     "xyz": [
+      500025.0,
+      6700050.0,
+      289.0
+     ],
+     "z_raw": 1.1081416272982716,
+     "z": 1.1081416272982716,
+     "h": 24.779023386727733,
+     "dist": 19.93113142799475,
+     "octant": 3,
+     "lambda": -0.01759332437442854,
+     "reason": "selected"
+    },
+    {
+     "i": 65,
+     "row_id": 146,
+     "hole": "С-07",
+     "from": 10.0,
+     "to": 12.0,
+     "xyz": [
+      500050.0,
+      6700025.0,
+      289.0
+     ],
+     "z_raw": 0.9814330032970295,
+     "z": 0.9814330032970295,
+     "h": 24.779023386727733,
+     "dist": 19.93113142799475,
+     "octant": 0,
+     "lambda": -0.017593324374428548,
+     "reason": "selected"
+    },
+    {
+     "i": 37,
+     "row_id": 125,
+     "hole": "С-06",
+     "from": 8.0,
+     "to": 10.0,
+     "xyz": [
+      500025.0,
+      6700025.0,
+      291.0
+     ],
+     "z_raw": 1.9091989938923781,
+     "z": 1.9091989938923781,
+     "h": 24.879710609249457,
+     "dist": 22.18670773233379,
+     "octant": 2,
+     "lambda": 0.0074195903814808775,
+     "reason": "selected"
+    },
+    {
+     "i": 36,
+     "row_id": 126,
+     "hole": "С-06",
+     "from": 10.0,
+     "to": 12.0,
+     "xyz": [
+      500025.0,
+      6700025.0,
+      289.0
+     ],
+     "z_raw": 2.592066555704067,
+     "z": 2.592066555704067,
+     "h": 27.184554438136374,
+     "dist": 22.85278976405288,
+     "octant": 2,
+     "lambda": -0.019296512622220235,
+     "reason": "selected"
+    },
+    {
+     "i": 81,
+     "row_id": 342,
+     "hole": "С-17",
+     "from": 2.0,
+     "to": 4.0,
+     "xyz": [
+      500050.0,
+      6700075.0,
+      297.0
+     ],
+     "z_raw": 1.7401584665970866,
+     "z": 1.7401584665970866,
+     "h": 36.41428291206625,
+     "dist": 36.40398329853479,
+     "octant": 1,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 104,
+     "row_id": 262,
+     "hole": "С-13",
+     "from": 2.0,
+     "to": 4.0,
+     "xyz": [
+      500075.0,
+      6700050.0,
+      297.0
+     ],
+     "z_raw": 0.760571147280882,
+     "z": 0.760571147280882,
+     "h": 36.41428291206625,
+     "dist": 36.40398329853479,
+     "octant": 1,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 82,
+     "row_id": 341,
+     "hole": "С-17",
+     "from": 0.0,
+     "to": 2.0,
+     "xyz": [
+      500050.0,
+      6700075.0,
+      299.0
+     ],
+     "z_raw": 2.8737342587548036,
+     "z": 2.8737342587548036,
+     "h": 36.52396473549935,
+     "dist": 36.43144246389374,
+     "octant": 5,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 105,
+     "row_id": 261,
+     "hole": "С-13",
+     "from": 0.0,
+     "to": 2.0,
+     "xyz": [
+      500075.0,
+      6700050.0,
+      299.0
+     ],
+     "z_raw": 1.2614558864856853,
+     "z": 1.2614558864856853,
+     "h": 36.52396473549935,
+     "dist": 36.43144246389374,
+     "octant": 5,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 80,
+     "row_id": 343,
+     "hole": "С-17",
+     "from": 4.0,
+     "to": 6.0,
+     "xyz": [
+      500050.0,
+      6700075.0,
+      295.0
+     ],
+     "z_raw": 1.4250035643062733,
+     "z": 1.4250035643062733,
+     "h": 36.742346141747674,
+     "dist": 36.486298798316064,
+     "octant": 1,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 103,
+     "row_id": 263,
+     "hole": "С-13",
+     "from": 4.0,
+     "to": 6.0,
+     "xyz": [
+      500075.0,
+      6700050.0,
+      295.0
+     ],
+     "z_raw": 1.5500484376249353,
+     "z": 1.5500484376249353,
+     "h": 36.742346141747674,
+     "dist": 36.486298798316064,
+     "octant": 1,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 79,
+     "row_id": 344,
+     "hole": "С-17",
+     "from": 6.0,
+     "to": 8.0,
+     "xyz": [
+      500050.0,
+      6700075.0,
+      293.0
+     ],
+     "z_raw": 0.9586903357926959,
+     "z": 0.9586903357926959,
+     "h": 37.49666651850535,
+     "dist": 36.67764987018661,
+     "octant": 1,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 102,
+     "row_id": 264,
+     "hole": "С-13",
+     "from": 6.0,
+     "to": 8.0,
+     "xyz": [
+      500075.0,
+      6700050.0,
+      293.0
+     ],
+     "z_raw": 0.4490266460049311,
+     "z": 0.4490266460049311,
+     "h": 37.49666651850535,
+     "dist": 36.67764987018661,
+     "octant": 1,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 51,
+     "row_id": 322,
+     "hole": "С-16",
+     "from": 2.0,
+     "to": 4.0,
+     "xyz": [
+      500025.0,
+      6700075.0,
+      297.0
+     ],
+     "z_raw": 1.8510383753532829,
+     "z": 1.8510383753532829,
+     "h": 38.09199390948182,
+     "dist": 38.08214804865923,
+     "octant": 3,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 98,
+     "row_id": 162,
+     "hole": "С-08",
+     "from": 2.0,
+     "to": 4.0,
+     "xyz": [
+      500075.0,
+      6700025.0,
+      297.0
+     ],
+     "z_raw": 1.1444697874504655,
+     "z": 1.1444697874504655,
+     "h": 38.09199390948182,
+     "dist": 38.08214804865923,
+     "octant": 0,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 52,
+     "row_id": 321,
+     "hole": "С-16",
+     "from": 0.0,
+     "to": 2.0,
+     "xyz": [
+      500025.0,
+      6700075.0,
+      299.0
+     ],
+     "z_raw": 2.3222800957381833,
+     "z": 2.3222800957381833,
+     "h": 38.19685850956856,
+     "dist": 38.108398024582456,
+     "octant": 7,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 99,
+     "row_id": 161,
+     "hole": "С-08",
+     "from": 0.0,
+     "to": 2.0,
+     "xyz": [
+      500075.0,
+      6700025.0,
+      299.0
+     ],
+     "z_raw": 1.2696988238181337,
+     "z": 1.2696988238181337,
+     "h": 38.19685850956856,
+     "dist": 38.108398024582456,
+     "octant": 4,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 97,
+     "row_id": 163,
+     "hole": "С-08",
+     "from": 4.0,
+     "to": 6.0,
+     "xyz": [
+      500075.0,
+      6700025.0,
+      295.0
+     ],
+     "z_raw": 1.0459220458814797,
+     "z": 1.0459220458814797,
+     "h": 38.40572873934304,
+     "dist": 38.16084380618437,
+     "octant": 0,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 78,
+     "row_id": 345,
+     "hole": "С-17",
+     "from": 8.0,
+     "to": 10.0,
+     "xyz": [
+      500050.0,
+      6700075.0,
+      291.0
+     ],
+     "z_raw": 0.9264610697032539,
+     "z": 0.9264610697032539,
+     "h": 38.65229618017538,
+     "dist": 36.97634378896864,
+     "octant": 1,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 101,
+     "row_id": 265,
+     "hole": "С-13",
+     "from": 8.0,
+     "to": 10.0,
+     "xyz": [
+      500075.0,
+      6700050.0,
+      291.0
+     ],
+     "z_raw": 0.8134874698778359,
+     "z": 0.8134874698778359,
+     "h": 38.65229618017538,
+     "dist": 36.97634378896864,
+     "octant": 1,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 50,
+     "row_id": 324,
+     "hole": "С-16",
+     "from": 6.0,
+     "to": 8.0,
+     "xyz": [
+      500025.0,
+      6700075.0,
+      293.0
+     ],
+     "z_raw": 1.9774604005524559,
+     "z": 1.9774604005524559,
+     "h": 39.1279950930277,
+     "dist": 38.34383914007569,
+     "octant": 3,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 96,
+     "row_id": 164,
+     "hole": "С-08",
+     "from": 6.0,
+     "to": 8.0,
+     "xyz": [
+      500075.0,
+      6700025.0,
+      293.0
+     ],
+     "z_raw": 0.91942634722781,
+     "z": 0.91942634722781,
+     "h": 39.1279950930277,
+     "dist": 38.34383914007569,
+     "octant": 0,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 77,
+     "row_id": 346,
+     "hole": "С-17",
+     "from": 10.0,
+     "to": 12.0,
+     "xyz": [
+      500050.0,
+      6700075.0,
+      289.0
+     ],
+     "z_raw": 0.7896759414389435,
+     "z": 0.7896759414389435,
+     "h": 40.17461885320133,
+     "dist": 37.379807383131336,
+     "octant": 1,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 100,
+     "row_id": 266,
+     "hole": "С-13",
+     "from": 10.0,
+     "to": 12.0,
+     "xyz": [
+      500075.0,
+      6700050.0,
+      289.0
+     ],
+     "z_raw": 0.6057800752133112,
+     "z": 0.6057800752133112,
+     "h": 40.17461885320133,
+     "dist": 37.379807383131336,
+     "octant": 1,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 49,
+     "row_id": 325,
+     "hole": "С-16",
+     "from": 8.0,
+     "to": 10.0,
+     "xyz": [
+      500025.0,
+      6700075.0,
+      291.0
+     ],
+     "z_raw": 5.080140533514901,
+     "z": 5.080140533514901,
+     "h": 40.23679907746142,
+     "dist": 38.62965182343739,
+     "octant": 3,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 95,
+     "row_id": 165,
+     "hole": "С-08",
+     "from": 8.0,
+     "to": 10.0,
+     "xyz": [
+      500075.0,
+      6700025.0,
+      291.0
+     ],
+     "z_raw": 0.7211032709086593,
+     "z": 0.7211032709086593,
+     "h": 40.23679907746142,
+     "dist": 38.62965182343739,
+     "octant": 0,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 16,
+     "row_id": 202,
+     "hole": "С-10",
+     "from": 2.0,
+     "to": 4.0,
+     "xyz": [
+      500000.0,
+      6700050.0,
+      297.0
+     ],
+     "z_raw": 0.6390551922651988,
+     "z": 0.6390551922651988,
+     "h": 41.24318125460256,
+     "dist": 41.23408784003837,
+     "octant": 3,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 63,
+     "row_id": 42,
+     "hole": "С-02",
+     "from": 2.0,
+     "to": 4.0,
+     "xyz": [
+      500050.0,
+      6700000.0,
+      297.0
+     ],
+     "z_raw": 1.7791759907917957,
+     "z": 1.7791759907917957,
+     "h": 41.24318125460256,
+     "dist": 41.23408784003837,
+     "octant": 0,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 17,
+     "row_id": 201,
+     "hole": "С-10",
+     "from": 0.0,
+     "to": 2.0,
+     "xyz": [
+      500000.0,
+      6700050.0,
+      299.0
+     ],
+     "z_raw": 1.242903613061314,
+     "z": 1.242903613061314,
+     "h": 41.340053217188775,
+     "dist": 41.2583324917525,
+     "octant": 7,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 64,
+     "row_id": 41,
+     "hole": "С-02",
+     "from": 0.0,
+     "to": 2.0,
+     "xyz": [
+      500050.0,
+      6700000.0,
+      299.0
+     ],
+     "z_raw": 1.9830552193153346,
+     "z": 1.9830552193153346,
+     "h": 41.340053217188775,
+     "dist": 41.2583324917525,
+     "octant": 4,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 15,
+     "row_id": 203,
+     "hole": "С-10",
+     "from": 4.0,
+     "to": 6.0,
+     "xyz": [
+      500000.0,
+      6700050.0,
+      295.0
+     ],
+     "z_raw": 1.4594861555001297,
+     "z": 1.4594861555001297,
+     "h": 41.53311931459037,
+     "dist": 41.30677910464576,
+     "octant": 3,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 62,
+     "row_id": 43,
+     "hole": "С-02",
+     "from": 4.0,
+     "to": 6.0,
+     "xyz": [
+      500050.0,
+      6700000.0,
+      295.0
+     ],
+     "z_raw": 2.2812999813452772,
+     "z": 2.2812999813452772,
+     "h": 41.53311931459037,
+     "dist": 41.30677910464576,
+     "octant": 0,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 48,
+     "row_id": 326,
+     "hole": "С-16",
+     "from": 10.0,
+     "to": 12.0,
+     "xyz": [
+      500025.0,
+      6700075.0,
+      289.0
+     ],
+     "z_raw": 2.7821876641090553,
+     "z": 2.7821876641090553,
+     "h": 41.701318923986086,
+     "dist": 39.01602234979881,
+     "octant": 3,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 94,
+     "row_id": 166,
+     "hole": "С-08",
+     "from": 10.0,
+     "to": 12.0,
+     "xyz": [
+      500075.0,
+      6700025.0,
+      289.0
+     ],
+     "z_raw": 0.6536937276998643,
+     "z": 0.6536937276998643,
+     "h": 41.701318923986086,
+     "dist": 39.01602234979881,
+     "octant": 0,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 14,
+     "row_id": 204,
+     "hole": "С-10",
+     "from": 6.0,
+     "to": 8.0,
+     "xyz": [
+      500000.0,
+      6700050.0,
+      293.0
+     ],
+     "z_raw": 2.1595301997162974,
+     "z": 2.1595301997162974,
+     "h": 42.20189569201838,
+     "dist": 41.47589661478098,
+     "octant": 3,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 61,
+     "row_id": 44,
+     "hole": "С-02",
+     "from": 6.0,
+     "to": 8.0,
+     "xyz": [
+      500050.0,
+      6700000.0,
+      293.0
+     ],
+     "z_raw": 0.7870458795212142,
+     "z": 0.7870458795212142,
+     "h": 42.20189569201838,
+     "dist": 41.47589661478098,
+     "octant": 0,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 10,
+     "row_id": 102,
+     "hole": "С-05",
+     "from": 2.0,
+     "to": 4.0,
+     "xyz": [
+      500000.0,
+      6700025.0,
+      297.0
+     ],
+     "z_raw": 1.3326141620213299,
+     "z": 1.3326141620213299,
+     "h": 42.731721238442994,
+     "dist": 42.72294465506796,
+     "octant": 2,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 34,
+     "row_id": 22,
+     "hole": "С-01",
+     "from": 2.0,
+     "to": 4.0,
+     "xyz": [
+      500025.0,
+      6700000.0,
+      297.0
+     ],
+     "z_raw": 0.9590261034636721,
+     "z": 0.9590261034636721,
+     "h": 42.731721238442994,
+     "dist": 42.72294465506796,
+     "octant": 2,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 11,
+     "row_id": 101,
+     "hole": "С-05",
+     "from": 0.0,
+     "to": 2.0,
+     "xyz": [
+      500000.0,
+      6700025.0,
+      299.0
+     ],
+     "z_raw": 0.7454341792505217,
+     "z": 0.7454341792505217,
+     "h": 42.82522621072771,
+     "dist": 42.746344872983,
+     "octant": 6,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 35,
+     "row_id": 21,
+     "hole": "С-01",
+     "from": 0.0,
+     "to": 2.0,
+     "xyz": [
+      500025.0,
+      6700000.0,
+      299.0
+     ],
+     "z_raw": 1.1696988635566965,
+     "z": 1.1696988635566965,
+     "h": 42.82522621072771,
+     "dist": 42.746344872983,
+     "octant": 6,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 9,
+     "row_id": 103,
+     "hole": "С-05",
+     "from": 4.0,
+     "to": 6.0,
+     "xyz": [
+      500000.0,
+      6700025.0,
+      295.0
+     ],
+     "z_raw": 1.463931564173448,
+     "z": 1.463931564173448,
+     "h": 43.01162633521314,
+     "dist": 42.79310692155922,
+     "octant": 2,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 33,
+     "row_id": 23,
+     "hole": "С-01",
+     "from": 4.0,
+     "to": 6.0,
+     "xyz": [
+      500025.0,
+      6700000.0,
+      295.0
+     ],
+     "z_raw": 2.1238058131454287,
+     "z": 2.1238058131454287,
+     "h": 43.01162633521314,
+     "dist": 42.79310692155922,
+     "octant": 2,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 13,
+     "row_id": 205,
+     "hole": "С-10",
+     "from": 8.0,
+     "to": 10.0,
+     "xyz": [
+      500000.0,
+      6700050.0,
+      291.0
+     ],
+     "z_raw": 1.9210141833691987,
+     "z": 1.9210141833691987,
+     "h": 43.23193264243457,
+     "dist": 41.740268326880695,
+     "octant": 3,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 60,
+     "row_id": 45,
+     "hole": "С-02",
+     "from": 8.0,
+     "to": 10.0,
+     "xyz": [
+      500050.0,
+      6700000.0,
+      291.0
+     ],
+     "z_raw": 0.8916946600501209,
+     "z": 0.8916946600501209,
+     "h": 43.23193264243457,
+     "dist": 41.740268326880695,
+     "octant": 0,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 8,
+     "row_id": 104,
+     "hole": "С-05",
+     "from": 6.0,
+     "to": 8.0,
+     "xyz": [
+      500000.0,
+      6700025.0,
+      293.0
+     ],
+     "z_raw": 1.3963032810928335,
+     "z": 1.3963032810928335,
+     "h": 43.657759905886145,
+     "dist": 42.9563732174866,
+     "octant": 2,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 32,
+     "row_id": 24,
+     "hole": "С-01",
+     "from": 6.0,
+     "to": 8.0,
+     "xyz": [
+      500025.0,
+      6700000.0,
+      293.0
+     ],
+     "z_raw": 1.3896034868319793,
+     "z": 1.3896034868319793,
+     "h": 43.657759905886145,
+     "dist": 42.9563732174866,
+     "octant": 2,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 12,
+     "row_id": 206,
+     "hole": "С-10",
+     "from": 10.0,
+     "to": 12.0,
+     "xyz": [
+      500000.0,
+      6700050.0,
+      289.0
+     ],
+     "z_raw": 1.9005091619603676,
+     "z": 1.9005091619603676,
+     "h": 44.598206241955516,
+     "dist": 42.098099719583544,
+     "octant": 3,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 59,
+     "row_id": 46,
+     "hole": "С-02",
+     "from": 10.0,
+     "to": 12.0,
+     "xyz": [
+      500050.0,
+      6700000.0,
+      289.0
+     ],
+     "z_raw": 0.7283448187587502,
+     "z": 0.7283448187587502,
+     "h": 44.598206241955516,
+     "dist": 42.098099719583544,
+     "octant": 0,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 7,
+     "row_id": 105,
+     "hole": "С-05",
+     "from": 8.0,
+     "to": 10.0,
+     "xyz": [
+      500000.0,
+      6700025.0,
+      291.0
+     ],
+     "z_raw": 1.4581200614943817,
+     "z": 1.4581200614943817,
+     "h": 44.654227123532216,
+     "dist": 43.21168823362494,
+     "octant": 2,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 31,
+     "row_id": 25,
+     "hole": "С-01",
+     "from": 8.0,
+     "to": 10.0,
+     "xyz": [
+      500025.0,
+      6700000.0,
+      291.0
+     ],
+     "z_raw": 0.8201762590238422,
+     "z": 0.8201762590238422,
+     "h": 44.654227123532216,
+     "dist": 43.21168823362494,
+     "octant": 2,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 6,
+     "row_id": 106,
+     "hole": "С-05",
+     "from": 10.0,
+     "to": 12.0,
+     "xyz": [
+      500000.0,
+      6700025.0,
+      289.0
+     ],
+     "z_raw": 1.0240329382933635,
+     "z": 1.0240329382933635,
+     "h": 45.9782557302906,
+     "dist": 43.55743334954437,
+     "octant": 2,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 30,
+     "row_id": 26,
+     "hole": "С-01",
+     "from": 10.0,
+     "to": 12.0,
+     "xyz": [
+      500025.0,
+      6700000.0,
+      289.0
+     ],
+     "z_raw": 1.2079281419189989,
+     "z": 1.2079281419189989,
+     "h": 45.9782557302906,
+     "dist": 43.55743334954437,
+     "octant": 2,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 110,
+     "row_id": 362,
+     "hole": "С-18",
+     "from": 2.0,
+     "to": 4.0,
+     "xyz": [
+      500075.0,
+      6700075.0,
+      297.0
+     ],
+     "z_raw": 1.1970527450524517,
+     "z": 1.1970527450524517,
+     "h": 49.50757517794625,
+     "dist": 49.5,
+     "octant": 1,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 111,
+     "row_id": 361,
+     "hole": "С-18",
+     "from": 0.0,
+     "to": 2.0,
+     "xyz": [
+      500075.0,
+      6700075.0,
+      299.0
+     ],
+     "z_raw": 0.45185382747273095,
+     "z": 0.45185382747273095,
+     "h": 49.58830507286975,
+     "dist": 49.52019789944301,
+     "octant": 5,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 109,
+     "row_id": 363,
+     "hole": "С-18",
+     "from": 4.0,
+     "to": 6.0,
+     "xyz": [
+      500075.0,
+      6700075.0,
+      295.0
+     ],
+     "z_raw": 0.8454386122480227,
+     "z": 0.8454386122480227,
+     "h": 49.749371855331,
+     "dist": 49.56056900399752,
+     "octant": 1,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 108,
+     "row_id": 364,
+     "hole": "С-18",
+     "from": 6.0,
+     "to": 8.0,
+     "xyz": [
+      500075.0,
+      6700075.0,
+      293.0
+     ],
+     "z_raw": 1.0879063535102007,
+     "z": 1.0879063535102007,
+     "h": 50.309044912421065,
+     "dist": 49.70160963188214,
+     "octant": 1,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 107,
+     "row_id": 365,
+     "hole": "С-18",
+     "from": 8.0,
+     "to": 10.0,
+     "xyz": [
+      500075.0,
+      6700075.0,
+      291.0
+     ],
+     "z_raw": 0.6324535376893743,
+     "z": 0.6324535376893743,
+     "h": 51.176166327695945,
+     "dist": 49.92243984422236,
+     "octant": 1,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 106,
+     "row_id": 366,
+     "hole": "С-18",
+     "from": 10.0,
+     "to": 12.0,
+     "xyz": [
+      500075.0,
+      6700075.0,
+      289.0
+     ],
+     "z_raw": 0.6657333554685678,
+     "z": 0.6657333554685678,
+     "h": 52.3354564325181,
+     "dist": 50.22200712834962,
+     "octant": 1,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 22,
+     "row_id": 302,
+     "hole": "С-15",
+     "from": 2.0,
+     "to": 4.0,
+     "xyz": [
+      500000.0,
+      6700075.0,
+      297.0
+     ],
+     "z_raw": 0.7219050940125197,
+     "z": 0.7219050940125197,
+     "h": 53.16013544000805,
+     "dist": 53.153080813815485,
+     "octant": 3,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 93,
+     "row_id": 62,
+     "hole": "С-03",
+     "from": 2.0,
+     "to": 4.0,
+     "xyz": [
+      500075.0,
+      6700000.0,
+      297.0
+     ],
+     "z_raw": 1.3024977126464046,
+     "z": 1.3024977126464046,
+     "h": 53.16013544000805,
+     "dist": 53.153080813815485,
+     "octant": 0,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 23,
+     "row_id": 301,
+     "hole": "С-15",
+     "from": 0.0,
+     "to": 2.0,
+     "xyz": [
+      500000.0,
+      6700075.0,
+      299.0
+     ],
+     "z_raw": 1.0628557267608965,
+     "z": 1.0628557267608965,
+     "h": 53.23532661682466,
+     "dist": 53.171891070376645,
+     "octant": 7,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 21,
+     "row_id": 303,
+     "hole": "С-15",
+     "from": 4.0,
+     "to": 6.0,
+     "xyz": [
+      500000.0,
+      6700075.0,
+      295.0
+     ],
+     "z_raw": 1.5173419061045503,
+     "z": 1.5173419061045503,
+     "h": 53.38539126015655,
+     "dist": 53.20949163448191,
+     "octant": 3,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 92,
+     "row_id": 63,
+     "hole": "С-03",
+     "from": 4.0,
+     "to": 6.0,
+     "xyz": [
+      500075.0,
+      6700000.0,
+      295.0
+     ],
+     "z_raw": 0.7014743618356535,
+     "z": 0.7014743618356535,
+     "h": 53.38539126015655,
+     "dist": 53.20949163448191,
+     "octant": 0,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 20,
+     "row_id": 304,
+     "hole": "С-15",
+     "from": 6.0,
+     "to": 8.0,
+     "xyz": [
+      500000.0,
+      6700075.0,
+      293.0
+     ],
+     "z_raw": 6.174629972205275,
+     "z": 6.174629972205275,
+     "h": 53.907327887774215,
+     "dist": 53.34088488204897,
+     "octant": 3,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 91,
+     "row_id": 64,
+     "hole": "С-03",
+     "from": 6.0,
+     "to": 8.0,
+     "xyz": [
+      500075.0,
+      6700000.0,
+      293.0
+     ],
+     "z_raw": 0.7348693341701831,
+     "z": 0.7348693341701831,
+     "h": 53.907327887774215,
+     "dist": 53.34088488204897,
+     "octant": 0,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 19,
+     "row_id": 305,
+     "hole": "С-15",
+     "from": 8.0,
+     "to": 10.0,
+     "xyz": [
+      500000.0,
+      6700075.0,
+      291.0
+     ],
+     "z_raw": 0.955382079261513,
+     "z": 0.955382079261513,
+     "h": 54.71745608121781,
+     "dist": 53.54670858232091,
+     "octant": 3,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 90,
+     "row_id": 65,
+     "hole": "С-03",
+     "from": 8.0,
+     "to": 10.0,
+     "xyz": [
+      500075.0,
+      6700000.0,
+      291.0
+     ],
+     "z_raw": 0.762880280035506,
+     "z": 0.762880280035506,
+     "h": 54.71745608121781,
+     "dist": 53.54670858232091,
+     "octant": 0,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 18,
+     "row_id": 306,
+     "hole": "С-15",
+     "from": 10.0,
+     "to": 12.0,
+     "xyz": [
+      500000.0,
+      6700075.0,
+      289.0
+     ],
+     "z_raw": 1.9597198922216208,
+     "z": 1.9597198922216208,
+     "h": 55.80322571321482,
+     "dist": 53.82610890636625,
+     "octant": 3,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 89,
+     "row_id": 66,
+     "hole": "С-03",
+     "from": 10.0,
+     "to": 12.0,
+     "xyz": [
+      500075.0,
+      6700000.0,
+      289.0
+     ],
+     "z_raw": 0.4294402267260855,
+     "z": 0.4294402267260855,
+     "h": 55.80322571321482,
+     "dist": 53.82610890636625,
+     "octant": 0,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 4,
+     "row_id": 2,
+     "hole": "С-00",
+     "from": 2.0,
+     "to": 4.0,
+     "xyz": [
+      500000.0,
+      6700000.0,
+      297.0
+     ],
+     "z_raw": 1.9662686535233493,
+     "z": 1.9662686535233493,
+     "h": 56.57738063926254,
+     "dist": 56.570752160458326,
+     "octant": 2,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 5,
+     "row_id": 1,
+     "hole": "С-00",
+     "from": 0.0,
+     "to": 2.0,
+     "xyz": [
+      500000.0,
+      6700000.0,
+      299.0
+     ],
+     "z_raw": 1.0137710664039117,
+     "z": 1.0137710664039117,
+     "h": 56.64803615307419,
+     "dist": 56.58842637854493,
+     "octant": 6,
+     "lambda": null,
+     "reason": "over_n_max"
     },
     {
      "i": 3,
-     "row_id": 104,
-     "hole": "D-4",
-     "from": 9.0,
-     "to": 11.0,
+     "row_id": 3,
+     "hole": "С-00",
+     "from": 4.0,
+     "to": 6.0,
      "xyz": [
-      20.0,
-      20.0,
-      0.0
+      500000.0,
+      6700000.0,
+      295.0
      ],
-     "z_raw": 4.0,
-     "z": 4.0,
-     "h": 28.284271247461902,
-     "dist": 28.284271247461902,
+     "z_raw": 2.112479232752964,
+     "z": 2.112479232752964,
+     "h": 56.789083458002736,
+     "dist": 56.62375826453062,
+     "octant": 2,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 2,
+     "row_id": 4,
+     "hole": "С-00",
+     "from": 6.0,
+     "to": 8.0,
+     "xyz": [
+      500000.0,
+      6700000.0,
+      293.0
+     ],
+     "z_raw": 1.1816349745680843,
+     "z": 1.1816349745680843,
+     "h": 57.28001396647874,
+     "dist": 56.74724662924184,
+     "octant": 2,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 1,
+     "row_id": 5,
+     "hole": "С-00",
+     "from": 8.0,
+     "to": 10.0,
+     "xyz": [
+      500000.0,
+      6700000.0,
+      291.0
+     ],
+     "z_raw": 1.4143009041530865,
+     "z": 1.4143009041530865,
+     "h": 58.0430874437258,
+     "dist": 56.94075868830692,
+     "octant": 2,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 0,
+     "row_id": 6,
+     "hole": "С-00",
+     "from": 10.0,
+     "to": 12.0,
+     "xyz": [
+      500000.0,
+      6700000.0,
+      289.0
+     ],
+     "z_raw": 1.386470963293358,
+     "z": 1.386470963293358,
+     "h": 59.06775770248944,
+     "dist": 57.20358380381425,
+     "octant": 2,
+     "lambda": null,
+     "reason": "over_n_max"
+    },
+    {
+     "i": 87,
+     "row_id": 442,
+     "hole": "С-22",
+     "from": 2.0,
+     "to": 4.0,
+     "xyz": [
+      500050.0,
+      6700100.0,
+      297.0
+     ],
+     "z_raw": 1.402181079327798,
+     "z": 1.402181079327798,
+     "h": 60.83584469702052,
+     "dist": 60.82968025561206,
+     "octant": 1,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 134,
+     "row_id": 282,
+     "hole": "С-14",
+     "from": 2.0,
+     "to": 4.0,
+     "xyz": [
+      500100.0,
+      6700050.0,
+      297.0
+     ],
+     "z_raw": 0.6250672968419939,
+     "z": 0.6250672968419939,
+     "h": 60.83584469702052,
+     "dist": 60.82968025561206,
+     "octant": 1,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 88,
+     "row_id": 441,
+     "hole": "С-22",
+     "from": 0.0,
+     "to": 2.0,
+     "xyz": [
+      500050.0,
+      6700100.0,
+      299.0
+     ],
+     "z_raw": 0.9408558689469417,
+     "z": 0.9408558689469417,
+     "h": 60.90155991434045,
+     "dist": 60.846117378186094,
+     "octant": 5,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 135,
+     "row_id": 281,
+     "hole": "С-14",
+     "from": 0.0,
+     "to": 2.0,
+     "xyz": [
+      500100.0,
+      6700050.0,
+      299.0
+     ],
+     "z_raw": 1.016840574687368,
+     "z": 1.016840574687368,
+     "h": 60.90155991434045,
+     "dist": 60.846117378186094,
+     "octant": 5,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 86,
+     "row_id": 443,
+     "hole": "С-22",
+     "from": 4.0,
+     "to": 6.0,
+     "xyz": [
+      500050.0,
+      6700100.0,
+      295.0
+     ],
+     "z_raw": 2.1376468066621594,
+     "z": 2.1376468066621594,
+     "h": 61.032778078668514,
+     "dist": 60.878978309429606,
+     "octant": 1,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 133,
+     "row_id": 283,
+     "hole": "С-14",
+     "from": 4.0,
+     "to": 6.0,
+     "xyz": [
+      500100.0,
+      6700050.0,
+      295.0
+     ],
+     "z_raw": 0.6306390244402204,
+     "z": 0.6306390244402204,
+     "h": 61.032778078668514,
+     "dist": 60.878978309429606,
+     "octant": 1,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 85,
+     "row_id": 444,
+     "hole": "С-22",
+     "from": 6.0,
+     "to": 8.0,
+     "xyz": [
+      500050.0,
+      6700100.0,
+      293.0
+     ],
+     "z_raw": 0.6624883323157398,
+     "z": 0.6624883323157398,
+     "h": 61.48983655857283,
+     "dist": 60.99385214921254,
+     "octant": 1,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 132,
+     "row_id": 284,
+     "hole": "С-14",
+     "from": 6.0,
+     "to": 8.0,
+     "xyz": [
+      500100.0,
+      6700050.0,
+      293.0
+     ],
+     "z_raw": 0.6817765230561128,
+     "z": 0.6817765230561128,
+     "h": 61.48983655857283,
+     "dist": 60.99385214921254,
+     "octant": 1,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 57,
+     "row_id": 422,
+     "hole": "С-21",
+     "from": 2.0,
+     "to": 4.0,
+     "xyz": [
+      500025.0,
+      6700100.0,
+      297.0
+     ],
+     "z_raw": 0.9974779198064769,
+     "z": 0.9974779198064769,
+     "h": 61.85466837676846,
+     "dist": 61.84860548144962,
      "octant": 3,
-     "lambda": -0.025022,
-     "reason": "selected"
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 128,
+     "row_id": 182,
+     "hole": "С-09",
+     "from": 2.0,
+     "to": 4.0,
+     "xyz": [
+      500100.0,
+      6700025.0,
+      297.0
+     ],
+     "z_raw": 0.74316577757664,
+     "z": 0.74316577757664,
+     "h": 61.85466837676846,
+     "dist": 61.84860548144962,
+     "octant": 0,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 58,
+     "row_id": 421,
+     "hole": "С-21",
+     "from": 0.0,
+     "to": 2.0,
+     "xyz": [
+      500025.0,
+      6700100.0,
+      299.0
+     ],
+     "z_raw": 1.6310915802184198,
+     "z": 1.6310915802184198,
+     "h": 61.91930232165088,
+     "dist": 61.86477188190384,
+     "octant": 7,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 129,
+     "row_id": 181,
+     "hole": "С-09",
+     "from": 0.0,
+     "to": 2.0,
+     "xyz": [
+      500100.0,
+      6700025.0,
+      299.0
+     ],
+     "z_raw": 0.6386260977227316,
+     "z": 0.6386260977227316,
+     "h": 61.91930232165088,
+     "dist": 61.86477188190384,
+     "octant": 4,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 56,
+     "row_id": 423,
+     "hole": "С-21",
+     "from": 4.0,
+     "to": 6.0,
+     "xyz": [
+      500025.0,
+      6700100.0,
+      295.0
+     ],
+     "z_raw": 1.9378192883443757,
+     "z": 1.9378192883443757,
+     "h": 62.048368229954285,
+     "dist": 61.897092015699734,
+     "octant": 3,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 127,
+     "row_id": 183,
+     "hole": "С-09",
+     "from": 4.0,
+     "to": 6.0,
+     "xyz": [
+      500100.0,
+      6700025.0,
+      295.0
+     ],
+     "z_raw": 0.3295426170708695,
+     "z": 0.3295426170708695,
+     "h": 62.048368229954285,
+     "dist": 61.897092015699734,
+     "octant": 0,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 84,
+     "row_id": 445,
+     "hole": "С-22",
+     "from": 8.0,
+     "to": 10.0,
+     "xyz": [
+      500050.0,
+      6700100.0,
+      291.0
+     ],
+     "z_raw": 0.9758147910913227,
+     "z": 0.9758147910913227,
+     "h": 62.20128616033595,
+     "dist": 61.173932356846244,
+     "octant": 1,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 131,
+     "row_id": 285,
+     "hole": "С-14",
+     "from": 8.0,
+     "to": 10.0,
+     "xyz": [
+      500100.0,
+      6700050.0,
+      291.0
+     ],
+     "z_raw": 0.36292970734418967,
+     "z": 0.36292970734418967,
+     "h": 62.20128616033595,
+     "dist": 61.173932356846244,
+     "octant": 1,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 55,
+     "row_id": 424,
+     "hole": "С-21",
+     "from": 6.0,
+     "to": 8.0,
+     "xyz": [
+      500025.0,
+      6700100.0,
+      293.0
+     ],
+     "z_raw": 1.1226780205377584,
+     "z": 1.1226780205377584,
+     "h": 62.49799996799898,
+     "dist": 62.010079825783166,
+     "octant": 3,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 126,
+     "row_id": 184,
+     "hole": "С-09",
+     "from": 6.0,
+     "to": 8.0,
+     "xyz": [
+      500100.0,
+      6700025.0,
+      293.0
+     ],
+     "z_raw": 0.7832828738905419,
+     "z": 0.7832828738905419,
+     "h": 62.49799996799898,
+     "dist": 62.010079825783166,
+     "octant": 0,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 83,
+     "row_id": 446,
+     "hole": "С-22",
+     "from": 10.0,
+     "to": 12.0,
+     "xyz": [
+      500050.0,
+      6700100.0,
+      289.0
+     ],
+     "z_raw": 1.0800450872984781,
+     "z": 1.0800450872984781,
+     "h": 63.15853069855251,
+     "dist": 61.41864537744218,
+     "octant": 1,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 130,
+     "row_id": 286,
+     "hole": "С-14",
+     "from": 10.0,
+     "to": 12.0,
+     "xyz": [
+      500100.0,
+      6700050.0,
+      289.0
+     ],
+     "z_raw": 0.4331698038796727,
+     "z": 0.4331698038796727,
+     "h": 63.15853069855251,
+     "dist": 61.41864537744218,
+     "octant": 1,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 54,
+     "row_id": 425,
+     "hole": "С-21",
+     "from": 8.0,
+     "to": 10.0,
+     "xyz": [
+      500025.0,
+      6700100.0,
+      291.0
+     ],
+     "z_raw": 1.0664397594240156,
+     "z": 1.0664397594240156,
+     "h": 63.198101237299845,
+     "dist": 62.187217336041016,
+     "octant": 3,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 125,
+     "row_id": 185,
+     "hole": "С-09",
+     "from": 8.0,
+     "to": 10.0,
+     "xyz": [
+      500100.0,
+      6700025.0,
+      291.0
+     ],
+     "z_raw": 0.40829837288264,
+     "z": 0.40829837288264,
+     "h": 63.198101237299845,
+     "dist": 62.187217336041016,
+     "octant": 0,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 53,
+     "row_id": 426,
+     "hole": "С-21",
+     "from": 10.0,
+     "to": 12.0,
+     "xyz": [
+      500025.0,
+      6700100.0,
+      289.0
+     ],
+     "z_raw": 1.754106937226878,
+     "z": 1.754106937226878,
+     "h": 64.1404708432983,
+     "dist": 62.42795848015535,
+     "octant": 3,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 124,
+     "row_id": 186,
+     "hole": "С-09",
+     "from": 10.0,
+     "to": 12.0,
+     "xyz": [
+      500100.0,
+      6700025.0,
+      289.0
+     ],
+     "z_raw": 0.4288502043429896,
+     "z": 0.4288502043429896,
+     "h": 64.1404708432983,
+     "dist": 62.42795848015535,
+     "octant": 0,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 116,
+     "row_id": 462,
+     "hole": "С-23",
+     "from": 2.0,
+     "to": 4.0,
+     "xyz": [
+      500075.0,
+      6700100.0,
+      297.0
+     ],
+     "z_raw": 2.477985162629605,
+     "z": 2.477985162629605,
+     "h": 69.46941773183363,
+     "dist": 69.4640194633164,
+     "octant": 1,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 140,
+     "row_id": 382,
+     "hole": "С-19",
+     "from": 2.0,
+     "to": 4.0,
+     "xyz": [
+      500100.0,
+      6700075.0,
+      297.0
+     ],
+     "z_raw": 0.6893553956308096,
+     "z": 0.6893553956308096,
+     "h": 69.46941773183363,
+     "dist": 69.4640194633164,
+     "octant": 1,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 117,
+     "row_id": 461,
+     "hole": "С-23",
+     "from": 0.0,
+     "to": 2.0,
+     "xyz": [
+      500075.0,
+      6700100.0,
+      299.0
+     ],
+     "z_raw": 0.7120844725782356,
+     "z": 0.7120844725782356,
+     "h": 69.52697318307479,
+     "dist": 69.47841391396324,
+     "octant": 5,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 141,
+     "row_id": 381,
+     "hole": "С-19",
+     "from": 0.0,
+     "to": 2.0,
+     "xyz": [
+      500100.0,
+      6700075.0,
+      299.0
+     ],
+     "z_raw": 0.9442555949159613,
+     "z": 0.9442555949159613,
+     "h": 69.52697318307479,
+     "dist": 69.47841391396324,
+     "octant": 5,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 115,
+     "row_id": 463,
+     "hole": "С-23",
+     "from": 4.0,
+     "to": 6.0,
+     "xyz": [
+      500075.0,
+      6700100.0,
+      295.0
+     ],
+     "z_raw": 1.1153117009944309,
+     "z": 1.1153117009944309,
+     "h": 69.6419413859206,
+     "dist": 69.50719387228922,
+     "octant": 1,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 139,
+     "row_id": 383,
+     "hole": "С-19",
+     "from": 4.0,
+     "to": 6.0,
+     "xyz": [
+      500100.0,
+      6700075.0,
+      295.0
+     ],
+     "z_raw": 0.447429960504512,
+     "z": 0.447429960504512,
+     "h": 69.6419413859206,
+     "dist": 69.50719387228922,
+     "octant": 1,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 114,
+     "row_id": 464,
+     "hole": "С-23",
+     "from": 6.0,
+     "to": 8.0,
+     "xyz": [
+      500075.0,
+      6700100.0,
+      293.0
+     ],
+     "z_raw": 0.7833166253706068,
+     "z": 0.7833166253706068,
+     "h": 70.04284403134984,
+     "dist": 69.60783001933044,
+     "octant": 1,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 138,
+     "row_id": 384,
+     "hole": "С-19",
+     "from": 6.0,
+     "to": 8.0,
+     "xyz": [
+      500100.0,
+      6700075.0,
+      293.0
+     ],
+     "z_raw": 0.4069917072555945,
+     "z": 0.4069917072555945,
+     "h": 70.04284403134984,
+     "dist": 69.60783001933044,
+     "octant": 1,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 113,
+     "row_id": 465,
+     "hole": "С-23",
+     "from": 8.0,
+     "to": 10.0,
+     "xyz": [
+      500075.0,
+      6700100.0,
+      291.0
+     ],
+     "z_raw": 0.6153644250965165,
+     "z": 0.6153644250965165,
+     "h": 70.66823897621902,
+     "dist": 69.7656792413003,
+     "octant": 1,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 137,
+     "row_id": 385,
+     "hole": "С-19",
+     "from": 8.0,
+     "to": 10.0,
+     "xyz": [
+      500100.0,
+      6700075.0,
+      291.0
+     ],
+     "z_raw": 0.5812186289540592,
+     "z": 0.5812186289540592,
+     "h": 70.66823897621902,
+     "dist": 69.7656792413003,
+     "octant": 1,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 112,
+     "row_id": 466,
+     "hole": "С-23",
+     "from": 10.0,
+     "to": 12.0,
+     "xyz": [
+      500075.0,
+      6700100.0,
+      289.0
+     ],
+     "z_raw": 0.22296277328325173,
+     "z": 0.22296277328325173,
+     "h": 71.5122367151245,
+     "dist": 69.98035438607037,
+     "octant": 1,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 136,
+     "row_id": 386,
+     "hole": "С-19",
+     "from": 10.0,
+     "to": 12.0,
+     "xyz": [
+      500100.0,
+      6700075.0,
+      289.0
+     ],
+     "z_raw": 0.6374541333260462,
+     "z": 0.6374541333260462,
+     "h": 71.5122367151245,
+     "dist": 69.98035438607037,
+     "octant": 1,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 28,
+     "row_id": 402,
+     "hole": "С-20",
+     "from": 2.0,
+     "to": 4.0,
+     "xyz": [
+      500000.0,
+      6700100.0,
+      297.0
+     ],
+     "z_raw": 0.8454495661744418,
+     "z": 0.8454495661744418,
+     "h": 72.11795892841117,
+     "dist": 72.1127589265589,
+     "octant": 3,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 122,
+     "row_id": 82,
+     "hole": "С-04",
+     "from": 2.0,
+     "to": 4.0,
+     "xyz": [
+      500100.0,
+      6700000.0,
+      297.0
+     ],
+     "z_raw": 0.9738702731532635,
+     "z": 0.9738702731532635,
+     "h": 72.11795892841117,
+     "dist": 72.1127589265589,
+     "octant": 0,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 29,
+     "row_id": 401,
+     "hole": "С-20",
+     "from": 0.0,
+     "to": 2.0,
+     "xyz": [
+      500000.0,
+      6700100.0,
+      299.0
+     ],
+     "z_raw": 1.1608391576785648,
+     "z": 1.1608391576785648,
+     "h": 72.17340230306452,
+     "dist": 72.12662476506162,
+     "octant": 7,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 123,
+     "row_id": 81,
+     "hole": "С-04",
+     "from": 0.0,
+     "to": 2.0,
+     "xyz": [
+      500100.0,
+      6700000.0,
+      299.0
+     ],
+     "z_raw": 0.4245406699205109,
+     "z": 0.4245406699205109,
+     "h": 72.17340230306452,
+     "dist": 72.12662476506162,
+     "octant": 4,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 27,
+     "row_id": 403,
+     "hole": "С-20",
+     "from": 4.0,
+     "to": 6.0,
+     "xyz": [
+      500000.0,
+      6700100.0,
+      295.0
+     ],
+     "z_raw": 1.6083052082337386,
+     "z": 1.6083052082337386,
+     "h": 72.2841614740048,
+     "dist": 72.15434844830907,
+     "octant": 3,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 121,
+     "row_id": 83,
+     "hole": "С-04",
+     "from": 4.0,
+     "to": 6.0,
+     "xyz": [
+      500100.0,
+      6700000.0,
+      295.0
+     ],
+     "z_raw": 0.33848162641223206,
+     "z": 0.33848162641223206,
+     "h": 72.2841614740048,
+     "dist": 72.15434844830907,
+     "octant": 0,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 26,
+     "row_id": 404,
+     "hole": "С-20",
+     "from": 6.0,
+     "to": 8.0,
+     "xyz": [
+      500000.0,
+      6700100.0,
+      293.0
+     ],
+     "z_raw": 1.333334912397827,
+     "z": 1.333334912397827,
+     "h": 72.67048919609665,
+     "dist": 72.25129756620292,
+     "octant": 3,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 120,
+     "row_id": 84,
+     "hole": "С-04",
+     "from": 6.0,
+     "to": 8.0,
+     "xyz": [
+      500100.0,
+      6700000.0,
+      293.0
+     ],
+     "z_raw": 0.6889443613651018,
+     "z": 0.6889443613651018,
+     "h": 72.67048919609665,
+     "dist": 72.25129756620292,
+     "octant": 0,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 25,
+     "row_id": 405,
+     "hole": "С-20",
+     "from": 8.0,
+     "to": 10.0,
+     "xyz": [
+      500000.0,
+      6700100.0,
+      291.0
+     ],
+     "z_raw": 1.151583204452301,
+     "z": 1.151583204452301,
+     "h": 73.27346040688948,
+     "dist": 72.40338389882064,
+     "octant": 3,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 119,
+     "row_id": 85,
+     "hole": "С-04",
+     "from": 8.0,
+     "to": 10.0,
+     "xyz": [
+      500100.0,
+      6700000.0,
+      291.0
+     ],
+     "z_raw": 0.9324578099159281,
+     "z": 0.9324578099159281,
+     "h": 73.27346040688948,
+     "dist": 72.40338389882064,
+     "octant": 0,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 24,
+     "row_id": 406,
+     "hole": "С-20",
+     "from": 10.0,
+     "to": 12.0,
+     "xyz": [
+      500000.0,
+      6700100.0,
+      289.0
+     ],
+     "z_raw": 1.6858942751884767,
+     "z": 1.6858942751884767,
+     "h": 74.08778576796583,
+     "dist": 72.6102609828666,
+     "octant": 3,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 118,
+     "row_id": 86,
+     "hole": "С-04",
+     "from": 10.0,
+     "to": 12.0,
+     "xyz": [
+      500100.0,
+      6700000.0,
+      289.0
+     ],
+     "z_raw": 0.30336989702290607,
+     "z": 0.30336989702290607,
+     "h": 74.08778576796583,
+     "dist": 72.6102609828666,
+     "octant": 0,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 145,
+     "row_id": 482,
+     "hole": "С-24",
+     "from": 2.0,
+     "to": 4.0,
+     "xyz": [
+      500100.0,
+      6700100.0,
+      297.0
+     ],
+     "z_raw": 0.8760569876916726,
+     "z": 0.8760569876916726,
+     "h": 84.85870609430714,
+     "dist": 84.85428686872574,
+     "octant": 1,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 146,
+     "row_id": 481,
+     "hole": "С-24",
+     "from": 0.0,
+     "to": 2.0,
+     "xyz": [
+      500100.0,
+      6700100.0,
+      299.0
+     ],
+     "z_raw": 0.3863329835180646,
+     "z": 0.3863329835180646,
+     "h": 84.90583018850944,
+     "dist": 84.86607095889381,
+     "octant": 5,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 144,
+     "row_id": 484,
+     "hole": "С-24",
+     "from": 6.0,
+     "to": 8.0,
+     "xyz": [
+      500100.0,
+      6700100.0,
+      293.0
+     ],
+     "z_raw": 0.23890155116998846,
+     "z": 0.23890155116998846,
+     "h": 85.32877591996736,
+     "dist": 84.97205422961127,
+     "octant": 1,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 143,
+     "row_id": 485,
+     "hole": "С-24",
+     "from": 8.0,
+     "to": 10.0,
+     "xyz": [
+      500100.0,
+      6700100.0,
+      291.0
+     ],
+     "z_raw": 0.5310082332302494,
+     "z": 0.5310082332302494,
+     "h": 85.84287972802403,
+     "dist": 85.1014100940754,
+     "octant": 1,
+     "lambda": null,
+     "reason": "outside"
+    },
+    {
+     "i": 142,
+     "row_id": 486,
+     "hole": "С-24",
+     "from": 10.0,
+     "to": 12.0,
+     "xyz": [
+      500100.0,
+      6700100.0,
+      289.0
+     ],
+     "z_raw": 0.3899669198372591,
+     "z": 0.3899669198372591,
+     "h": 86.53900854527974,
+     "dist": 85.27748823693156,
+     "octant": 1,
+     "lambda": null,
+     "reason": "outside"
     }
    ],
    "ellipsoid": {
     "centre": [
-     0.0,
-     0.0,
-     0.0
+     500040.0,
+     6700040.0,
+     297.5
     ],
     "ang1": 0.0,
     "ang2": 0.0,
     "ang3": 0.0,
-    "r1": 30.0,
-    "r2": 30.0,
+    "r1": 60.0,
+    "r2": 60.0,
     "r3": 30.0,
     "pass": 1
    },
@@ -1146,243 +4267,323 @@
     {
      "pass": 1,
      "ok": true,
-     "n": 4,
+     "n": 24,
      "reason": null
     }
    ],
    "origin": [
-    7.0,
-    6.0,
-    0.0
+    500050.0,
+    6700050.0,
+    294.0
    ],
    "counts": {
-    "candidates": 4,
-    "selected": 4
+    "candidates": 147,
+    "selected": 24
    }
-  }
- },
- "inspect": {
-  "status": 200,
-  "body": {
-   "model_id": 7,
-   "block": {
-    "ijk": [
-     0,
-     0,
-     0
-    ],
-    "p": 0,
-    "rows": [
-     0
-    ],
-    "centre": [
-     0.0,
-     0.0,
-     0.0
-    ],
-    "size": [
-     1.0,
-     1.0,
-     1.0
-    ]
-   },
-   "label": "окисл",
-   "results": [
-    {
-     "estimation_id": 41,
-     "name": "AU · OK · окисл",
-     "prefix": "AU_OK_",
-     "method": "ok",
-     "status": 0,
-     "pass": 1,
-     "values": {
-      "EST": 1.99288,
-      "KV": 0.544418,
-      "NS": 4,
-      "NH": 4,
-      "AD": 14.571067811865476,
-      "PASS": 1,
-      "SLOPE": 0.954774,
-      "KE": 0.455582
-     },
-     "stored": {
-      "EST": 1.99288,
-      "KV": 0.544418,
-      "NS": 4,
-      "NH": 4,
-      "AD": 14.571067811865476,
-      "PASS": 1,
-      "SLOPE": 0.954774,
-      "KE": 0.455582
-     },
-     "same": true,
-     "changed": false,
-     "warning": null,
-     "mu": -0.022653,
-     "samples": [
-      {
-       "i": 0,
-       "row_id": 101,
-       "hole": "A-1",
-       "from": 9.0,
-       "to": 11.0,
-       "xyz": [
-        0.0,
-        10.0,
-        0.0
-       ],
-       "z_raw": 1.0,
-       "z": 1.0,
-       "h": 10.0,
-       "dist": 10.0,
-       "octant": 3,
-       "lambda": 0.33289,
-       "reason": "selected"
-      },
-      {
-       "i": 1,
-       "row_id": 102,
-       "hole": "B-2",
-       "from": 9.0,
-       "to": 11.0,
-       "xyz": [
-        10.0,
-        0.0,
-        0.0
-       ],
-       "z_raw": 2.0,
-       "z": 2.0,
-       "h": 10.0,
-       "dist": 10.0,
-       "octant": 1,
-       "lambda": 0.316318,
-       "reason": "selected"
-      },
-      {
-       "i": 2,
-       "row_id": 103,
-       "hole": "C-3",
-       "from": 9.0,
-       "to": 11.0,
-       "xyz": [
-        -6.0,
-        -8.0,
-        0.0
-       ],
-       "z_raw": 3.0,
-       "z": 3.0,
-       "h": 10.0,
-       "dist": 10.0,
-       "octant": 4,
-       "lambda": 0.375815,
-       "reason": "selected"
-      },
-      {
-       "i": 3,
-       "row_id": 104,
-       "hole": "D-4",
-       "from": 9.0,
-       "to": 11.0,
-       "xyz": [
-        20.0,
-        20.0,
-        0.0
-       ],
-       "z_raw": 4.0,
-       "z": 4.0,
-       "h": 28.284271247461902,
-       "dist": 28.284271247461902,
-       "octant": 3,
-       "lambda": -0.025022,
-       "reason": "selected"
-      }
-     ],
-     "ellipsoid": {
-      "centre": [
-       0.0,
-       0.0,
-       0.0
-      ],
-      "ang1": 0.0,
-      "ang2": 0.0,
-      "ang3": 0.0,
-      "r1": 30.0,
-      "r2": 30.0,
-      "r3": 30.0,
-      "pass": 1
-     },
-     "passes": [
-      {
-       "pass": 1,
-       "ok": true,
-       "n": 4,
-       "reason": null
-      }
-     ]
-    }
-   ]
   }
  },
  "xval_submit": {
   "status": 200,
   "body": {
-   "source": "jobs",
-   "id": "j-0002"
+   "source": "project",
+   "id": 2
+  }
+ },
+ "xval_result": {
+  "status": 200,
+  "body": {
+   "estimation_id": 4,
+   "by": "hole",
+   "n": 147,
+   "summary": {
+    "n": 147,
+    "mean_error": -0.010836468273934023,
+    "std_error": 0.6661456297194195,
+    "mae": 0.4090462614728547,
+    "r": 0.5010693228100963,
+    "slope": 0.9272736753918062,
+    "mean_ratio": 0.7259316390327872,
+    "n_ratio": 147,
+    "n_kv_zero": 0,
+    "n_skipped": 0,
+    "by_status": [
+     147,
+     0,
+     0,
+     0
+    ]
+   },
+   "events": [
+    [
+     "geostat.changed",
+     {
+      "kind": "estimation",
+      "id": 4
+     }
+    ]
+   ]
   }
  },
  "xval": {
   "status": 200,
   "body": {
-   "estimation_id": 41,
+   "estimation_id": 4,
    "by": "hole",
-   "at": "2026-11-25T10:00:00+00:00",
+   "at": "2026-11-25T08:30:10.262104+00:00",
    "stale": false,
-   "total": 4,
+   "total": 147,
    "page": 1,
-   "pages": 1,
-   "size": 500,
+   "pages": 19,
+   "size": 8,
    "rows": [
     {
      "i": 0,
-     "row_id": 101,
-     "hole": "A-1",
-     "from": 9.0,
-     "to": 11.0,
-     "x": 0.0,
-     "y": 10.0,
-     "z": 0.0,
-     "true": 1.0,
-     "est": 2.31,
-     "error": 1.31,
-     "kv": 0.71,
-     "z_error": 1.5547,
+     "row_id": 6,
+     "hole": "С-00",
+     "from": 10.0,
+     "to": 12.0,
+     "x": 500000.0,
+     "y": 6700000.0,
+     "z": 289.0,
+     "true": 1.386470963293358,
+     "est": 1.180206508309433,
+     "error": -0.20626445498392498,
+     "kv": 0.7816942827190017,
+     "z_error": -0.23329526577205809,
      "pass": 1,
-     "ns": 3,
+     "ns": 24,
+     "status": 0
+    },
+    {
+     "i": 1,
+     "row_id": 5,
+     "hole": "С-00",
+     "from": 8.0,
+     "to": 10.0,
+     "x": 500000.0,
+     "y": 6700000.0,
+     "z": 291.0,
+     "true": 1.4143009041530865,
+     "est": 1.1670060900509258,
+     "error": -0.2472948141021607,
+     "kv": 0.7589531432236076,
+     "z_error": -0.28386217566920724,
+     "pass": 1,
+     "ns": 24,
+     "status": 0
+    },
+    {
+     "i": 2,
+     "row_id": 4,
+     "hole": "С-00",
+     "from": 6.0,
+     "to": 8.0,
+     "x": 500000.0,
+     "y": 6700000.0,
+     "z": 293.0,
+     "true": 1.1816349745680843,
+     "est": 1.1455557272233117,
+     "error": -0.036079247344772636,
+     "kv": 0.7478792158671569,
+     "z_error": -0.041719753819003065,
+     "pass": 1,
+     "ns": 24,
+     "status": 0
+    },
+    {
+     "i": 3,
+     "row_id": 3,
+     "hole": "С-00",
+     "from": 4.0,
+     "to": 6.0,
+     "x": 500000.0,
+     "y": 6700000.0,
+     "z": 295.0,
+     "true": 2.112479232752964,
+     "est": 1.1337257576684414,
+     "error": -0.9787534750845226,
+     "kv": 0.7478792158671571,
+     "z_error": -1.1317684551403535,
+     "pass": 1,
+     "ns": 24,
+     "status": 0
+    },
+    {
+     "i": 4,
+     "row_id": 2,
+     "hole": "С-00",
+     "from": 2.0,
+     "to": 4.0,
+     "x": 500000.0,
+     "y": 6700000.0,
+     "z": 297.0,
+     "true": 1.9662686535233493,
+     "est": 1.1243042196967434,
+     "error": -0.8419644338266059,
+     "kv": 0.7589531432236076,
+     "z_error": -0.9664652972600463,
+     "pass": 1,
+     "ns": 24,
+     "status": 0
+    },
+    {
+     "i": 5,
+     "row_id": 1,
+     "hole": "С-00",
+     "from": 0.0,
+     "to": 2.0,
+     "x": 500000.0,
+     "y": 6700000.0,
+     "z": 299.0,
+     "true": 1.0137710664039117,
+     "est": 1.1210421387963267,
+     "error": 0.10727107239241507,
+     "kv": 0.7816942827190017,
+     "z_error": 0.12132887048033807,
+     "pass": 1,
+     "ns": 24,
+     "status": 0
+    },
+    {
+     "i": 6,
+     "row_id": 106,
+     "hole": "С-05",
+     "from": 10.0,
+     "to": 12.0,
+     "x": 500000.0,
+     "y": 6700025.0,
+     "z": 289.0,
+     "true": 1.0240329382933635,
+     "est": 1.8530937893275812,
+     "error": 0.8290608510342177,
+     "kv": 0.6427679625362268,
+     "z_error": 1.0340922821369667,
+     "pass": 1,
+     "ns": 24,
+     "status": 0
+    },
+    {
+     "i": 7,
+     "row_id": 105,
+     "hole": "С-05",
+     "from": 8.0,
+     "to": 10.0,
+     "x": 500000.0,
+     "y": 6700025.0,
+     "z": 291.0,
+     "true": 1.4581200614943817,
+     "est": 1.8115692039428946,
+     "error": 0.3534491424485129,
+     "kv": 0.6246489671984944,
+     "z_error": 0.44720733606256136,
+     "pass": 1,
+     "ns": 24,
      "status": 0
     }
    ],
    "summary": {
-    "n": 4,
-    "mean_error": 0.12,
-    "std_error": 0.98,
-    "mae": 0.81,
-    "r": 0.42,
-    "slope": 0.77,
-    "mean_ratio": 1.08
+    "n": 147,
+    "mean_error": -0.010836468273934023,
+    "std_error": 0.6661456297194195,
+    "mae": 0.4090462614728547,
+    "r": 0.5010693228100963,
+    "slope": 0.9272736753918062,
+    "mean_ratio": 0.7259316390327872,
+    "n_ratio": 147,
+    "n_kv_zero": 0,
+    "n_skipped": 0,
+    "by_status": [
+     147,
+     0,
+     0,
+     0
+    ]
    },
    "histogram": {
     "edges": [
-     -2.0,
-     -1.0,
-     0.0,
-     1.0,
-     2.0
+     -4.2226484477653985,
+     -4.087824246220884,
+     -3.9530000446763696,
+     -3.818175843131855,
+     -3.6833516415873406,
+     -3.548527440042826,
+     -3.4137032384983117,
+     -3.2788790369537972,
+     -3.1440548354092828,
+     -3.0092306338647683,
+     -2.874406432320254,
+     -2.7395822307757394,
+     -2.604758029231225,
+     -2.4699338276867104,
+     -2.335109626142196,
+     -2.2002854245976815,
+     -2.065461223053167,
+     -1.9306370215086526,
+     -1.795812819964138,
+     -1.6609886184196236,
+     -1.5261644168751092,
+     -1.3913402153305947,
+     -1.2565160137860802,
+     -1.1216918122415658,
+     -0.9868676106970513,
+     -0.8520434091525368,
+     -0.7172192076080224,
+     -0.5823950060635079,
+     -0.44757080451899345,
+     -0.312746602974479,
+     -0.17792240142996452,
+     -0.04309819988545005,
+     0.09172600165906442,
+     0.22655020320357888,
+     0.36137440474809335,
+     0.4961986062926078,
+     0.6310228078371223,
+     0.7658470093816367,
+     0.9006712109261512,
+     1.0354954124706657,
+     1.17031961401518
     ],
     "counts": [
      1,
+     0,
+     0,
+     0,
+     0,
      1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
      1,
-     1
+     0,
+     1,
+     2,
+     1,
+     0,
+     2,
+     4,
+     5,
+     2,
+     6,
+     12,
+     14,
+     23,
+     21,
+     21,
+     9,
+     8,
+     6,
+     3,
+     2,
+     2
     ]
    }
   }
@@ -1390,87 +4591,301 @@
  "kna": {
   "status": 200,
   "body": {
-   "estimation_id": 41,
+   "estimation_id": 4,
+   "name": "AU · OK · окисл",
+   "method": "ok",
+   "vary": [
+    "n_max",
+    "radius"
+   ],
+   "threshold": 0.95,
    "blocks": [
     {
      "at": {
-      "row": 10,
-      "p": 10,
+      "row": 744,
+      "p": 744,
       "ijk": [
-       0,
-       1,
-       0
+       4,
+       4,
+       7
       ]
      },
      "centre": [
-      5.0,
-      15.0,
-      2.5
+      500040.0,
+      6700040.0,
+      297.5
      ],
-     "n_r1": 41,
-     "auto": "много",
+     "size": [
+      10.0,
+      10.0,
+      5.0
+     ],
+     "n_r1": 94,
+     "auto": null,
      "base": {
-      "KE": 0.61,
-      "SLOPE": 0.93,
-      "KV": 0.32,
-      "SNW": -0.04,
-      "w_far": 0.01,
-      "LAGR": -0.02,
-      "NS": 24
+      "KE": 0.717512325033582,
+      "SLOPE": 1.1308504349670294,
+      "KV": 0.22720189748855393,
+      "SNW": -0.07111623467231054,
+      "w_far": -0.019296512622220235,
+      "LAGR": 0.05984950786596408,
+      "NS": 24,
+      "status": 0
      },
      "vary": {
       "n_max": [
        {
         "value": 4,
-        "KE": 0.41,
-        "SLOPE": 0.71,
-        "KV": 0.47,
+        "KE": 0.3969667850734718,
+        "SLOPE": 0.6973709447319271,
+        "KV": 0.48501333977214356,
         "SNW": 0.0,
-        "w_far": 0.2,
-        "LAGR": -0.05,
+        "w_far": 0.2469815189890887,
+        "LAGR": -0.24477329072736487,
         "NS": 4,
+        "status": 0
+       },
+       {
+        "value": 8,
+        "KE": 0.688788685024581,
+        "SLOPE": 1.0531831240244398,
+        "KV": 0.25030402225771053,
+        "SNW": 0.0,
+        "w_far": 0.1469264172856641,
+        "LAGR": 0.026630135759025935,
+        "NS": 8,
+        "status": 0
+       },
+       {
+        "value": 12,
+        "KE": 0.6975412056517701,
+        "SLOPE": 1.0808371546811077,
+        "KV": 0.24326446099351917,
+        "SNW": 0.0,
+        "w_far": 0.05019500154351361,
+        "LAGR": 0.03903992290625023,
+        "NS": 12,
+        "status": 0
+       },
+       {
+        "value": 16,
+        "KE": 0.7167952627502802,
+        "SLOPE": 1.1408573309962384,
+        "KV": 0.22777862322146608,
+        "SNW": 0.0,
+        "w_far": 0.03874747810622716,
+        "LAGR": 0.0633571566915468,
+        "NS": 16,
+        "status": 0
+       },
+       {
+        "value": 20,
+        "KE": 0.7170343162952557,
+        "SLOPE": 1.1384891140956959,
+        "KV": 0.22758635494276577,
+        "SNW": -0.02278996582000485,
+        "w_far": 0.01312613834804237,
+        "LAGR": 0.06254383900138885,
+        "NS": 20,
+        "status": 0
+       },
+       {
+        "value": 24,
+        "KE": 0.717512325033582,
+        "SLOPE": 1.1308504349670294,
+        "KV": 0.22720189748855393,
+        "SNW": -0.07111623467231054,
+        "w_far": -0.019296512622220235,
+        "LAGR": 0.05984950786596408,
+        "NS": 24,
+        "status": 0
+       },
+       {
+        "value": 28,
+        "KE": 0.7284395055767822,
+        "SLOPE": 1.05343610434608,
+        "KV": 0.21841327988281153,
+        "SNW": -0.15980340192147371,
+        "w_far": -0.02425113906091839,
+        "LAGR": 0.028284157488379796,
+        "NS": 28,
+        "status": 0
+       },
+       {
+        "value": 32,
+        "KE": 0.7303814975618805,
+        "SLOPE": 1.0448321553033653,
+        "KV": 0.21685135593701685,
+        "SNW": -0.17398893443463528,
+        "w_far": -0.03295891198609089,
+        "LAGR": 0.02416902350227203,
+        "NS": 32,
+        "status": 0
+       },
+       {
+        "value": 36,
+        "KE": 0.7330294110094048,
+        "SLOPE": 1.0281807554981652,
+        "KV": 0.21472166670461235,
+        "SNW": -0.19724241532804276,
+        "w_far": -0.013898247665283471,
+        "LAGR": 0.015728014930194493,
+        "NS": 36,
+        "status": 0
+       },
+       {
+        "value": 40,
+        "KE": 0.7340885080780049,
+        "SLOPE": 1.023637627932327,
+        "KV": 0.21386984595300215,
+        "SNW": -0.20242175573826626,
+        "w_far": -0.024643943865424726,
+        "LAGR": 0.013326126304195855,
+        "NS": 40,
+        "status": 0
+       },
+       {
+        "value": 44,
+        "KE": 0.734815370026859,
+        "SLOPE": 1.0199067831305368,
+        "KV": 0.2132852384510589,
+        "SNW": -0.20603391591621792,
+        "w_far": -0.01974906699591115,
+        "LAGR": 0.011314523990145472,
+        "NS": 44,
+        "status": 0
+       },
+       {
+        "value": 48,
+        "KE": 0.7382996336766401,
+        "SLOPE": 1.0037193941486593,
+        "KV": 0.21048288145380306,
+        "SNW": -0.2398484205660607,
+        "w_far": -0.015338041488744389,
+        "LAGR": 0.0021922932080692915,
+        "NS": 48,
+        "status": 0
+       },
+       {
+        "value": 52,
+        "KE": 0.7388990337037606,
+        "SLOPE": 1.0013167841785542,
+        "KV": 0.21000079024917745,
+        "SNW": -0.24467789604484963,
+        "w_far": -0.014897784833634135,
+        "LAGR": 0.0007804946087385776,
+        "NS": 52,
+        "status": 0
+       },
+       {
+        "value": 56,
+        "KE": 0.7398823568064415,
+        "SLOPE": 0.997047377355763,
+        "KV": 0.20920991370987346,
+        "SNW": -0.2518245111185259,
+        "w_far": -0.025192862891320545,
+        "LAGR": -0.0017674831615965322,
+        "NS": 56,
+        "status": 0
+       },
+       {
+        "value": 60,
+        "KE": 0.7404781684430931,
+        "SLOPE": 0.9942576174967449,
+        "KV": 0.2087307086103623,
+        "SNW": -0.25640014838004344,
+        "w_far": -0.015682199585242668,
+        "LAGR": -0.0034596603104093955,
+        "NS": 60,
+        "status": 0
+       },
+       {
+        "value": 64,
+        "KE": 0.7408327804009094,
+        "SLOPE": 0.9929428264278252,
+        "KV": 0.20844549790268244,
+        "SNW": -0.2595853468059158,
+        "w_far": -0.013966030994285573,
+        "LAGR": -0.004265175375996604,
+        "NS": 64,
         "status": 0
        }
       ],
       "radius": [
        {
         "value": 0.5,
-        "KE": 0.5,
-        "SLOPE": 0.85,
-        "KV": 0.4,
-        "SNW": -0.01,
-        "w_far": 0.05,
-        "LAGR": -0.03,
-        "NS": 18,
-        "status": 0
-       }
-      ],
-      "disc": [
-       {
-        "value": [
-         1,
-         1,
-         1
-        ],
-        "KE": 0.66,
-        "SLOPE": 0.93,
-        "KV": 0.35,
-        "SNW": -0.04,
-        "w_far": 0.01,
-        "LAGR": -0.02,
+        "KE": 0.717512325033582,
+        "SLOPE": 1.1308504349670294,
+        "KV": 0.22720189748855393,
+        "SNW": -0.07111623467231054,
+        "w_far": -0.019296512622220235,
+        "LAGR": 0.05984950786596408,
         "NS": 24,
         "status": 0
-       }
-      ],
-      "size": [
+       },
        {
-        "value": 0.5,
-        "KE": 0.55,
-        "SLOPE": 0.92,
-        "KV": 0.36,
-        "SNW": -0.04,
-        "w_far": 0.01,
-        "LAGR": -0.02,
+        "value": 0.75,
+        "KE": 0.717512325033582,
+        "SLOPE": 1.1308504349670294,
+        "KV": 0.22720189748855393,
+        "SNW": -0.07111623467231054,
+        "w_far": -0.019296512622220235,
+        "LAGR": 0.05984950786596408,
+        "NS": 24,
+        "status": 0
+       },
+       {
+        "value": 1.0,
+        "KE": 0.717512325033582,
+        "SLOPE": 1.1308504349670294,
+        "KV": 0.22720189748855393,
+        "SNW": -0.07111623467231054,
+        "w_far": -0.019296512622220235,
+        "LAGR": 0.05984950786596408,
+        "NS": 24,
+        "status": 0
+       },
+       {
+        "value": 1.25,
+        "KE": 0.717512325033582,
+        "SLOPE": 1.1308504349670294,
+        "KV": 0.22720189748855393,
+        "SNW": -0.07111623467231054,
+        "w_far": -0.019296512622220235,
+        "LAGR": 0.05984950786596408,
+        "NS": 24,
+        "status": 0
+       },
+       {
+        "value": 1.5,
+        "KE": 0.717512325033582,
+        "SLOPE": 1.1308504349670294,
+        "KV": 0.22720189748855393,
+        "SNW": -0.07111623467231054,
+        "w_far": -0.019296512622220235,
+        "LAGR": 0.05984950786596408,
+        "NS": 24,
+        "status": 0
+       },
+       {
+        "value": 1.75,
+        "KE": 0.717512325033582,
+        "SLOPE": 1.1308504349670294,
+        "KV": 0.22720189748855393,
+        "SNW": -0.07111623467231054,
+        "w_far": -0.019296512622220235,
+        "LAGR": 0.05984950786596408,
+        "NS": 24,
+        "status": 0
+       },
+       {
+        "value": 2.0,
+        "KE": 0.717512325033582,
+        "SLOPE": 1.1308504349670294,
+        "KV": 0.22720189748855393,
+        "SNW": -0.07111623467231054,
+        "w_far": -0.019296512622220235,
+        "LAGR": 0.05984950786596408,
         "NS": 24,
         "status": 0
        }
@@ -1483,247 +4898,231 @@
    ],
    "recommend": {
     "n_max": 16
-   }
+   },
+   "candidates": null,
+   "warnings": []
   }
  },
  "global": {
   "status": 200,
   "body": {
-   "estimation_id": 41,
+   "estimation_id": 4,
+   "name": "AU · OK · окисл",
    "field": "AU_OK_EST",
+   "status_field": "AU_OK_STATUS",
+   "model_id": 2,
+   "method": "ok",
+   "sub": "parent",
+   "limit_pct": 5.0,
    "composites": {
     "naive": {
-     "n": 880,
-     "mean": 2.01,
-     "var": 1.9,
-     "cv": 0.69
+     "n": 147,
+     "mean": 1.2030617500336696,
+     "var": 0.5912930125893178,
+     "cv": 0.6391656900648703
     },
     "declus": {
-     "n": 880,
-     "mean": 1.77,
-     "var": 1.6,
-     "cv": 0.71
-    }
+     "n": 147,
+     "mean": 1.1874132779515132,
+     "var": 0.4916975400747674,
+     "cv": 0.5905370045116002
+    },
+    "reference": "declus"
    },
    "nn": {
-    "n": 1100,
-    "volume": 550000.0,
-    "mean": 1.79,
-    "var": 1.55,
-    "cv": 0.7
+    "n": 400,
+    "volume": 200000.0,
+    "mean": 1.1796312398573805,
+    "var": 0.5636197015513079,
+    "cv": 0.6364243936816107
    },
    "estimate": {
-    "n": 1100,
-    "volume": 550000.0,
-    "mean": 1.74,
-    "var": 0.62,
-    "cv": 0.45
+    "n": 400,
+    "volume": 200000.0,
+    "mean": 1.1671182930710835,
+    "var": 0.22167389910743718,
+    "cv": 0.40340604709526046
    },
-   "diff_pct": -1.69,
+   "diff_pct": -1.7091761779388166,
    "norm": true,
+   "diff_nn_pct": -1.06075071289311,
+   "norm_nn": true,
    "block_var": {
-    "expected": 0.67771,
-    "estimate": 0.62
+    "expected": 0.8042895942825241,
+    "estimate": 0.22167389910743718,
+    "sill": 1.0,
+    "disc": [
+     2,
+     2,
+     1
+    ],
+    "size": [
+     10.0,
+     10.0,
+     5.0
+    ],
+    "ratio": 0.2756145307402416
+   },
+   "blocks": {
+    "rows": 800,
+    "by_status": [
+     400,
+     400,
+     0,
+     0
+    ],
+    "used": 400,
+    "empty": 0,
+    "no_volume": 0
+   },
+   "warnings": []
+  }
+ },
+ "qq": {
+  "status": 200,
+  "body": {
+   "estimation_id": 4,
+   "name": "AU · OK · окисл",
+   "field": "AU_OK_EST",
+   "weighted": true,
+   "points": [
+    [
+     0.43898309661797547,
+     0.5851337953990579,
+     9.090909090909092
+    ],
+    [
+     0.6391567190173293,
+     0.6662878525721599,
+     18.181818181818183
+    ],
+    [
+     0.7307418824926507,
+     0.7937138436030857,
+     27.27272727272727
+    ],
+    [
+     0.8454461628805374,
+     0.9074551147060482,
+     36.36363636363637
+    ],
+    [
+     0.9752590908632,
+     1.0380665592522,
+     45.45454545454545
+    ],
+    [
+     1.1144586954888358,
+     1.1971874815922485,
+     54.54545454545454
+    ],
+    [
+     1.2454283059370987,
+     1.3560024388278649,
+     63.63636363636363
+    ],
+    [
+     1.4221524914407422,
+     1.478775136791151,
+     72.72727272727273
+    ],
+    [
+     1.7520409026606913,
+     1.5945920381807208,
+     81.81818181818183
+    ],
+    [
+     2.1072308918286895,
+     1.8008965350496988,
+     90.9090909090909
+    ]
+   ],
+   "ratio": [
+    1.332930128533559,
+    1.0424483272217546,
+    1.086175382332856,
+    1.0733446487168843,
+    1.064400802799397,
+    1.0742322586187236,
+    1.0887840210180277,
+    1.0398147496075094,
+    0.9101340247017835,
+    0.8546270567848648
+   ],
+   "extremes": {
+    "x": [
+     0.22296277328325173,
+     6.174629972205275
+    ],
+    "y": [
+     0.4584824899780183,
+     2.7533104870981373
+    ]
+   },
+   "ks": 0.1152841468681118,
+   "marks": [
+    [
+     0.4484947466145225,
+     0.5942694138384228,
+     10.0
+    ],
+    [
+     1.055265461288503,
+     1.1326443520541112,
+     50.0
+    ],
+    [
+     2.0071951131384327,
+     1.7807944845830335,
+     90.0
+    ]
+   ],
+   "x": {
+    "n": 147,
+    "mean": 1.1874132779515132,
+    "var": 0.4916975400747674,
+    "cv": 0.5905370045116002
+   },
+   "y": {
+    "n": 400,
+    "mean": 1.1671182930710837,
+    "var": 0.22167389910743718,
+    "cv": 0.4034060470952604
    }
   }
  },
- "simulation": {
+ "swath": {
   "status": 200,
   "body": {
-   "id": 61,
-   "name": "AU · SGS · окисл",
-   "version": 1,
-   "meta": {
-    "v": 1,
-    "kind": "sgs",
-    "model_id": 7,
-    "target": {
-     "domain_field": "ZONE",
-     "label": "окисл",
-     "filter_id": null,
-     "rules": null
-    },
-    "samples": {
-     "set_id": 3,
-     "table": "12",
-     "field": "AU",
-     "unit": "г/т",
-     "domain": {
-      "table": "14",
+   "estimation_id": 4,
+   "name": "AU · OK · окисл",
+   "direction": "z",
+   "series": [
+    {
+     "kind": "blocks",
+     "model_id": 2,
+     "field": "AU_OK_EST",
+     "weight": "volume",
+     "density": null,
+     "filter": {
       "field": "ZONE",
-      "values": [
+      "labels": [
        "окисл"
       ]
      },
-     "soft": null,
-     "topcut": null,
-     "weights": null
+     "filter_id": null
     },
-    "variogram": {
-     "model_id": 21,
-     "snapshot": {
-      "type": "semivariogram",
-      "c0": 0.1,
-      "structures": [
-       {
-        "type": "spherical",
-        "c": 0.9,
-        "ang1": 0.0,
-        "ang2": 0.0,
-        "ang3": 0.0,
-        "a1": 30.0,
-        "a2": 30.0,
-        "a3": 30.0
-       }
-      ],
-      "common_axes": true
-     },
-     "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-     "scale": "y",
-     "share": null
-    },
-    "variograms": null,
-    "method": null,
-    "search": {
-     "from": "model",
-     "ang1": 0.0,
-     "ang2": 0.0,
-     "ang3": 0.0,
-     "r1": 30.0,
-     "r2": 30.0,
-     "r3": 30.0,
-     "passes": [
-      {
-       "factor": 1.0,
-       "n_min": 4,
-       "n_max": 24,
-       "n_hole": 0,
-       "n_oct": 0,
-       "k_oct": 0,
-       "n_holes_min": 0,
-       "hy": null
-      }
-     ]
-    },
-    "nodes": 12,
-    "seed": 12345,
-    "n_real": 20,
-    "secondary": null,
-    "nscore": {
-     "ltail": "linear",
-     "utail": "linear",
-     "ltpar": null,
-     "utpar": null
-    },
-    "origin": [
-     7.0,
-     6.0,
-     0.0
-    ],
-    "inputs": [
-     {
-      "kind": "dh_table",
-      "id": 12,
-      "fp": "tok-12:5",
-      "name": "Композиты"
-     },
-     {
-      "kind": "dh_table",
-      "id": 14,
-      "fp": "tok-14:2",
-      "name": "Литология"
-     },
-     {
-      "kind": "dh_set",
-      "id": 3,
-      "fp": "traj:9f2c",
-      "name": "Скважины"
-     },
-     {
-      "kind": "object:variogram_model",
-      "id": 21,
-      "fp": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "name": "AU · окисл"
-     },
-     {
-      "kind": "object:block_model",
-      "id": 7,
-      "fp": "cells:1111111111111111111111111111111111111111111111111111111111111111",
-      "name": "Модель"
-     },
-     {
-      "kind": "bm_field",
-      "id": "7:ZONE",
-      "fp": "cells:1111111111111111111111111111111111111111111111111111111111111111",
-      "name": "Модель · ZONE"
-     }
-    ],
-    "algo": "sim-1",
-    "last_run": {
-     "at": "2026-11-25T10:00:00+00:00",
-     "job": "j-0003",
-     "nodes": 1000,
-     "realizations": 20
+    {
+     "kind": "samples",
+     "set_id": 1,
+     "table": "1",
+     "field": "AU",
+     "weight": "field",
+     "weight_field": "DECL_W",
+     "negatives": "keep",
+     "within": "blocks",
+     "within_series": 0
     }
-   },
-   "file": {
-    "role": "real",
-    "sha": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-    "rows": 1000,
-    "columns": [
-     "p",
-     "dom",
-     "r001",
-     "r002"
-    ]
-   },
-   "stale": false,
-   "stale_reason": null,
-   "source_lost": false,
-   "created_at": "2026-11-25T10:00:00+00:00",
-   "updated_at": "2026-11-25T10:00:00+00:00"
-  }
- },
- "simulate_result": {
-  "status": 200,
-  "body": {
-   "simulation_id": 61,
-   "nodes": 1000,
-   "realizations": 20,
-   "seconds": 3.2,
-   "events": [
-    [
-     "geostat.changed",
-     {
-      "kind": "simulation",
-      "id": 61
-     }
-    ]
-   ]
-  }
- },
- "simulate_post_result": {
-  "status": 200,
-  "body": {
-   "simulation_id": 61,
-   "model_id": 7,
-   "version": 6,
-   "fields": [
-    "AU_SGS_MEAN",
-    "AU_SGS_STD",
-    "AU_SGS_P10",
-    "AU_SGS_P50",
-    "AU_SGS_P90",
-    "AU_SGS_PROB_GT_1"
-   ],
-   "events": [
-    [
-     "objects.changed",
-     {
-      "kind": "block_model",
-      "id": 7
-     }
-    ]
    ]
   }
  }
