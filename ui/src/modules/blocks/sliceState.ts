@@ -11,6 +11,7 @@
 import { CoreError, coreTarget } from "../../shell/api";
 import { apiUrl, authHeaders } from "../../shell/coreClient";
 import { logRequest } from "../../shell/opLog";
+import { refusal } from "../../shell/objectRun";
 import { Store } from "../../shell/store";
 import { count, counted } from "../../shell/treeActions";
 import type { SliceHeader } from "../../viz/blocks/sliceDecode";
@@ -65,13 +66,15 @@ export function modelExtent(model: Pick<BlockModelInfo, "extent" | "grid">): num
   if (model.extent && model.extent.length === 6 && model.extent.every((v) => Number.isFinite(v))) return model.extent;
   const g = model.grid;
   if (!g.size) return null;
+  if ((g as { rotation?: number }).rotation) return null; // the grid is turned: the box of the local axes is not the extent of the model
   const size = g.size;
   return [...g.corner, ...[0, 1, 2].map((i) => g.corner[i] + g.counts[i] * size[i])];
 }
 
-/** The plane ⟂ an axis of the project through `at` (the middle of the model if none) and the middle of the model otherwise. */
+/** The plane ⟂ an axis of the project through `at` (the middle of the model if none; a refusal when its extent is not known). */
 export function axisPlane(axis: Axis, at: number | null, model: Pick<BlockModelInfo, "extent" | "grid">): PlaneBody {
   const e = modelExtent(model);
+  if (!e && at === null) throw refusal("slice_no_extent", "Охват модели неизвестен (модель повёрнута или без регулярной сетки): плоскость нельзя поставить в её середину.", "Задайте отметку, например plane=z и at=262,5.");
   const mid = (i: number): number => (e ? (e[i] + e[i + 3]) / 2 : 0);
   const origin: Triple = [mid(0), mid(1), mid(2)];
   origin[AXES.indexOf(axis)] = at ?? mid(AXES.indexOf(axis));
