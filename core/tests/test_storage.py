@@ -63,6 +63,23 @@ def test_collector_removes_unreferenced_strays_and_old_tmp(project) -> None:  # 
     assert report.stray_files == 1 and not stray.exists()
 
 
+def test_collector_drops_the_disk_cache_of_files_without_an_owner(project) -> None:  # type: ignore[no-untyped-def]
+    store = BlobStore(project.folder)
+    with dialect.write_tx(project.engine) as conn:
+        kept = store.put_bytes(conn, b"kept", media_type="x", owner_kind="object", owner_id=1)
+        gone = store.put_bytes(conn, b"gone", media_type="x", owner_kind="object", owner_id=2)
+        drop_owner(conn, "object", 2)
+    cache = project.folder / "cache" / "blocks"
+    for sha in (kept, gone, "f" * 64):  # the last one — a file that is not in the store at all
+        (cache / sha).mkdir(parents=True)
+        (cache / sha / "a.npy").write_bytes(b"x")
+    (cache / "not-a-sha").mkdir()
+    report = collect(project.engine, store)
+    assert report.cache_dirs == 2 and (cache / kept / "a.npy").exists()
+    assert not (cache / gone).exists() and not (cache / ("f" * 64)).exists() and (cache / "not-a-sha").is_dir()
+    assert collect(project.engine, store).cache_dirs == 0
+
+
 def test_blob_etag_range_and_304(pclient, project) -> None:  # type: ignore[no-untyped-def]
     data = bytes(range(256)) * 40
     store = BlobStore(project.folder)

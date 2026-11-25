@@ -365,6 +365,40 @@ def test_filter_with_a_category_selection_and_the_cache_of_the_mask(prj) -> None
     assert len(ss.MASKS) == 1 and next(iter(ss.MASKS.values()))[0] is held and not held.flags.writeable
 
 
+def test_the_masks_of_two_filters_are_made_at_the_same_time_and_one_of_a_key_once(prj, monkeypatch) -> None:
+    import threading
+
+    from bf_core.blocks import restrict
+
+    mid = put(prj, PLAIN, plain_rows(), "М", sub=False)
+    f1, f2 = make_filter(prj, "AU > 1", "Ф1"), make_filter(prj, "AU > 2", "Ф2")
+    started, release, calls = threading.Event(), threading.Event(), []
+    original = restrict.Restrictor.iter
+
+    def slow(self, *a, **k):  # type: ignore[no-untyped-def]
+        calls.append(1)
+        if not started.is_set():
+            started.set()
+            assert release.wait(20)  # the first mask is being made until the test lets it go
+        return original(self, *a, **k)
+
+    monkeypatch.setattr(restrict.Restrictor, "iter", slow)
+    out: dict[str, Any] = {}
+    first = threading.Thread(target=lambda: out.update(a=ss.filter_mask(prj, mid, f1)))
+    first.start()
+    assert started.wait(20)
+    other = threading.Thread(target=lambda: out.update(b=ss.filter_mask(prj, mid, f2)))
+    same = threading.Thread(target=lambda: out.update(c=ss.filter_mask(prj, mid, f1)))
+    other.start()
+    other.join(10)
+    assert not other.is_alive() and "b" in out  # another key is not held by the mask being made
+    same.start()  # the same key waits for the first and takes its mask
+    release.set()
+    first.join(20)
+    same.join(20)
+    assert out["c"][0] is out["a"][0] and len(calls) == 2 and not ss._KEY_LOCKS
+
+
 def test_filter_of_a_model_with_sub_blocks_is_the_rows_selected_beforehand(prj) -> None:
     rows = rows_of()
     grid = {**GRID, "div": DIV}
