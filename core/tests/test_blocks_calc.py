@@ -386,6 +386,19 @@ def test_a_failed_commit_leaves_nothing(cc, monkeypatch: pytest.MonkeyPatch) -> 
     assert "LOST" not in [f["name"] for f in opened(cc).fields]
 
 
+def test_a_write_that_does_not_open_leaves_no_staged_file(cc, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+    def broken(_engine: Any) -> Any:
+        raise RuntimeError("the database went away")
+
+    monkeypatch.setattr(dialect, "write_tx", broken)
+    with pytest.raises(RuntimeError):
+        run(cc, expr="AU * 2", field="LOST")
+    monkeypatch.undo()
+    tmp = cc.store.tmp_dir
+    assert not tmp.exists() or not any(tmp.iterdir())
+    assert opened(cc).version == 1
+
+
 def test_a_job_that_fails_reports_the_code_and_the_place(cc) -> None:  # type: ignore[no-untyped-def]
     # the values the type cannot hold are found while the job writes: the failure of the job keeps the code
     r = cc.post(f"{BL}/{cc.model_id}/calc", json={"expected_version": 1, "expr": "N * 10", "field": "BIG",

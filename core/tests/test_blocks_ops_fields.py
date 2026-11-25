@@ -205,6 +205,21 @@ def test_a_cancel_of_a_density_leaves_nothing(pm: P) -> None:
         assert opened(pm).version == v and "C" not in {f["name"] for f in opened(pm).fields} and tmp_clean(pm), at
 
 
+def test_a_write_transaction_that_does_not_open_leaves_no_staged_file(pm: P, monkeypatch: pytest.MonkeyPatch) -> None:
+    v = opened(pm).version
+
+    def broken(_engine: Any) -> Any:
+        raise RuntimeError("the database is gone")
+
+    monkeypatch.setattr(dialect, "write_tx", broken)
+    with pytest.raises(RuntimeError):
+        jf.run_density(pm.engine, pm.folder, dens_params(pm, out="A", src_field="B"), chunk=64)
+    with pytest.raises(RuntimeError):
+        jf.run_classify(pm.engine, pm.folder, class_params(pm, out="K"), chunk=64)
+    monkeypatch.undo()
+    assert tmp_clean(pm) and opened(pm).version == v
+
+
 def test_the_portions_do_not_change_the_density(pm: P) -> None:
     kw = {"method": "formula", "expr": "IF(AU > 1, 3.1, 2.7)", "default": 2.0}
     jf.run_density(pm.engine, pm.folder, dens_params(pm, out="A", src_field="B", **kw), chunk=64)

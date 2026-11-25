@@ -509,6 +509,22 @@ def test_coding_cancel_leaves_nothing(proj: P) -> None:
             assert block_models(proj) == models and len(_owners(proj)) == owners, (split, at)
 
 
+def test_coding_without_splitting_leaves_no_staged_file_when_the_write_does_not_open(
+    proj: P, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mid = plain_model(proj)
+    cut = body(proj, (15.0, 15.0, 5.0), (47.0, 33.0, 31.0), "Зона")
+
+    def broken(_engine: Any) -> Any:
+        raise RuntimeError("the database is gone")
+
+    monkeypatch.setattr(dialect, "write_tx", broken)
+    with pytest.raises(RuntimeError):
+        run_code(proj, mid, creq(cut, split=False, code_field="Z1"))
+    monkeypatch.undo()
+    assert tmp_clean(proj) and model(proj, mid).version == 1
+
+
 def test_coding_with_splitting_makes_a_new_model_and_the_children_inherit(proj: P) -> None:
     mid = plain_model(proj, levels=(2, 2, 2))  # the sub-cell is 2.5 m
     cut = body(proj, (15.0, 15.0, 5.0), (47.5, 32.5, 30.0), "Зона")  # on the sub-cells
