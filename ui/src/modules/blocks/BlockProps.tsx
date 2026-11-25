@@ -1,14 +1,16 @@
 /**
- * «Свойства» of a block model (ADR 0017 §3): the name with «Переименовать…» and «Удалить…» (`object.rename`,
- * `object.delete` — own windows), «Показать в 3D» disabled with the reason of its stage (Э17), the grid, the
- * fields with their statistics (`GET /blocks/{id}`), the source and what the import did not carry over.
+ * «Свойства» of a block model (ADR 0017 §3; ADR 0023; ТЗ 7.31): the name with «Переименовать…» and «Удалить…»
+ * (`object.rename`, `object.delete` — own windows), «Экспорт…» (`blocks.export`), «Показать в 3D» disabled with the
+ * reason of its stage (Э17), the grid with the turn and the sub-blocks, the checks of the import (duplicates, overlaps,
+ * empty and constant fields, the rows of the examples), the fields with their statistics (`GET /blocks/{id}`), the
+ * source and what the import did not carry over.
  */
 import { useEffect } from "react";
 import { useApp } from "../../shell/AppContext";
 import { Facts, useRun } from "../../shell/PropsParts";
 import { useRegistryVersion, useStore } from "../../shell/useStore";
 import css from "../../shell/PropsParts.module.css";
-import { fieldRow, gridFacts, sourceFacts } from "./props";
+import { checkRows, exampleText, fieldRow, gridFacts, MAX_EXAMPLES, sourceFacts, v2 } from "./props";
 import { blocksStore, loadBlockDetails } from "./state";
 
 export function BlockProps({ id }: { id: number }) {
@@ -27,6 +29,9 @@ export function BlockProps({ id }: { id: number }) {
   const b = fresh ? details : brief; // the list has the grid and the fields without stats: shown at once
   const show = app.registry.reason("blocks.show");
   const exportReason = app.registry.reason("omf.export");
+  const fileReason = app.registry.reason("blocks.export");
+  const checks = v2(b).checks;
+  const rows = checkRows(checks);
   return (
     <section className={css.panel} aria-label={`Свойства: ${b.name}`} data-testid="props-block" data-state={fresh ? "ready" : detailError ? "failed" : "loading"}>
       <header className={css.head}>
@@ -42,6 +47,9 @@ export function BlockProps({ id }: { id: number }) {
         <button type="button" className={css.btn} disabled={show !== null} title={show ? `Показать в 3D\nНедоступно: ${show}` : "Показать в 3D"} data-testid="props-block-show">
           Показать в 3D
         </button>
+        <button type="button" className={css.btn} disabled={fileReason !== null} title={fileReason ? `Экспорт в файл\nНедоступно: ${fileReason}` : "Записать модель в DAT, CSV, Parquet или OMF"} data-testid="props-block-export" onClick={() => void run("blocks.export", { model_id: id })}>
+          Экспорт…
+        </button>
         <button type="button" className={css.btn} disabled={exportReason !== null} title={exportReason ? `Экспорт OMF\nНедоступно: ${exportReason}` : "Записать модель в файл OMF"} onClick={() => void run("omf.export", { dataset_ids: String(id) })}>
           Экспорт OMF…
         </button>
@@ -53,6 +61,35 @@ export function BlockProps({ id }: { id: number }) {
       <fieldset className={css.group} data-testid="props-block-grid">
         <legend>Сетка</legend>
         <Facts facts={gridFacts(b)} />
+      </fieldset>
+      <fieldset className={css.group} data-testid="props-block-checks" data-checked={rows ? "yes" : "no"}>
+        <legend>Проверки</legend>
+        {rows ? (
+          <>
+            <dl className={css.facts}>
+              {rows.map((r) => (
+                <div key={r.label} style={{ display: "contents" }}>
+                  <dt>{r.label}</dt>
+                  <dd className={r.found ? css.warn : undefined} data-found={r.found ? "yes" : "no"}>
+                    {r.value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+            {checks && checks.examples.length > 0 && (
+              <ul className={css.list} data-testid="props-block-examples">
+                {checks.examples.slice(0, MAX_EXAMPLES).map((e, i) => (
+                  <li key={i}>{exampleText(e)}</li>
+                ))}
+                {checks.examples.length > MAX_EXAMPLES && <li className={css.note}>…и ещё примеров: {checks.examples.length - MAX_EXAMPLES}</li>}
+              </ul>
+            )}
+          </>
+        ) : fresh ? (
+          <p className={css.note}>Проверки не выполнялись: модель создана до проверок при импорте.</p>
+        ) : (
+          <p className={css.note}>Проверки читаются…</p>
+        )}
       </fieldset>
       <fieldset className={css.group} data-testid="props-block-fields" data-fields={b.fields.length}>
         <legend>Поля</legend>

@@ -24,7 +24,7 @@ export interface FormatOption {
   id: string;
   title: string;
   ext: string;
-  /** null — the core writes it now; a Russian text — why not («Экспорт блочных моделей в DAT — этап Э17»). */
+  /** null — the core writes it now; a Russian text — why not («Не найден ODA File Converter»). */
   reason: string | null;
 }
 
