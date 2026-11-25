@@ -118,11 +118,12 @@ def _impact(svc: ProjectService, node: Node) -> dict[str, Any]:
     project = svc.require_current()
     with _lock:
         fresh = project.uid not in _indexed
-        _indexed.add(project.uid)
-    if fresh and not project.read_only:
+    if fresh and not project.read_only:  # a project «только просмотр» is never written to by a GET
         with dialect.write_tx(project.engine) as conn:
             if store.count(conn) == 0:  # a project saved before the graph: the rows from what the results keep
                 graph.reindex(conn)
+        with _lock:  # only after the write: a failed one is tried again by the next request
+            _indexed.add(project.uid)
     with dialect.read_tx(project.engine) as conn:
         _existing(conn, node)
         return graph.impact(conn, node)
