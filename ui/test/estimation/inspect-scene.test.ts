@@ -12,7 +12,7 @@ import { buildSegments, drawable, ellipsoidView } from "../../src/modules/estima
 import { SegmentsLayer } from "../../src/modules/estimation/inspect/layer";
 import { ELLIPSOID_KEY, InspectScene, SEGMENTS_KEY } from "../../src/modules/estimation/inspect/scene";
 import { inspectStore, INSPECT_WINDOW, resetInspect, setActive, setShow } from "../../src/modules/estimation/inspect/state";
-import { COLORS, weightColor } from "../../src/modules/estimation/inspect/view";
+import { weightColor } from "../../src/modules/estimation/inspect/view";
 import { buildEllipsoid } from "../../src/viz/ellipsoid/build";
 import type { Scene } from "../../src/viz/Scene";
 import type { SceneLayer } from "../../src/viz/sceneTypes";

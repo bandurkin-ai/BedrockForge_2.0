@@ -251,7 +251,7 @@ describe("the command estimate.inspect", () => {
     expect(sent()[1].body).toMatchObject({ xyz: [998.7, 2048.3, -298.75], params_id: 9 });
   });
   it("the block is given once; the numbers are checked before the core is asked", async () => {
-    const run = (a: Record<string, unknown>) => app.registry.execute("estimate.inspect", { model_id: 7, ...a }, "assistant");
+    const run = (a: Record<string, unknown>) => app.registry.execute("estimate.inspect", { model_id: 7, ...a }, "claude");
     expect((await run({})).result).toContain("Задайте блок");
     expect((await run({ block: "1; 2; 3", xyz: "1; 2; 3" })).result).toContain("что-то одно");
     expect((await run({ block: "1; 2" })).result).toContain("три целых");
@@ -260,7 +260,7 @@ describe("the command estimate.inspect", () => {
     expect((await run({ xyz: "a; b; c" })).result).toContain("три числа");
     expect((await run({ row: -1 })).result).toContain("целое число от 0");
     expect((await run({ block: "1; 2; 3", params_id: 0 })).result).toContain("от 1");
-    expect((await app.registry.execute("estimate.inspect", { model_id: 99, block: "1; 2; 3" }, "assistant")).result).toContain("Блочная модель №99 не найдена");
+    expect((await app.registry.execute("estimate.inspect", { model_id: 99, block: "1; 2; 3" }, "claude")).result).toContain("Блочная модель №99 не найдена");
     expect(sent()).toHaveLength(0);
     expect(parseTriple("1040,2; 2066,5; −296", false)).toEqual([1040.2, 2066.5, -296]);
     expect(parseTriple([1, 2, 3], true)).toEqual([1, 2, 3]);
@@ -268,7 +268,7 @@ describe("the command estimate.inspect", () => {
   });
   it("the refusal of the core reaches the caller with its hint, and stays in the window", async () => {
     core.force(ROUTE, { status: 422, body: F.errors.no_such_row });
-    const r = await app.registry.execute("estimate.inspect", { model_id: 7, row: 10_000_000 }, "assistant");
+    const r = await app.registry.execute("estimate.inspect", { model_id: 7, row: 10_000_000 }, "claude");
     expect(r.ok).toBe(false);
     expect(r.result).toContain("В модели нет блока с номером строки 10000000");
     const html = render();
