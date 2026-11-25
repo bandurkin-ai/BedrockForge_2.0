@@ -9,7 +9,7 @@ import type { Vec3 } from "../../../viz/core/vec3";
 import type { Origin } from "../../../viz/origin";
 import type { StructureView } from "../../../viz/ellipsoid/build";
 import type { EllipsoidInfo, InspectResult } from "./api";
-import { isSelected, maxWeight, OUTSIDE, weightColor, COLORS } from "./view";
+import { isSelected, maxWeight, OUTSIDE, SELECTED, takenSet, weightColor, COLORS } from "./view";
 
 const hexRgb = (s: string): [number, number, number] => [1, 3, 5].map((i) => parseInt(s.slice(i, i + 2), 16) / 255) as [number, number, number];
 
@@ -69,17 +69,21 @@ export function buildSegments(r: Pick<InspectResult, "candidates" | "segments" |
     pointIds.push(s.i);
     grow(s.to);
   }
-  const taken = pointIds.length;
+  const takenN = pointIds.length;
+  const taken = takenSet(r);
   const slate = hexRgb(COLORS.excluded);
   const cutPos: number[] = [];
   const cutIds: number[] = [];
   for (const c of r.candidates) {
-    if (isSelected(c) || !c.xyz) continue;
+    // taken = has a weight or a segment (`selected` and `hy_capped`); the rest — Slate, among them a probe «selected» of a row whose
+    // system was not solved (STATUS 2, 3: no weights, no segments)
+    if (isSelected(c, taken) || !c.xyz) continue;
     pointPos.push(...rel(c.xyz));
     pointCol.push(...slate);
     pointIds.push(c.i);
-    // a probe the ellipsoid did not let in is only a point; a probe cut off by a limit has a line (it was nearly taken)
-    if (c.reason !== OUTSIDE) {
+    // a probe the ellipsoid did not let in is only a point; a probe cut off by a limit has a line (it was nearly taken); a probe
+    // «selected» without a weight was taken by nothing: a point only
+    if (c.reason !== OUTSIDE && c.reason !== SELECTED) {
       cutPos.push(...rel(centre), ...rel(c.xyz));
       cutIds.push(c.i);
     }
@@ -91,7 +95,7 @@ export function buildSegments(r: Pick<InspectResult, "candidates" | "segments" |
     offset,
     taken: { positions: new Float32Array(takenPos), colors: new Float32Array(takenCol), ids: takenIds },
     cut: { positions: new Float32Array(cutPos), ids: cutIds },
-    points: { positions: new Float32Array(pointPos), colors: new Float32Array(pointCol), ids: pointIds, taken },
+    points: { positions: new Float32Array(pointPos), colors: new Float32Array(pointCol), ids: pointIds, taken: takenN },
     maxWeight: max,
     reach,
   };

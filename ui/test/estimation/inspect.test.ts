@@ -282,7 +282,7 @@ describe("the command estimate.inspect", () => {
   });
   it("the text of the answer for every case: not estimated, out of the domain, a change", () => {
     expect(answerText(ANS("out_of_domain"))).toContain("«AU · OK · руда»: вне домена");
-    expect(answerText(ANS("few_samples"))).toContain("мало проб, EST —, проб в системе 0 из 4");
+    expect(answerText(ANS("few_samples"))).toContain("EST —, система не решалась (статус 2 — мало проб), кандидатов 4");
     expect(answerText(ANS("changed"))).toContain("параметры или входы изменились");
     expect(answerText({ ...ANS("pass_1"), results: [] })).toContain("нет строк");
   });

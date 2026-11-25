@@ -98,6 +98,8 @@ export interface InspectResult {
   method: string;
   prefix: string;
   label: string | null;
+  /** the sub-blocks of the row: `parent` (the value of the parent) or `own` (each is estimated itself) */
+  sub: string | null;
   /** the domain of the row: the field and the value */
   domain: { field: string | null; label: string | null; row_label: string | null };
   source: { set_id: number | null; table: string | null; field: string | null };
@@ -220,6 +222,7 @@ export function readResult(raw: unknown): InspectResult {
     method: str(o.method) ?? "",
     prefix: str(o.prefix) ?? "",
     label: str(o.label),
+    sub: str(o.sub),
     domain: { field: str(dom.field), label: str(dom.label), row_label: str(dom.row_label) },
     source: { set_id: numOrNull(src.set_id), table: str(src.table) ?? (isNum(src.table) ? String(src.table) : null), field: str(src.field) },
     active: o.active !== false,

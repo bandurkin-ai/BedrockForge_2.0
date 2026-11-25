@@ -18,7 +18,7 @@ import { estimationStore, isEstimationEvent } from "../state";
 import type { InspectAnswer, InspectRequest, Triple } from "./api";
 import { InspectWindow } from "./InspectWindow";
 import { inspect, inspectStore, INSPECT_WINDOW, reinspect, resetInspect } from "./state";
-import { blockTitle, numText } from "./view";
+import { blockTitle, numText, unsolvedNote } from "./view";
 
 export const INSPECT_TITLE = "Блок · i, j, k";
 
@@ -70,6 +70,8 @@ export function answerText(a: InspectAnswer): string {
     if (!r.active) return `«${r.name}»: ${r.status_label || "блок вне домена"}`;
     const est = r.values.EST !== undefined ? `, EST ${numText(r.values.EST, 4)}` : "";
     const warn = r.warning ? `; ${r.warning.toLowerCase()}` : "";
+    const note = unsolvedNote(r);
+    if (note) return `«${r.name}»: EST —, ${note}, кандидатов ${r.counts.candidates}${warn}`;
     return `«${r.name}»: ${r.status_label}${est}, проб в системе ${r.counts.selected} из ${r.counts.candidates}${warn}`;
   });
   return `${blockTitle(a)}, центр ${a.block.centre.map((v) => numText(v, 2)).join("; ")}: ${rows.length ? rows.join(" · ") : "нет строк «Параметры оценки», по которым блок оценён"}`;
