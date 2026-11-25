@@ -88,8 +88,8 @@ export const commands: Command[] = [
   {
     id: "estimate.inspect",
     title: "Блок · i, j, k",
-    description: "Инспектор блока: какие пробы вошли в оценку блока, с какими весами и почему остальные отброшены; сверка с записанными полями. block — «i; j; k» родителя, xyz — «x; y; z» точки; params_id — одна строка.",
-    params: { model_id: MODEL, block: P("string", "ячейка родителя: i; j; k"), xyz: P("string", "точка: x; y; z, м"), params_id: ESTIMATION },
+    description: "Инспектор блока: какие пробы вошли в оценку блока, с какими весами и почему остальные отброшены; сверка с записанными полями. block — «i; j; k» родителя, xyz — «x; y; z» точки, row — номер строки блока (одно из трёх); params_id — одна строка.",
+    params: { model_id: MODEL, block: P("string", "ячейка родителя: i; j; k"), xyz: P("string", "точка: x; y; z, м"), row: P("integer", "номер строки блока модели (его даёт щелчок по блоку в 3D)"), params_id: ESTIMATION },
     required: ["model_id"],
     stage: "Э18 (18.Д4)",
   },
