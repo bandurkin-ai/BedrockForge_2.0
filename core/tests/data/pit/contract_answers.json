@@ -1,5 +1,5 @@
 {
- "_note": "ЧАСТЬ КЛЮЧЕЙ — ответы настоящего ядра (BF_REGEN_PIT=1 uv run pytest -q tests/test_pit_contract.py, 21.11, модель из кубов 10 м с рудным телом: tests/pitworld.py; идентификаторы — как в образцах: модель 12, сценарии 17 и 18, задания 1–3); surfaces_result, solid_result (21.12) — ОБРАЗЦЫ форм (docs/progress/e21-api.md §9, §10); defaults, validate_new, validate_ready, bad_param, pit_not_ready, refusals пишет spec.py (BF_REGEN_PIT=1 uv run pytest -q tests/test_pit_spec.py). Интерфейс принимается только на настоящих ответах.",
+ "_note": "ЧАСТЬ КЛЮЧЕЙ — ответы настоящего ядра (BF_REGEN_PIT=1 uv run pytest -q tests/test_pit_contract.py, 21.11, модель из кубов 10 м с рудным телом: tests/pitworld.py; идентификаторы — как в образцах: модель 12, сценарии 17 и 18, задания 1–3; surfaces_result, solid_result — задания pit.surfaces (все оболочки) и pit.solid (оболочка 2), 21.21б-2); defaults, validate_new, validate_ready, bad_param, pit_not_ready, refusals пишет spec.py (BF_REGEN_PIT=1 uv run pytest -q tests/test_pit_spec.py). Интерфейс принимается только на настоящих ответах.",
  "check_post": {
   "status": 200,
   "body": {
@@ -3481,42 +3481,65 @@
   "status": 200,
   "body": {
    "scenario_id": 17,
-   "folder_id": 40,
+   "folder": "Карьер/Сценарий карьера",
    "wireframes": [
     {
      "shell": 1,
      "rf": 0.8,
-     "wireframe_id": 41,
+     "wireframe_id": 19,
      "name": "Сценарий карьера — RF 0,8",
-     "nodes": 10000,
-     "triangles": 19602
+     "nodes": 168,
+     "triangles": 286,
+     "replaced": false
     },
     {
      "shell": 2,
      "rf": 1.0,
-     "wireframe_id": 42,
+     "wireframe_id": 20,
      "name": "Сценарий карьера — RF 1,0",
-     "nodes": 10000,
-     "triangles": 19602
+     "nodes": 168,
+     "triangles": 286,
+     "replaced": false
     },
     {
      "shell": 3,
      "rf": 1.2,
-     "wireframe_id": 43,
+     "wireframe_id": 21,
      "name": "Сценарий карьера — RF 1,2",
-     "nodes": 10000,
-     "triangles": 19602
+     "nodes": 168,
+     "triangles": 286,
+     "replaced": false
     }
    ],
+   "skipped": [],
+   "warnings": [],
    "events": [
     [
      "objects.changed",
      {
       "kind": "wireframe",
-      "id": 41
+      "id": 19
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 20
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 21
      }
     ]
-   ]
+   ],
+   "stages": {
+    "read": 0.5734370380014298,
+    "total": 0.7650220870000339
+   }
   }
  },
  "solid_result": {
@@ -3525,23 +3548,32 @@
    "scenario_id": 17,
    "shell": 2,
    "rf": 1.0,
-   "wireframe_id": 50,
+   "wireframe_id": 22,
    "name": "Сценарий карьера — карьер RF 1,00",
-   "volume": 41000000.0,
-   "volume_blocks": 41200000.0,
-   "volume_diff_pct": 0.49,
+   "folder": "Карьер/Сценарий карьера",
+   "volume": 830500.0,
+   "volume_blocks": 918000.0,
+   "volume_diff_pct": 9.53,
    "parts": 1,
    "closed": true,
    "method": "between",
+   "replaced": false,
+   "warnings": [],
    "events": [
     [
      "objects.changed",
      {
       "kind": "wireframe",
-      "id": 50
+      "id": 22
      }
     ]
-   ]
+   ],
+   "stages": {
+    "read": 0.029763346999970963,
+    "solid": 0.040162878000046476,
+    "write": 0.07337291499970888,
+    "total": 0.14329913999972632
+   }
   }
  },
  "defaults": {
@@ -4022,6 +4054,14 @@
     "code": "pit_fields_taken",
     "message": "Поля PIT или ORE с таким именем уже есть и принадлежат не этому сценарию.",
     "hint": "Задайте префикс полей."
+   }
+  },
+  "pit_stale": {
+   "status": 409,
+   "body": {
+    "code": "pit_stale",
+    "message": "Результат сценария устарел: рельеф изменён после расчёта.",
+    "hint": "Перезапустите расчёт сценария."
    }
   },
   "model_changed": {

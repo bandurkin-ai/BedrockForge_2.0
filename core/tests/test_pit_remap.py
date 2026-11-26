@@ -18,6 +18,7 @@ from bf_core.blocks import meta as block_meta
 from bf_core.blocks import schema as block_schema
 from bf_core.db import dialect
 from bf_core.db.schema import dh_tables, objects
+from bf_core.mine import dtm_write as dw
 from bf_core.mine import remap, spec
 from bf_core.mine import store as st
 from bf_core.mine import store_data as sd
@@ -135,6 +136,24 @@ def test_the_scenario_of_a_field_is_renumbered_and_a_lost_one_is_dead() -> None:
     assert new["rows"] == 5 and meta["fields"][1]["source"]["scenario_id"] == 17
 
 
+def test_the_params_of_a_field_and_the_scenario_of_a_dtm_are_renumbered() -> None:
+    """21.21б-2: `source.params` of PIT / ORE name the model, the relief, the filter; the DTMs and solids a scenario
+    made name the scenario in `meta.source` — `dtm_write.outputs_of` finds them by it."""
+    src = {"op": "pit", "scenario_id": 17, "params": a_params(), "inputs": ["ab"], "algo": "pit-1"}
+    new = remap.remap_fields({"fields": [{"name": "PIT", "source": src}]}, OBJS.get)["fields"][0]["source"]
+    assert new["scenario_id"] == 170 and new["inputs"] == ["ab"]
+    p = new["params"]
+    assert (p["model_id"], p["terrain_id"], p["filter_id"]) == (50, 40, 70) and p["restrict"]["wireframe"]["id"] == 90
+    assert src["params"]["model_id"] == 5  # the old dict is not touched
+    for op in ("pit_surface", "pit_solid"):
+        meta = {"color": "#fff", "source": {"op": op, "scenario_id": 17, "shell": 2, "scenario": "С"}}
+        got = remap.remap_wireframe(meta, OBJS.get)
+        assert got["source"] == {**meta["source"], "scenario_id": 170} and got["color"] == "#fff"
+        assert remap.remap_wireframe(meta, {}.get)["source"]["scenario_id"] == remap.DEAD_ID  # not in the archive
+    for other in ({"source": {"op": "import", "scenario_id": 17}}, {"source": {"op": "pit_surface"}}, {}):
+        assert remap.remap_wireframe(other, OBJS.get) == other  # the wireframes of other makers stay as they are
+
+
 def test_remap_rows(w: W) -> None:
     ident = of_estimate_scenario(w)
     pit_field(w, ident)
@@ -169,6 +188,12 @@ def test_bfggis_roundtrip_renumbers_the_scenarios_and_keeps_them_current(  # typ
                  filter_id=w.flt, restrict=restrict)  # fmt: skip
     other = make(w, "Второй")
     pit_field(w, ident)
+    src = {"op": dw.OP_SURFACE, "scenario_id": ident, "shell": 1, "rf": 1.0, "version": 2, "scenario": "Сценарий ЮЗ"}
+    with dialect.write_tx(w.project.engine) as conn:  # the DTM as `pit.surfaces` writes it
+        meta = dict(conn.execute(sa.select(objects.c.meta).where(objects.c.id == dtm)).scalar() or {})
+        conn.execute(sa.update(objects).where(objects.c.id == dtm).values(meta={**meta, "source": src}))
+        lineage.record(conn, lineage.Node("wireframe", dtm), [lineage.Node(NODE, ident)])
+    assert rd(w, dw.outputs_of, ident, dw.OP_SURFACE) == {1: (dtm, 1)}
     before = rd(w, st.info, ident, store=w.store)
     assert before["graph"]["stale"] is False
     shas = rd(w, st.data_sha, ident)
@@ -200,6 +225,11 @@ def test_bfggis_roundtrip_renumbers_the_scenarios_and_keeps_them_current(  # typ
     assert objs[terrain] in ids
     assert [i["fp"] for i in got["meta"]["inputs"]] == [i["fp"] for i in before["meta"]["inputs"]]  # states came
     assert got["meta"]["outputs"]["wireframes"] == [objs[dtm]]
+    # the DTM of the shell is found as an output of the scenario of the new project: a second «Поверхности» replaces it
+    # in place (a copy is made when `outputs_of` does not find it) — `meta.source.scenario_id` is renumbered too
+    assert rd(n, dw.outputs_of, objs[ident], dw.OP_SURFACE) == {1: (objs[dtm], 1)}
+    dtm_meta = rd(n, lambda c: c.execute(sa.select(objects.c.meta).where(objects.c.id == objs[dtm])).scalar())
+    assert dtm_meta["source"] == {**src, "scenario_id": objs[ident]}
     # the file came bit for bit, the tables read the same, and the scenario is as current as it was
     assert rd(n, st.data_sha, objs[ident]) == shas
     assert sd.table_shells(rd(n, st.read_data, n.store, objs[ident])) == shells_of()

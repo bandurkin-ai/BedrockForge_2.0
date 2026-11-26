@@ -328,3 +328,49 @@ def test_the_field_pit_is_rebuilt_by_its_scenario(w: W, monkeypatch: pytest.Monk
         plan = rebuild.make_plan(conn, head, with_dependents=False, blobs=w.store)
     assert [(i.node.kind, i.owner) for i in plan.items] == [("bm_field", lineage.Node(NODE, ident))]
     assert plan.items[0].state == "stale" and "сценарий карьера" in str(plan.items[0].reason)
+
+
+# --- a scenario deleted, its number taken again (21.21б-2) --------------------------------------------------------
+
+
+def model_fields(w: W) -> list[dict[str, Any]]:
+    meta = rd(w, lambda c: c.execute(sa.select(objects.c.meta).where(objects.c.id == w.model)).scalar())
+    return list(meta["fields"])
+
+
+def test_a_new_scenario_with_the_number_of_a_deleted_one_owns_nothing_of_it(w: W) -> None:
+    """SQLite has no AUTOINCREMENT: the largest id comes back. What the old scenario made (PIT, a DTM) must not
+    turn into the output of the new one; the graph keeps saying «источник удалён»."""
+    from bf_core.mine import dtm_write as dw
+    from bf_core.mine import fields as pf
+
+    dtm = solid(w, "Сценарий — RF 1,00")
+    ident = make(w, "Карьер")
+    assert ident > dtm  # the last object: its number is taken again
+    pit_field(w, ident)
+    src = {"op": dw.OP_SURFACE, "scenario_id": ident, "shell": 1, "rf": 1.0, "version": 2, "scenario": "Карьер"}
+    with dialect.write_tx(w.project.engine) as conn:
+        meta = dict(conn.execute(sa.select(objects.c.meta).where(objects.c.id == dtm)).scalar() or {})
+        conn.execute(sa.update(objects).where(objects.c.id == dtm).values(meta={**meta, "source": src}))
+        lineage.record(conn, lineage.Node("wireframe", dtm), [lineage.Node(NODE, ident)])
+    assert rd(w, dw.outputs_of, ident, dw.OP_SURFACE) == {1: (dtm, 1)}
+    with dialect.write_tx(w.project.engine) as conn:
+        st.delete(conn, ident)
+    again = new(w, "Новый")
+    assert again == ident  # the premise of the test
+    pit = next(f for f in model_fields(w) if f["name"] == "PIT")
+    assert pit["source"]["op"] == "pit" and pit["source"]["scenario_id"] is None  # an orphan, still a field of the run
+    assert not pf.is_own(pit, again)
+    e = refused(lambda: pf.plan_names(model_fields(w), "", again), 409, "pit_fields_taken")  # not replaced silently
+    assert "префикс" in e.hint
+    assert rd(w, dw.outputs_of, again, dw.OP_SURFACE) == {}  # the DTM is not found as its own
+    meta = rd(w, lambda c: c.execute(sa.select(objects.c.meta).where(objects.c.id == dtm)).scalar())
+    assert meta["source"]["scenario_id"] is None and meta["source"]["op"] == dw.OP_SURFACE
+    node = lineage.Node("wireframe", dtm)
+    with dialect.read_tx(w.project.engine) as conn:
+        refs = lineage.store.inputs_of(conn, [node])[node]
+        assert [(r.node.kind, r.node.id, r.name) for r in refs] == [(NODE, 0, "Карьер")]  # no id, the name stays
+        assert lineage.store.dependents(conn, [lineage.Node(NODE, again)]) == {}  # nothing is built from the new one
+    lost = state(w, dtm, None, "wireframe")
+    assert lost.state == lineage.LOST and "источник удалён" in str(lost.reason), lost.reason
+    assert state(w, w.model, w.store, "bm_field", "pit").state == lineage.LOST

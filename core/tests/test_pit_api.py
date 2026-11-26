@@ -247,6 +247,54 @@ def test_the_surfaces_and_the_solid_are_checked_and_wait_for_21_12(pw) -> None: 
             refused(r, 501, "not_implemented")
 
 
+def test_the_routes_of_21_21b_2_size_version_the_empty_name_and_the_index_of_the_shell(  # type: ignore[no-untyped-def]
+        pw, monkeypatch) -> None:  # fmt: skip
+    from bf_core.mine import limits, routes, routes_extra
+
+    mid = make_model(pw, SMALL, seed=5)
+    sid = new(pw, mid)["id"]
+    version = get(pw, sid)["version"]
+    for empty in ("", "   "):  # `name: ""` is nothing to change: no new version
+        refused(pw.put(f"{PIT}/scenarios/{sid}", json={"name": empty, "expected_version": version}), 422, "bad_param",
+                "body")  # fmt: skip
+    assert get(pw, sid)["version"] == version
+    assert ok(pw.put(f"{PIT}/scenarios/{sid}", json={"name": "", "calendar": {"q_ore": 2e6, "rate": 0.1},
+                                                     "expected_version": version}))["version"] == version + 1
+    # a model that is too large is refused by the route, with the reason, before the job
+    monkeypatch.setattr(limits, "MAX_ZGRID", 10)
+    e = refused(pw.post(f"{PIT}/scenarios/{sid}/run", json={}), 422, "pit_too_large")
+    assert "оболочек" in e["message"] and "Укрупните" in e["hint"]
+    monkeypatch.undo()
+    jobs: list[dict[str, Any]] = []
+
+    def spy(_s: Any, _kind: str, job: dict[str, Any], _title: str) -> tuple[str, int]:
+        jobs.append(job)
+        return "project", len(jobs)
+
+    monkeypatch.setattr(routes, "submit", spy)
+    ok(pw.post(f"{PIT}/scenarios/{sid}/run", json={"solver": "ortools"}))
+    nx, ny, nz = SMALL
+    assert jobs[0]["solver"] == "ortools"
+    assert (jobs[0]["size_cells"], jobs[0]["size_columns"]) == (nx * ny * nz, nx * ny)
+    monkeypatch.undo()
+    run(pw, sid)
+    version = get(pw, sid)["version"]
+    n = len(get(pw, sid)["meta"]["shells"])
+    # the index in the error is that of the body, not of the sorted list; the job knows the version and the sizes
+    e = refused(pw.post(f"{PIT}/scenarios/{sid}/surfaces", json={"shells": [n + 5, 1, n + 7]}), 422, "bad_param",
+                "shells.0")  # fmt: skip
+    assert str(n + 5) in e["message"]
+    refused(pw.post(f"{PIT}/scenarios/{sid}/surfaces", json={"shells": [2, 1, n + 7, n + 5]}), 422, "bad_param",
+            "shells.2")  # fmt: skip
+    monkeypatch.setattr(routes_extra, "submit", spy)
+    ok(pw.post(f"{PIT}/scenarios/{sid}/surfaces", json={"shells": [2, 1]}))
+    ok(pw.post(f"{PIT}/scenarios/{sid}/solid", json={"shell": 1}))
+    surf, sol = jobs[-2:]
+    assert (surf["expected_version"], surf["shells"], surf["size_shells"]) == (version, [1, 2], 2)
+    assert (sol["expected_version"], sol["shell"], sol["size_shells"]) == (version, 1, 1)
+    assert surf["size_columns"] == sol["size_columns"] == nx * ny
+
+
 def test_the_job_kinds_are_registered_with_their_queues() -> None:
     from bf_core.jobs.registry import HANDLER_MODULES, KINDS, load_handlers
 

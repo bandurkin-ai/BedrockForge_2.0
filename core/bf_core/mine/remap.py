@@ -15,7 +15,9 @@ fingerprint of the scenario in the graph (the SHA-256 of `data` and ALGO) and th
 scenario that was current stays so. A mark «идёт расчёт» (the snapshot of a project that was running it) is not
 carried over: its job is not a job of the new project, the scenario is as it was. `fields`, `shells`, `totals`,
 `control` need nothing. The id of the scenario in `source.scenario_id` of its fields PIT / ORE in the
-models is renumbered too (`remap_fields`).
+models is renumbered too (`remap_fields`, with the ids in `source.params`), and that in `meta.source.scenario_id` of its
+DTMs and solids (`remap_wireframe`: `source.op` is `pit_surface` / `pit_solid`) — `dtm_write.outputs_of` finds them by
+it, so a second «Поверхности» in the new project replaces them in place instead of making copies (21.21б-2).
 
 Called once all rows are written: `remap_pit(conn, maps["objects"])` in `importer._restore`, before `remap_lineage`.
 """
@@ -30,7 +32,9 @@ import sqlalchemy as sa
 from bf_core.api.errors import ApiError
 from bf_core.model.store_base import DEAD_ID
 
-__all__ = ["DEAD_ID", "remap_fields", "remap_meta", "remap_params", "remap_pit"]
+from .store_graph import OUTPUT_OPS
+
+__all__ = ["DEAD_ID", "remap_fields", "remap_meta", "remap_params", "remap_pit", "remap_wireframe"]
 
 Lookup = Callable[[int], int | None]
 
@@ -129,14 +133,26 @@ def remap_fields(meta: Mapping[str, Any], objects_of: Lookup) -> dict[str, Any]:
     for f in meta.get("fields") or []:
         src = f.get("source") if isinstance(f, Mapping) else None
         if isinstance(src, Mapping) and src.get("op") == "pit" and src.get("scenario_id") is not None:
-            f = {**f, "source": {**src, "scenario_id": _new(src["scenario_id"], objects_of)}}
+            new = {**src, "scenario_id": _new(src["scenario_id"], objects_of)}
+            if isinstance(src.get("params"), Mapping):  # the model, the relief, the filter, the leaves of the rules
+                new["params"] = remap_params(src["params"], objects_of)
+            f = {**f, "source": new}
         fields.append(f)
     return {**meta, "fields": fields}
 
 
+def remap_wireframe(meta: Mapping[str, Any], objects_of: Lookup) -> dict[str, Any]:
+    """The `meta` of a DTM / solid a scenario made (`source.op` in `OUTPUT_OPS`) with `source.scenario_id` of the new
+    project; any other wireframe is returned as it is."""
+    src = meta.get("source")
+    if not isinstance(src, Mapping) or src.get("op") not in OUTPUT_OPS or src.get("scenario_id") is None:
+        return dict(meta)
+    return {**meta, "source": {**src, "scenario_id": _new(src["scenario_id"], objects_of)}}
+
+
 def remap_pit(conn: sa.Connection, objects_map: Mapping[int, int]) -> int:
-    """Renumbers the ids inside the `meta` of every pit scenario and the id of the scenario in the fields PIT / ORE of
-    the models; returns how many objects changed."""
+    """Renumbers the ids inside the `meta` of every pit scenario, the id of the scenario in the fields PIT / ORE of
+    the models and in the DTMs and solids it made; returns how many objects changed."""
     from bf_core.db.schema import objects
 
     from .store import KIND
@@ -153,6 +169,12 @@ def remap_pit(conn: sa.Connection, objects_map: Mapping[int, int]) -> int:
             continue
         fresh = remap_fields(meta, objects_map.get)
         if fresh != meta:
+            conn.execute(sa.update(objects).where(objects.c.id == ident).values(meta=fresh))
+            changed += 1
+    for ident, meta in conn.execute(sa.select(objects.c.id, objects.c.meta).where(
+            objects.c.kind == "wireframe")).all():  # fmt: skip
+        fresh = remap_wireframe(meta or {}, objects_map.get)
+        if fresh != (meta or {}):
             conn.execute(sa.update(objects).where(objects.c.id == ident).values(meta=fresh))
             changed += 1
     return changed

@@ -47,7 +47,7 @@ if TYPE_CHECKING:
 
 __all__ = ["BENCH_COLUMNS", "ELEMENT_PARTS", "JSON_MEDIA", "PARQUET_MEDIA", "SHELL_PARTS", "benches_table",
            "clean_json", "data_columns", "data_table", "elements_of", "json_bytes", "num_rows", "read_page",
-           "shells_table", "stage_json", "stage_parquet", "table_benches", "table_shells", "table_zgrid",
+           "shells_table", "stage_json", "stage_parquet", "stage_zgrid", "table_benches", "table_shells", "table_zgrid",
            "write_parquet", "zgrid_table"]  # fmt: skip
 
 JSON_MEDIA = "application/json"
@@ -171,15 +171,49 @@ def zgrid_table(i: Any, j: Any, z: Any) -> pa.Table:
     return pa.table(cols)
 
 
+def stage_zgrid(store: BlobStore, nx: int, ny: int, z: Any) -> tuple[Any, str, int]:
+    """`sidecar:zgrid` from the array `z` float64 (N, ny·nx), column c = i + nx·j, written in row groups (the same
+    columns and row groups as `zgrid_table` + `stage_parquet`): no second and third copy of N·columns values as a
+    table and as a file buffer (21.21б-2). The file is the one the readers of old projects know."""
+    import uuid
+
+    import numpy as np
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    from bf_core.resources.store_data import LEVEL, ROW_GROUP
+
+    z = np.asarray(z, dtype=np.float64)
+    rows = int(nx) * int(ny)
+    if z.ndim != 2 or z.shape[1] != rows:
+        raise ValueError("z must have one row per shell and one column per node of the plan")
+    schema = pa.schema([("i", pa.int32()), ("j", pa.int32()), *((f"z{k}", pa.float64()) for k in range(1, len(z) + 1))])
+    store.tmp_dir.mkdir(parents=True, exist_ok=True)
+    tmp = store.tmp_dir / f"{uuid.uuid4().hex}.parquet"
+    try:
+        with pq.ParquetWriter(tmp, schema, compression="zstd", compression_level=LEVEL) as writer:
+            for lo in range(0, max(rows, 1), ROW_GROUP):
+                hi = min(lo + ROW_GROUP, rows)
+                c = np.arange(lo, hi, dtype=np.int64)
+                cols: dict[str, Any] = {"i": _array("i4", c % nx), "j": _array("i4", c // nx)}
+                cols.update({f"z{k}": _array("f8", z[k - 1, lo:hi]) for k in range(1, len(z) + 1)})
+                writer.write_table(pa.table(cols, schema=schema))
+        return store.stage_file(tmp)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 def table_zgrid(table: pa.Table) -> dict[str, Any]:
-    """{"i", "j": int32 arrays, "z": float64 (N, cells) with NaN for a null}; N = the number of the columns z1…zN."""
+    """{"i", "j": int32 arrays, "z": float64 (N, cells) with NaN for a null, "shells": [the numbers of the rows of
+    `z`]}; N = the number of the columns z1…zN in the table (a table of some of the shells has only those)."""
     import numpy as np
 
     names = [n for n in table.schema.names if _ZCOLUMN.fullmatch(n)]
     z = np.full((len(names), table.num_rows), np.nan)
     for k, n in enumerate(names):
         z[k] = table.column(n).to_numpy(zero_copy_only=False)  # a null comes back as NaN
-    return {"i": table.column("i").to_numpy(), "j": table.column("j").to_numpy(), "z": z}
+    return {"i": table.column("i").to_numpy(), "j": table.column("j").to_numpy(), "z": z,
+            "shells": [int(n[1:]) for n in names]}  # fmt: skip
 
 
 def num_rows(path: Any) -> int:

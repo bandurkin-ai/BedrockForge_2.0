@@ -39,6 +39,7 @@ from bf_core.api.errors import ApiError
 from bf_core.db import dialect
 from bf_core.jobs.registry import handler
 
+from . import limits
 from . import spec as sp_mod
 
 if TYPE_CHECKING:
@@ -60,9 +61,10 @@ def _noop(_p: float | None = None, _m: str | None = None) -> None:
     pass
 
 
-def memory_mb(_params: dict[str, Any] | None = None) -> int:
-    """The pass of the economics (800 MB of a portion) and the solver on the graph of ≈ 1 million nodes."""
-    return 1500
+def memory_mb(params: dict[str, Any] | None = None) -> int:
+    """The pass of the economics (800 MB of a portion) and the solver on the graph of ≈ 1 million nodes (1500 MB), the
+    dense arrays of the grid and the z-grids of the shells from the sizes in the params (`limits.run_memory_mb`)."""
+    return limits.run_memory_mb(params)
 
 
 def _events(scenario_id: int | None, model_id: int | None = None) -> list[list[Any]]:
@@ -131,7 +133,7 @@ def _begin(engine: sa.Engine, scenario_id: int, expected: Any, job_id: int | Non
     from . import store as st
 
     with dialect.write_tx(engine) as conn:
-        row = st._row(conn, scenario_id)  # noqa: SLF001 - 404 `pit_scenario_not_found`
+        row = st._row(conn, scenario_id, lock=True)  # noqa: SLF001 - 404 `pit_scenario_not_found`
         if expected is not None and int(row.version) != int(expected):
             raise st.conflict(int(row.version))
         st.mark_running(conn, scenario_id, job_id)
@@ -151,6 +153,8 @@ def _settle(engine: sa.Engine, scenario_id: int, error: dict[str, Any] | None = 
 def _error_of(exc: BaseException) -> dict[str, Any]:
     if isinstance(exc, ApiError):
         return {"code": exc.code, "message": exc.message, "hint": exc.hint}
+    if isinstance(exc, MemoryError):  # one branch for every pit job (the same text in `dtm_job`)
+        return dict(zip(("code", "message", "hint"), limits.OUT_OF_MEMORY, strict=True))
     return {"code": "pit_failed", "message": "Расчёт карьера завершился ошибкой.",
             "hint": "Повторите расчёт; если ошибка остаётся, сообщите разработчикам: приложите журнал."}  # fmt: skip
 
@@ -216,6 +220,7 @@ def _run(engine: sa.Engine, folder: Path, p: dict[str, Any], tick: Tick, sid: in
         model = Model.open(conn, store, sp0.model_id)
         plan.check_grid(model)  # 422 `variable_grid`
         sp = plan.resolve(model, sp0)
+        limits.check_size(model.grid.counts, len(sp.rf))  # 422 `pit_too_large`: now, not after the hours of the solver
         fields.check_names(model.meta, sp.prefix, sid)  # 409 `pit_fields_taken`
         rr = plan.restrictor_of(conn, store, model, sp)
         rm = plan.rock_map(conn, store, model, sp)
@@ -229,7 +234,7 @@ def _run(engine: sa.Engine, folder: Path, p: dict[str, Any], tick: Tick, sid: in
         ready = sp_mod.validate(sp, plan.context(model, met))
         sp = sp_mod.require_ready(sp, plan.context(model, met))  # 422 `pit_not_ready {missing, param}`
         inp = plan.make_inputs(model, sp, rm, plan.rocks_of(sp, rm.names), fill_empty=fill)
-        canon = sp.canonical()
+        canon = {**sp.canonical(), "solver": solver}  # the solver of the run: «Перестроить» takes it from the params
         frac = [] if inp.frac is None else [inp.frac]
         names = list(dict.fromkeys([*sg.read_fields(canon), *frac]))
         prints = sg.input_prints(conn, canon, names)
@@ -278,11 +283,10 @@ def _run(engine: sa.Engine, folder: Path, p: dict[str, Any], tick: Tick, sid: in
     staged = None
     try:
         zg = surfaces.z_grids(model.grid, smap, rr.relief, n_shells=res.n_shells)
-        nx = int(model.grid.counts[0])
-        cols = list(range(nx * int(model.grid.counts[1])))
+        nx, ny = int(model.grid.counts[0]), int(model.grid.counts[1])
         data = sd.data_table(rep.data, rep.elements)
-        staged = st.stage(store, data, sd.benches_table(rep.benches),
-                          sd.zgrid_table([c % nx for c in cols], [c // nx for c in cols], zg.z), doc,
+        # the z-grids are written in row groups from the array itself (`store_data.stage_zgrid`): no copies as a table
+        staged = st.stage(store, data, sd.benches_table(rep.benches), (nx, ny, zg.z), doc,
                           plan.control_doc(tab, model, closed=True, nested=True))  # fmt: skip
         pit_name, ore_name = fields.field_names(sp.prefix)
         meta_shells = [{"k": k + 1, "rf": float(res.rf[k]), "blocks": int(res.blocks[k]),
@@ -369,6 +373,11 @@ def run_job(ctx: JobContext) -> dict[str, Any]:
         return run_scenario(ctx.engine(), ctx.project_folder, ctx.params, ctx.tick, job_id=ctx.id)
     except ApiError as exc:
         raise _job_error(exc, _events(None if sid is None else int(sid))) from None
+    except MemoryError:
+        from bf_core.jobs.context import JobError
+
+        code, message, hint = limits.OUT_OF_MEMORY
+        raise JobError(code, message, hint, retry=False, events=_events(None if sid is None else int(sid))) from None
 
 
 @handler(KIND_CHECK, TITLE_CHECK, queue="quick", max_attempts=1)

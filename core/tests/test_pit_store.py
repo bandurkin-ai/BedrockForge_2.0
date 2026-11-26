@@ -389,6 +389,8 @@ def test_a_changed_input_is_model_changed_and_nothing_is_written(w: W) -> None:
         with dialect.write_tx(w.project.engine) as conn:
             st.write_result(conn, w.store, ident, b)
     assert (e.value.status, e.value.code) == (409, "model_changed")
+    # the prints are compared BEFORE the files are put: no file went to the store (no blob without an owner until gc)
+    assert not any(w.store.path_of(f[1]).is_file() for _role, f in b.staged.files() if f is not None)
     b.staged.discard()
     assert counts(w) == before and not rd(w, st.info, ident)["has_result"]
     ok = built(w, params=p, prints=rd(w, sg.input_prints, p, names))  # the same inputs as they are: written
@@ -512,6 +514,32 @@ def test_a_file_that_is_gone_is_broken_not_an_empty_result(w: W) -> None:
     w.store.path_of(str(sha_of(w, ident))).unlink()
     refused(lambda: rd(w, st.read_data, w.store, ident), 409, "pit_scenario_broken")
     refused(lambda: rd(w, st.read_shells, w.store, ident), 409, "pit_scenario_broken")
+
+
+def test_a_start_locks_the_row_on_postgresql_and_the_view_is_in_its_own_module(w: W) -> None:
+    from sqlalchemy.dialects import postgresql
+
+    from bf_core.mine import store_view
+
+    ident = make(w, "Карьер")
+    seen: list[str] = []
+
+    class Spy:
+        """Forwards to the connection and keeps the text of every statement for PostgreSQL."""
+
+        def __init__(self, conn: sa.Connection) -> None:
+            self.conn = conn
+
+        def execute(self, stmt: Any, *a: Any, **kw: Any) -> Any:
+            seen.append(str(stmt.compile(dialect=postgresql.dialect())))
+            return self.conn.execute(stmt, *a, **kw)
+
+    with dialect.write_tx(w.project.engine) as conn:
+        st.mark_running(Spy(conn), ident)  # type: ignore[arg-type]
+    assert "FOR UPDATE" in seen[0] and seen[0].startswith("SELECT")  # the first thing a start does: the locked read
+    assert rd(w, st.info, ident)["state"] == "running"  # SQLite: the same behaviour as before
+    assert (st.info, st.list_scenarios, st.graph_of) == (store_view.info, store_view.list_scenarios,
+                                                         store_view.graph_of)  # the imports of the callers stay
 
 
 # --- the fields the graph reads -------------------------------------------------------------------------------------

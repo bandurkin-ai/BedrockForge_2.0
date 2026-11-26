@@ -25,8 +25,11 @@ from bf_core.api.errors import ApiError
 
 FRAC = "FRAC"  # the share of a block the model fills (`geometry.row_volumes`)
 
-__all__ = ["FRAC", "input_nodes", "input_prints", "inputs_changed", "inputs_meta", "read_fields", "rock_rules",
-           "rule_trees"]  # fmt: skip
+OUTPUT_OPS = ("pit_surface", "pit_solid")  # `meta.source.op` of the wireframes a scenario makes (`dtm_write`)
+_SCENARIO = "object:pit_scenario"
+
+__all__ = ["FRAC", "OUTPUT_OPS", "input_nodes", "input_prints", "inputs_changed", "inputs_meta", "orphan_outputs",
+           "read_fields", "rock_rules", "rule_trees"]  # fmt: skip
 
 
 def rock_rules(params: Mapping[str, Any]) -> list[Mapping[str, Any]]:
@@ -135,3 +138,52 @@ def inputs_meta(refs: Sequence[Any], model_id: int, names: Mapping[str, str]) ->
             if n.kind == "object:block_model" and n.id == model_id:
                 cells = r.fp
     return {"inputs": inputs, "fields": fields, "cells_sha": cells}
+
+
+def orphan_outputs(conn: sa.Connection, scenario_id: int, model_id: int | None = None) -> None:
+    """A scenario is deleted (21.21б-2): what it made must not belong to a scenario that is made later under the same
+    number (the id of the last row is taken again on SQLite). In the transaction of the delete:
+      * the fields PIT / ORE of its models lose `source.scenario_id` (`None`, the field stays «осиротевшим»: another
+        scenario cannot replace it, 409 `pit_fields_taken` — «задайте префикс»);
+      * its DTMs and solids lose `meta.source.scenario_id` (a new scenario does not find them as its own);
+      * the edges of the graph whose source is the scenario lose their id (`src_id` 0, the name stays): the graph
+        says «источник удалён» for good and a new scenario with that number does not revive them."""
+    from bf_core import lineage
+    from bf_core.db.schema import lineage as edges
+    from bf_core.db.schema import objects
+
+    sid = int(scenario_id)
+    node = lineage.Node(_SCENARIO, sid)
+    deps = lineage.store.dependents(conn, [node]).get(node, [])
+    wires = [n.id for n in deps if n.kind == "wireframe"]
+    models = {n.id for n in deps if n.kind == "bm_field"}
+    if model_id is not None:
+        models.add(int(model_id))
+    for i in range(0, len(wires), 400):
+        q = sa.select(objects.c.id, objects.c.meta).where(objects.c.kind == "wireframe",
+                                                          objects.c.id.in_(wires[i : i + 400]))  # fmt: skip
+        for ident, meta in conn.execute(q).all():
+            src = (meta or {}).get("source")
+            if isinstance(src, Mapping) and src.get("op") in OUTPUT_OPS and src.get("scenario_id") == sid:
+                conn.execute(sa.update(objects).where(objects.c.id == ident).values(
+                    meta={**meta, "source": {**src, "scenario_id": None}}))  # fmt: skip
+    for ident in sorted(models):
+        row = conn.execute(sa.select(objects.c.meta).where(objects.c.id == ident,
+                                                           objects.c.kind == "block_model")).first()  # fmt: skip
+        meta = dict(row.meta or {}) if row is not None else {}
+        out, hit = [], False
+        for f in meta.get("fields") or []:
+            src = f.get("source") if isinstance(f, Mapping) else None
+            if isinstance(src, Mapping) and src.get("op") == "pit" and src.get("scenario_id") == sid:
+                f, hit = {**f, "source": {**src, "scenario_id": None}}, True
+            out.append(f)
+        if hit:
+            conn.execute(sa.update(objects).where(objects.c.id == ident).values(meta={**meta, "fields": out}))
+    c = edges.c
+    mine = sa.and_(c.src_kind == _SCENARIO, c.src_id == sid, c.role == "in")
+    for dst in conn.execute(sa.select(c.dst_kind, c.dst_id, c.dst_sub).where(mine)).all():
+        # a row of the same edge with the id 0 (a scenario deleted before) would meet the one renumbered below
+        conn.execute(sa.delete(edges).where(
+            c.dst_kind == dst.dst_kind, c.dst_id == dst.dst_id, c.dst_sub == dst.dst_sub, c.role == "in",
+            c.src_kind == _SCENARIO, c.src_id == 0, c.src_sub == ""))  # fmt: skip
+    conn.execute(sa.update(edges).where(mine).values(src_id=0))

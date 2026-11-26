@@ -77,8 +77,9 @@ def get_report(svc: Svc, request: Request, scenario_id: int) -> dict[str, Any]:
 # --- the surfaces and the solid (21.12) -------------------------------------------------------------------------
 
 
-def _result_of(conn: Any, scenario_id: int, *, running: bool) -> tuple[int, int]:
-    """The scenario has a result (and is not running when it is written): → (the version, the shells in the result)."""
+def _result_of(conn: Any, scenario_id: int, *, running: bool) -> tuple[int, int, list[int] | None]:
+    """The scenario has a result (and is not running when it is written): → (the version, the shells in the result,
+    the counts of the grid of the model as the run saw them — for the estimate of the memory of the job)."""
     from . import store as st
 
     row = st._row(conn, scenario_id)  # noqa: SLF001 - 404 `pit_scenario_not_found`
@@ -86,7 +87,16 @@ def _result_of(conn: Any, scenario_id: int, *, running: bool) -> tuple[int, int]
         st._writable(conn, row)  # noqa: SLF001 - 409 `pit_running`
     if st.data_sha(conn, scenario_id) is None:
         raise st.no_result()
-    return int(row.version), len((row.meta or {}).get("shells") or [])
+    meta = row.meta or {}
+    counts = ((meta.get("model") or {}).get("grid") or {}).get("counts")
+    return int(row.version), len(meta.get("shells") or []), (list(counts) if counts else None)
+
+
+def _size(counts: list[int] | None, shells: int) -> dict[str, int]:
+    """The sizes of the plan for `memory_mb` of the job (`limits.hints`); none when the result has no grid."""
+    from . import limits
+
+    return limits.hints(counts, shells) if counts else {}
 
 
 def _bad(param: str, message: str, hint: str) -> ApiError:
@@ -99,8 +109,8 @@ def surfaces(svc: Svc, s: Sched, scenario_id: int, body: Payload) -> dict[str, A
     req = spec.parse_surfaces(raw)
     project = svc.require_current(writable=True)
     with dialect.read_tx(project.engine) as conn:
-        version, n = _result_of(conn, scenario_id, running=True)
-    if req.shells is not None:
+        version, n, counts = _result_of(conn, scenario_id, running=True)
+    if req.shells is not None:  # the index is that of the body (`raw`), not of the sorted list of `req`
         for i, v in enumerate(raw.get("shells") or []):
             if int(v) > n:
                 raise _bad(
@@ -109,7 +119,7 @@ def surfaces(svc: Svc, s: Sched, scenario_id: int, body: Payload) -> dict[str, A
                 )  # fmt: skip
     registered(KIND_SURFACES, "Построение поверхностей оболочек")
     job = {"scenario_id": scenario_id, "shells": None if req.shells is None else list(req.shells),
-           "expected_version": version}  # fmt: skip
+           "expected_version": version, **_size(counts, n if req.shells is None else len(req.shells))}  # fmt: skip
     key, job_id = submit(s, KIND_SURFACES, job, "Поверхности оболочек карьера")
     return {"source": key, "id": job_id}
 
@@ -119,12 +129,13 @@ def solid(svc: Svc, s: Sched, scenario_id: int, body: Payload) -> dict[str, Any]
     req = spec.parse_solid(body_of(body))
     project = svc.require_current(writable=True)
     with dialect.read_tx(project.engine) as conn:
-        version, n = _result_of(conn, scenario_id, running=False)
+        version, n, counts = _result_of(conn, scenario_id, running=False)
     if req.shell > n:
         raise _bad("shell", f"Оболочки {req.shell} нет: в результате их {n}.",
                    "Выберите номер от 1 до числа оболочек.")  # fmt: skip
     registered(KIND_SOLID, "Построение каркаса карьера")
-    job = {"scenario_id": scenario_id, "shell": req.shell, "name": req.name, "expected_version": version}
+    job = {"scenario_id": scenario_id, "shell": req.shell, "name": req.name, "expected_version": version,
+           **_size(counts, 1)}  # fmt: skip
     key, job_id = submit(s, KIND_SOLID, job, "Каркас карьера")
     return {"source": key, "id": job_id}
 

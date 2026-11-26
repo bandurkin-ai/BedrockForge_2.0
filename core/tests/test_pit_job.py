@@ -204,6 +204,41 @@ def test_the_ortools_solver_gives_the_same_pit_as_hpf(pw) -> None:  # type: igno
     assert [s["blocks"] for s in ra["shells"]] == [s["blocks"] for s in rb["shells"]]
 
 
+def test_the_solver_of_the_run_is_in_the_params_of_the_result_and_a_rebuild_keeps_it(pw) -> None:  # type: ignore[no-untyped-def]
+    """21.21б-2: `solver` of the body of `/run` was only in `meta.solver`; «Перестроить» takes `params.solver`."""
+    from bf_core.mine import job as pj
+
+    mid = make_model(pw, SMALL, seed=5)
+    sid = new(pw, mid)["id"]
+    with dialect.read_tx(pw.project.engine) as conn:
+        job = {"scenario_id": sid, "params": st.current_params(conn, sid), "expected_version": 1, "solver": "ortools"}
+    assert job["params"]["solver"] != "ortools"  # the scenario itself asks for another one
+    out = pj.run_scenario(pw.project.engine, pw.project.folder, job)
+    assert out["solver"] == "ortools" and out["params"]["solver"] == "ortools"
+    meta = info(pw, sid)["meta"]
+    assert meta["solver"] == "ortools" and meta["params"]["solver"] == "ortools"
+    with dialect.read_tx(pw.project.engine) as conn:
+        assert st.rebuild_params(conn, sid)["params"]["solver"] == "ortools"
+    again = rebuild(pw, sid)
+    assert again["solver"] == "ortools" and again["params_hash"] == out["params_hash"]  # the solver is not in the hash
+
+
+def test_the_memory_of_the_run_grows_with_the_grid(pw) -> None:  # type: ignore[no-untyped-def]
+    from bf_core.mine import job as pj
+    from bf_core.mine import limits
+
+    assert pj.memory_mb({}) == pj.memory_mb(None) == 1500  # no sizes: as it was
+    small, big = limits.hints([10, 8, 6], 3), limits.hints([2000, 2000, 100], 100)
+    assert pj.memory_mb(small) == 1500 and pj.memory_mb(big) > 1500 + 3000 + 5000
+    mid = make_model(pw, SMALL, seed=5)
+    sid = new(pw, mid)["id"]
+    direct(pw, sid)
+    with dialect.read_tx(pw.project.engine) as conn:  # «Перестроить» knows the sizes of the grid of the result
+        again = st.rebuild_params(conn, sid)
+    nx, ny, nz = SMALL
+    assert (again["size_cells"], again["size_columns"]) == (nx * ny * nz, nx * ny) and again["size_shells"] >= 1
+
+
 # --- «Перестроить», the determinism ---------------------------------------------------------------------------------
 
 

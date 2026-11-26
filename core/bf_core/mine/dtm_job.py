@@ -6,7 +6,9 @@
     shells = check_surfaces(conn, scenario_id, shells)    # the synchronous checks of the routes (404, 409, 422)
     shell = check_solid(conn, scenario_id, shell)
 
-`params` of the jobs: {scenario_id, shells?} and {scenario_id, shell, name?} (`parse_surfaces`, `parse_solid`).
+`params` of the jobs: {scenario_id, shells?, expected_version} and {scenario_id, shell, name?, expected_version}
+(`parse_surfaces`, `parse_solid`; 409 `version_conflict` when the scenario has another version than the route saw),
+plus the sizes of the plan for `memory_mb` (`limits.hints`).
 
 pit.surfaces. The shells chosen (numbers 1…N; none — all, № 124) → the DTMs: `sidecar:zgrid` of the scenario (the z of
 the column of every shell: решение 25), the nodes — the centres of the columns in the axes of the project
@@ -56,7 +58,7 @@ from bf_core.storage.blobs import BlobStore
 from bf_core.wireframes import store as wf
 
 from . import dtm_write as dw
-from . import fields, solid, spec
+from . import fields, limits, solid, spec
 
 if TYPE_CHECKING:  # numba is imported inside the functions (the handler modules do not load it, test_structure)
     from bf_core.geo import dz_kernels
@@ -89,6 +91,7 @@ class Scenario:
     shells: Sequence[Mapping[str, Any]]
     data_sha: str | None
     model_id: int | None
+    inputs: Sequence[Mapping[str, Any]] = ()  # `meta.inputs` [{kind, id, fp, name}] — the fingerprints at the write
 
     def rf(self, shell: int) -> float | None:
         rf = self.shells[shell - 1].get("rf")
@@ -112,6 +115,7 @@ def _scenario(conn: sa.Connection, scenario_id: int) -> Scenario:
         list(meta.get("shells") or []),
         st.data_sha(conn, int(scenario_id)),
         params.get("model_id"),
+        list(meta.get("inputs") or []),
     )
 
 
@@ -142,23 +146,50 @@ def check_solid(conn: sa.Connection, scenario_id: int, shell: Any) -> int:
     return int(shell)
 
 
-def _zgrids(conn: sa.Connection, store: BlobStore, sc: Scenario) -> tuple[int, int, np.ndarray]:
-    """(nx, ny, z float64 [N, ny·nx]) of `sidecar:zgrid`. 409 `pit_scenario_broken` — no file or not a full plan."""
-    table = st.read_zgrid(conn, store, sc.id)
+def _zgrids(
+    conn: sa.Connection, store: BlobStore, sc: Scenario, shells: Sequence[int]
+) -> tuple[int, int, dict[int, np.ndarray]]:
+    """(nx, ny, {shell: z float64 [ny·nx]}) of `sidecar:zgrid` — only the columns of the shells wanted are read.
+    409 `pit_scenario_broken` — no file, a shell the file has not or not a full plan."""
+    table = st.read_zgrid(conn, store, sc.id, shells)
     if table is None:
         raise st.broken()
     got = sd.table_zgrid(table)
     i, j, z = got["i"], got["j"], got["z"]
     nx, ny = (int(i.max()) + 1, int(j.max()) + 1) if len(i) else (0, 0)
-    if nx * ny != len(i) or not np.array_equal(i + nx * j, np.arange(len(i))) or len(z) < len(sc.shells):
+    have = {int(k): a for a, k in enumerate(got["shells"])}
+    if (nx * ny != len(i) or not np.array_equal(i + nx * j, np.arange(len(i)))
+            or any(int(k) not in have for k in shells)):  # fmt: skip
         raise st.broken()
-    return nx, ny, z
+    return nx, ny, {int(k): z[have[int(k)]] for k in shells}
+
+
+def _check_version(sc: Scenario, expected: Any) -> None:
+    """The job was given the version the route saw: another version — 409 `version_conflict`."""
+    if expected is not None and int(expected) != sc.version:
+        raise spec.refuse("version_conflict", version=sc.version)
+
+
+def _check_relief(conn: sa.Connection, sc: Scenario) -> None:
+    """The z-grids of the shells were made over the relief of the run; a relief edited since then (its fingerprint is
+    not the one `meta.inputs` has) gives a wrong top: 409 `pit_stale`. A relief that is gone is told by `_relief`."""
+    from bf_core import lineage
+
+    terrain = sc.params.get("terrain_id")
+    if terrain is None:
+        return
+    seen = next((i for i in sc.inputs if i.get("kind") == "wireframe" and i.get("id") == int(terrain)), None)
+    now = lineage.fingerprint(conn, lineage.Node("wireframe", int(terrain)))
+    if seen is not None and now is not None and seen.get("fp") != now:
+        raise spec.refuse("pit_stale")
 
 
 def _check_same(conn: sa.Connection, sc: Scenario) -> None:
-    """In the write transaction: the scenario was not run again meanwhile (the same `data`)."""
+    """In the write transaction: the scenario was not run again meanwhile (the same `data`) and its relief is not
+    edited (409 `version_conflict`, `pit_stale`)."""
     if st.data_sha(conn, sc.id) != sc.data_sha:
         raise spec.refuse("version_conflict", version=int(st.info(conn, sc.id)["version"]))
+    _check_relief(conn, sc)
 
 
 def _crs(conn: sa.Connection, model_id: int | None) -> str | None:
@@ -175,7 +206,7 @@ def _watch(tick: Tick, start: float, stop: float, text: str) -> Callable[[float,
 
 
 def run_surfaces(engine: sa.Engine, folder: Any, scenario_id: int, shells: Sequence[int] | None = None, *,
-                 tick: Tick = _no_tick) -> dict[str, Any]:  # fmt: skip
+                 tick: Tick = _no_tick, expected_version: int | None = None) -> dict[str, Any]:  # fmt: skip
     """The body of `pit.surfaces` (the handler and the tests). Errors: `ApiError` (see the module)."""
     from bf_core.jobs.context import JobCancelled
 
@@ -187,10 +218,14 @@ def run_surfaces(engine: sa.Engine, folder: Any, scenario_id: int, shells: Seque
     with dialect.read_tx(engine) as conn:
         want = check_surfaces(conn, scenario_id, shells)
         sc = _scenario(conn, scenario_id)
+        _check_version(sc, expected_version)
+        _check_relief(conn, sc)  # 409 `pit_stale`
         model = Model.open(conn, store, sc.model_id) if sc.model_id is not None else None
         if model is None:
             raise spec.refuse("block_model_not_found")
-        nx, ny, z = _zgrids(conn, store, sc)
+        limits.check_columns(model.grid.counts)  # 422 `pit_too_large`: before a z-grid is read
+        limits.check_zgrid(int(model.grid.counts[0]) * int(model.grid.counts[1]), len(want))
+        nx, ny, z = _zgrids(conn, store, sc, want)
         crs = _crs(conn, sc.model_id)
         grid = model.grid
     if grid.counts[0] != nx or grid.counts[1] != ny:
@@ -206,7 +241,7 @@ def run_surfaces(engine: sa.Engine, folder: Any, scenario_id: int, shells: Seque
         for a, shell in enumerate(want):
             frac = a / max(len(want), 1)
             tick(0.05 + 0.9 * frac, f"Оболочки {a + 1}/{len(want)}")
-            xyz, tri = solid.surface_mesh(xy, z[shell - 1], nx, ny)
+            xyz, tri = solid.surface_mesh(xy, z[shell], nx, ny)
             if len(tri) == 0:
                 skipped.append(shell)  # the relief does not cover the plan: nothing to build (a gap, not a flat 0)
                 continue
@@ -292,7 +327,8 @@ def mined_volume(model: Model, pit_field: str, shell: int, scenario_id: int, chu
 
 
 def run_solid(engine: sa.Engine, folder: Any, scenario_id: int, shell: Any, name: str | None = None, *,
-              tick: Tick = _no_tick, force_difference: bool = False) -> dict[str, Any]:  # fmt: skip
+              tick: Tick = _no_tick, force_difference: bool = False,
+              expected_version: int | None = None) -> dict[str, Any]:  # fmt: skip
     """The body of `pit.solid` (the handler and the tests). `force_difference` — only the fallback (the tests)."""
     from . import surfaces
 
@@ -302,10 +338,13 @@ def run_solid(engine: sa.Engine, folder: Any, scenario_id: int, shell: Any, name
     with dialect.read_tx(engine) as conn:
         shell = check_solid(conn, scenario_id, shell)
         sc = _scenario(conn, scenario_id)
+        _check_version(sc, expected_version)
+        _check_relief(conn, sc)  # 409 `pit_stale`: the z-grid of the shell was made over another relief
         if sc.model_id is None:
             raise spec.refuse("block_model_not_found")
         model = Model.open(conn, store, sc.model_id)
-        nx, ny, z = _zgrids(conn, store, sc)
+        limits.check_columns(model.grid.counts)  # 422 `pit_too_large`
+        nx, ny, z = _zgrids(conn, store, sc, [shell])
         relief = _relief(conn, store, sc.params.get("terrain_id"))
         crs = _crs(conn, sc.model_id)
     grid = model.grid
@@ -313,7 +352,7 @@ def run_solid(engine: sa.Engine, folder: Any, scenario_id: int, shell: Any, name
         raise spec.refuse("model_changed")
     xy = surfaces.centres(grid)
     top = surfaces.base_surface(grid, relief)
-    bottom = z[shell - 1]
+    bottom = z[shell]
     t_read = time.perf_counter()
     tick(0.15, "Тело")
     warnings: list[str] = []
@@ -372,14 +411,15 @@ def run_solid(engine: sa.Engine, folder: Any, scenario_id: int, shell: Any, name
 
 
 def _memory_mb(params: dict[str, Any]) -> int:
-    return 1024
+    """1024 MB + the shells and the plan from the sizes the route put into the params (`limits.view_memory_mb`)."""
+    return limits.view_memory_mb(params)
 
 
 def _failure(exc: BaseException) -> JobError:
     if isinstance(exc, ApiError):
         return JobError(exc.code, exc.message, exc.hint, retry=False)
-    return JobError("out_of_memory", "Не хватило памяти на построение.", "Закройте другие программы или "
-                    "выберите меньше оболочек.", retry=False)  # fmt: skip
+    code, message, hint = limits.OUT_OF_MEMORY  # one text for every pit job
+    return JobError(code, message, hint, retry=False)
 
 
 @handler(KIND_SURFACES, TITLE_SURFACES, queue="quick", max_attempts=1, estimate_memory=_memory_mb)
@@ -388,7 +428,8 @@ def surfaces_job(ctx: JobContext) -> dict[str, Any]:
     shells = ctx.params.get("shells")
     try:
         return run_surfaces(ctx.engine(), ctx.project_folder, int(ctx.params["scenario_id"]),
-                            None if shells is None else [int(s) for s in shells], tick=ctx.tick)  # fmt: skip
+                            None if shells is None else [int(s) for s in shells], tick=ctx.tick,
+                            expected_version=ctx.params.get("expected_version"))  # fmt: skip
     except (ApiError, MemoryError) as exc:
         raise _failure(exc) from exc
 
@@ -398,6 +439,7 @@ def solid_job(ctx: JobContext) -> dict[str, Any]:
     assert ctx.project_folder is not None
     try:
         return run_solid(ctx.engine(), ctx.project_folder, int(ctx.params["scenario_id"]), ctx.params.get("shell"),
-                         ctx.params.get("name"), tick=ctx.tick)  # fmt: skip
+                         ctx.params.get("name"), tick=ctx.tick,
+                         expected_version=ctx.params.get("expected_version"))  # fmt: skip
     except (ApiError, MemoryError) as exc:
         raise _failure(exc) from exc

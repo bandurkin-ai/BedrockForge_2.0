@@ -49,9 +49,10 @@ from bf_core.db import dialect
 from bf_core.db.schema import blob_owners, blobs, objects
 from bf_core.storage.blobs import BlobStore
 
-from . import spec, spec_parts
+from . import limits, spec, spec_parts
 from . import store_data as sd
 from . import store_graph as sg
+from .store_view import graph_of, info, list_scenarios  # noqa: F401 - the public view (21.21б-2)
 
 KIND = spec.KIND
 NODE = "object:" + KIND  # the kind of the node in the graph (ADR 0025)
@@ -147,12 +148,16 @@ class Staged:
 def stage(store: BlobStore, data: Any, benches: Any = None, zgrid: Any = None,
           template: Mapping[str, Any] | None = None, control: Mapping[str, Any] | None = None) -> Staged:  # fmt: skip
     """`data`, `benches`, `zgrid` — the tables (`store_data`; the last two may be None), `template`, `control` — the
-    JSON documents or None. Nothing is owned yet; the staged files go on a failure (`discard`)."""
+    JSON documents or None. `zgrid` may also be `(nx, ny, z)`: the array of the z-grids written in row groups
+    (`store_data.stage_zgrid`, no copies of it as a table). Nothing is owned yet; the staged files go on a failure
+    (`discard`)."""
     out = Staged(sd.stage_parquet(store, data), int(data.num_rows))
     try:
         if benches is not None:
             out.benches = sd.stage_parquet(store, benches)
-        if zgrid is not None:
+        if isinstance(zgrid, tuple):
+            out.zgrid = sd.stage_zgrid(store, *zgrid)
+        elif zgrid is not None:
             out.zgrid = sd.stage_parquet(store, zgrid)
         if template is not None:
             out.template_doc = sd.clean_json(template)
@@ -245,8 +250,6 @@ def _record(conn: sa.Connection, scenario_id: int, b: Built) -> dict[str, Any]:
     from bf_core import lineage
 
     model_id = int(b.model["id"])
-    if b.prints is not None and sg.input_prints(conn, b.params, b.fields) != b.prints:
-        raise sg.inputs_changed()
     nodes = sg.input_nodes(conn, b.params, b.fields)
     refs = lineage.record(conn, lineage.Node(NODE, scenario_id), nodes)  # in the transaction of the write (ADR 0025 §4)
     return sg.inputs_meta(refs, model_id, {str(f).casefold(): str(f) for f in b.fields})
@@ -261,6 +264,8 @@ def write_result(conn: sa.Connection, store: BlobStore, scenario_id: int, built:
     row = _row(conn, scenario_id)
     if expected_version is not None and int(row.version) != int(expected_version):
         raise conflict(int(row.version))
+    if built.prints is not None and sg.input_prints(conn, built.params, built.fields) != built.prints:
+        raise sg.inputs_changed()  # before any file is put: nothing is left without an owner (21.21б-2)
     old = dict(row.meta or {})
     meta = _meta(built, {k: old[k] for k in ("uid",) if k in old}, str(old.get("created_at") or ""))
     _put_all(conn, store, scenario_id, built.staged)
@@ -375,8 +380,8 @@ def rename(conn: sa.Connection, scenario_id: int, name: Any, expected_version: A
 
 def mark_running(conn: sa.Connection, scenario_id: int, job_id: int | None = None) -> None:
     """A run starts: `meta.state = "building"` and its job (`meta.run_job`); `objects.state` stays `ready`.
-    409 `pit_running`."""
-    row = _row(conn, scenario_id)
+    409 `pit_running`. The row is locked: of two parallel starts on PostgreSQL the second waits and sees the mark."""
+    row = _row(conn, scenario_id, lock=True)
     if _is_running(conn, row):
         raise running()
     meta = {**(row.meta or {}), "state": "building", "error": None}
@@ -397,11 +402,13 @@ def settle(conn: sa.Connection, scenario_id: int, error: Mapping[str, Any] | Non
 
 def delete(conn: sa.Connection, scenario_id: int) -> dict[str, Any]:
     """The object, its files and the rows of its node of the graph. The fields PIT / ORE and the wireframes it made stay
-    (ADR 0028 / docs/progress/e21-api.md §15.10): what is built from the scenario says «источник удалён». → {id, name,
-    outputs} (what stays, for the events of the route). 404; 409 `pit_running`."""
+    (ADR 0028 / docs/progress/e21-api.md §15.10): what is built from the scenario says «источник удалён» — and belongs
+    to no scenario any more (`store_graph.orphan_outputs`: a scenario made later under the same number does not own
+    them). → {id, name, outputs} (what stays, for the events of the route). 404; 409 `pit_running`."""
     row = _row(conn, scenario_id)
     _writable(conn, row)
     meta = dict(row.meta or {})
+    sg.orphan_outputs(conn, scenario_id, (meta.get("model") or {}).get("id"))  # before the rows go: the graph is read
     conn.execute(sa.delete(blob_owners).where(blob_owners.c.owner_kind == OWNER, blob_owners.c.owner_id == scenario_id))
     conn.execute(sa.delete(objects).where(objects.c.id == scenario_id))
     from bf_core import lineage
@@ -414,8 +421,9 @@ def delete(conn: sa.Connection, scenario_id: int) -> dict[str, Any]:
 # --- read -------------------------------------------------------------------------------------------------------------
 
 
-def _row(conn: sa.Connection, scenario_id: int) -> Any:
-    r = conn.execute(sa.select(objects).where(objects.c.id == scenario_id, objects.c.kind == KIND)).first()
+def _row(conn: sa.Connection, scenario_id: int, lock: bool = False) -> Any:
+    q = sa.select(objects).where(objects.c.id == scenario_id, objects.c.kind == KIND)
+    r = conn.execute(q.with_for_update() if lock else q).first()  # `lock`: FOR UPDATE on PostgreSQL (no-op on SQLite)
     if r is None:
         raise not_found()
     return r
@@ -436,71 +444,6 @@ def _writable(conn: sa.Connection, row: Any) -> None:
 def _changed(meta: Mapping[str, Any], has_result: bool) -> bool:
     draft = meta.get("draft")
     return bool(has_result and isinstance(draft, Mapping) and draft.get("hash") != meta.get("params_hash"))
-
-
-def graph_of(conn: sa.Connection, ids: Sequence[int], store: BlobStore | None = None) -> dict[int, dict[str, Any]]:
-    """The state of the scenarios in the graph: {id: {stale, stale_reason, source_lost, pinned}} (one batch)."""
-    from bf_core import lineage
-
-    nodes = [lineage.Node(NODE, int(i)) for i in ids]
-    got = lineage.status(conn, nodes, store=store) if nodes else {}
-    out: dict[int, dict[str, Any]] = {}
-    for n in nodes:
-        s = got[n]
-        lost = s.state == lineage.LOST
-        out[n.id] = {"stale": s.state in (lineage.STALE, lineage.LOST) or (s.state == lineage.PINNED and s.changed),
-                     "stale_reason": s.reason if s.state != lineage.CURRENT else None, "source_lost": lost,
-                     "pinned": s.state == lineage.PINNED}  # fmt: skip
-    return out
-
-
-def _public(conn: sa.Connection, row: Any, owned: Mapping[str, tuple[str, int]],
-            graph: Mapping[str, Any]) -> dict[str, Any]:  # fmt: skip
-    meta = dict(row.meta or {})
-    has = DATA in owned
-    on = _is_running(conn, row)
-    state = "running" if on else ("error" if meta.get("state") == "error" else "ready")
-    model = dict(meta.get("model") or {})
-    shells = list(meta.get("shells") or []) if has else []
-    return {
-        "id": int(row.id), "name": row.name, "version": int(row.version), "state": state,
-        "has_result": has, "params_changed": _changed(meta, has),
-        "model": {"id": model.get("id"), "name": model.get("name")}, "shells": len(shells),
-        "value": shells[-1].get("value") if shells else None, "graph": dict(graph),
-        "created_at": row.created_at.isoformat(), "updated_at": row.updated_at.isoformat(),
-        "job_id": meta.get("run_job") if on else meta.get("job_id"),
-    }  # fmt: skip
-
-
-def info(conn: sa.Connection, scenario_id: int, store: BlobStore | None = None) -> dict[str, Any]:
-    """`GET /pit/scenarios/{id}`: the list entry plus the `error`, the parameters shown (the draft when there is one),
-    their hash, `meta` (without the private keys) and the size of the files. The graph is checked with `store` (the
-    makers of the fields) when it is given."""
-    row = _row(conn, scenario_id)
-    owned = _owned(conn, scenario_id)
-    out = _public(conn, row, owned, graph_of(conn, [scenario_id], store)[scenario_id])
-    meta = dict(row.meta or {})
-    draft = meta.get("draft")
-    shown = draft if isinstance(draft, Mapping) else {"params": meta.get("params"), "hash": meta.get("params_hash")}
-    out.update({"error": meta.get("error") if out["state"] == "error" else None, "params": shown["params"],
-                "params_hash": shown["hash"], "size": sum(s for _sha, s in owned.values()),
-                "meta": {k: v for k, v in meta.items() if k not in ("draft", "run_job", "uid")}})  # fmt: skip
-    return out
-
-
-def list_scenarios(conn: sa.Connection) -> list[dict[str, Any]]:
-    """Every scenario by name: the list entries with the state in the graph (one batch)."""
-    rows = conn.execute(
-        sa.select(objects).where(objects.c.kind == KIND).order_by(objects.c.name_key, objects.c.id)
-    ).all()
-    graph = graph_of(conn, [int(r.id) for r in rows])
-    owned: dict[int, dict[str, tuple[str, int]]] = {int(r.id): {} for r in rows}
-    q = (sa.select(blob_owners.c.owner_id, blob_owners.c.role, blob_owners.c.sha256, blobs.c.size)
-         .join(blobs, blobs.c.sha256 == blob_owners.c.sha256)
-         .where(blob_owners.c.owner_kind == OWNER, blob_owners.c.owner_id.in_(list(owned))))  # fmt: skip
-    for r in conn.execute(q) if owned else ():
-        owned[int(r.owner_id)][str(r.role)] = (str(r.sha256), int(r.size))
-    return [_public(conn, r, owned[int(r.id)], graph[int(r.id)]) for r in rows]
 
 
 def current_params(conn: sa.Connection, scenario_id: int) -> dict[str, Any]:
@@ -562,9 +505,20 @@ def read_benches(conn: sa.Connection, store: BlobStore, scenario_id: int) -> Any
     return _read_parquet(conn, store, scenario_id, BENCHES)
 
 
-def read_zgrid(conn: sa.Connection, store: BlobStore, scenario_id: int) -> Any:
-    """The table of the z-grids of the shells or None."""
-    return _read_parquet(conn, store, scenario_id, ZGRID)
+def read_zgrid(conn: sa.Connection, store: BlobStore, scenario_id: int, shells: Sequence[int] | None = None) -> Any:
+    """The table of the z-grids of the shells or None. `shells` — the numbers wanted: only the columns `i`, `j` and
+    those `z<k>` are read (the others stay on the disk); a shell the file has not — 409 `pit_scenario_broken`."""
+    if shells is None:
+        return _read_parquet(conn, store, scenario_id, ZGRID)
+    import pyarrow.parquet as pq
+
+    path = _path(conn, store, scenario_id, ZGRID)
+    if path is None:
+        return None
+    want = [f"z{int(k)}" for k in sorted({int(k) for k in shells})]
+    if not set(want) <= set(pq.read_schema(path).names):
+        raise broken()
+    return pq.read_table(path, columns=["i", "j", *want])
 
 
 def _read_json(conn: sa.Connection, store: BlobStore, scenario_id: int, role: str) -> dict[str, Any] | None:
@@ -590,8 +544,11 @@ def rebuild_params(conn: sa.Connection, scenario_id: int) -> dict[str, Any]:
     _writable(conn, row)
     if DATA not in _owned(conn, scenario_id):
         raise no_result()
-    return {"scenario_id": int(row.id), "params": result_params(conn, scenario_id), "name": row.name,
-            "expected_version": int(row.version), "rebuild": True}  # fmt: skip
+    params = result_params(conn, scenario_id)
+    counts = ((row.meta or {}).get("model") or {}).get("grid", {}).get("counts")
+    size = limits.hints(counts, len(params.get("rf") or ())) if counts else {}  # for the memory of the job
+    return {"scenario_id": int(row.id), "params": params, "name": row.name, "expected_version": int(row.version),
+            "rebuild": True, **size}  # fmt: skip
 
 
 def fingerprint(data_sha_: str | None, algo: str = ALGO) -> str:
