@@ -59,7 +59,7 @@ import { renderInterceptsWindow } from "../modules/intercepts/TtWindow";
 import { renderTrendWindow } from "../modules/trends/bind";
 import { renderFiltersWindow } from "../modules/blocks/filters/bind";
 import { renderReportWindow } from "../modules/blocks/report/bind";
-import { renderResourcesWindow } from "../modules/resources/bind";
+import { renderResourcesWindow, renderTemplatesWindow } from "../modules/resources/bind";
 import { renderBuildWindow } from "../modules/blocks/build/bind";
 import { renderExportWindow } from "../modules/blocks/export/bind";
 import { renderModelWindow } from "../modules/blocks/window/bind";
@@ -118,7 +118,7 @@ const renderWindow: WindowRenderer = (w) => {
     case "model-report":
       return <ReportWindow winId={w.id} {...(w.props as unknown as ReportProps)} />;
     default:
-      return renderSeriesWindow(w) ?? renderLinesWindow(w) ?? renderDataManagerWindow(w) ?? renderCompositesWindow(w) ?? renderChartsWindow(w) ?? renderSwathWindow(w) ?? renderQaqcSetupWindow(w) ?? renderInterceptsWindow(w) ?? renderVariographyWindow(w) ?? renderEstimationWindow(w) ?? renderSimulationWindow(w) ?? renderImplicitWindow(w) ?? renderPlannedWindow(w) ?? renderLineageWindow(w) ?? renderTrendWindow(w) ?? renderFiltersWindow(w) ?? renderReportWindow(w) ?? renderResourcesWindow(w) ?? renderBuildWindow(w) ?? renderExportWindow(w) ?? renderModelWindow(w) ?? renderFieldsWindow(w);
+      return renderSeriesWindow(w) ?? renderLinesWindow(w) ?? renderDataManagerWindow(w) ?? renderCompositesWindow(w) ?? renderChartsWindow(w) ?? renderSwathWindow(w) ?? renderQaqcSetupWindow(w) ?? renderInterceptsWindow(w) ?? renderVariographyWindow(w) ?? renderEstimationWindow(w) ?? renderSimulationWindow(w) ?? renderImplicitWindow(w) ?? renderPlannedWindow(w) ?? renderLineageWindow(w) ?? renderTrendWindow(w) ?? renderFiltersWindow(w) ?? renderReportWindow(w) ?? renderResourcesWindow(w) ?? renderTemplatesWindow(w) ?? renderBuildWindow(w) ?? renderExportWindow(w) ?? renderModelWindow(w) ?? renderFieldsWindow(w);
   }
 };
 
