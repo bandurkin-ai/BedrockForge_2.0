@@ -1,0 +1,481 @@
+{
+ "_note": "Примеры параметров отчёта по ресурсам (20.1): body — `params` запроса POST /resources/reports; canonical — spec.parse_params(body).canonical(); resolved — то же после ReportSpec.resolved(fixture.fields, fixture.z_range) (meta.params, docs/progress/e20-api.md §2). Перегенерация: BF_REGEN_RESOURCES=1 uv run pytest -q tests/test_resources_spec.py",
+ "fixture": {
+  "fields": [
+   {
+    "name": "AU",
+    "kind": "number",
+    "unit": "г/т",
+    "role": "grade"
+   },
+   {
+    "name": "CU",
+    "kind": "number",
+    "unit": "%",
+    "role": "grade"
+   },
+   {
+    "name": "SG",
+    "kind": "number",
+    "unit": null,
+    "role": "density",
+    "stats": {
+     "min": 2.4,
+     "max": 3.1
+    }
+   },
+   {
+    "name": "DENSITY",
+    "kind": "number",
+    "unit": null,
+    "role": "density",
+    "stats": {
+     "min": 2.6,
+     "max": 2.6
+    }
+   },
+   {
+    "name": "CLASS",
+    "kind": "category",
+    "unit": null,
+    "role": "class",
+    "labels": [
+     "Измеренные",
+     "Выявленные",
+     "Предполагаемые"
+    ]
+   },
+   {
+    "name": "DOM",
+    "kind": "category",
+    "unit": null,
+    "role": null,
+    "labels": [
+     "A",
+     "B",
+     "C"
+    ]
+   }
+  ],
+  "z_range": [
+   -12.0,
+   33.0
+  ]
+ },
+ "cases": {
+  "minimal": {
+   "body": {
+    "model_id": 12
+   },
+   "canonical": {
+    "model_id": 12,
+    "elements": null,
+    "cutoff_field": null,
+    "cutoffs": [
+     null
+    ],
+    "balance": null,
+    "density": null,
+    "filter_id": null,
+    "restrict": null,
+    "groups": [],
+    "bench": null,
+    "curve": 100,
+    "template_id": null
+   },
+   "resolved": {
+    "model_id": 12,
+    "elements": [
+     {
+      "field": "AU",
+      "unit": "g/t"
+     },
+     {
+      "field": "CU",
+      "unit": "%"
+     }
+    ],
+    "cutoff_field": "AU",
+    "cutoffs": [
+     null
+    ],
+    "balance": null,
+    "density": "SG",
+    "filter_id": null,
+    "restrict": null,
+    "groups": [],
+    "bench": null,
+    "curve": 100,
+    "template_id": null
+   }
+  },
+  "jorc_class": {
+   "body": {
+    "model_id": 12,
+    "elements": [
+     {
+      "field": "au",
+      "unit": "г/т"
+     },
+     "CU"
+    ],
+    "cutoff_field": "AU",
+    "cutoffs": [
+     null,
+     0.5,
+     "1,0"
+    ],
+    "density": "sg",
+    "groups": [
+     "CLASS"
+    ],
+    "curve": 50,
+    "template_id": "jorc"
+   },
+   "canonical": {
+    "model_id": 12,
+    "elements": [
+     {
+      "field": "au",
+      "unit": "g/t"
+     },
+     {
+      "field": "CU",
+      "unit": null
+     }
+    ],
+    "cutoff_field": "AU",
+    "cutoffs": [
+     null,
+     0.5,
+     1.0
+    ],
+    "balance": null,
+    "density": "sg",
+    "filter_id": null,
+    "restrict": null,
+    "groups": [
+     {
+      "kind": "field",
+      "field": "CLASS"
+     }
+    ],
+    "bench": null,
+    "curve": 50,
+    "template_id": "jorc"
+   },
+   "resolved": {
+    "model_id": 12,
+    "elements": [
+     {
+      "field": "AU",
+      "unit": "g/t"
+     },
+     {
+      "field": "CU",
+      "unit": "%"
+     }
+    ],
+    "cutoff_field": "AU",
+    "cutoffs": [
+     null,
+     0.5,
+     1.0
+    ],
+    "balance": null,
+    "density": "SG",
+    "filter_id": null,
+    "restrict": null,
+    "groups": [
+     {
+      "kind": "field",
+      "field": "CLASS"
+     }
+    ],
+    "bench": null,
+    "curve": 50,
+    "template_id": "jorc"
+   }
+  },
+  "gkz_balance": {
+   "body": {
+    "model_id": 12,
+    "elements": [
+     "AU"
+    ],
+    "cutoffs": {
+     "from": 0.1,
+     "to": 0.5,
+     "step": 0.1
+    },
+    "balance": {
+     "cutoff": 1.0,
+     "off_cutoff": 0.5
+    },
+    "density": 2.7,
+    "groups": [
+     "CLASS",
+     "DOM"
+    ],
+    "curve": 0,
+    "template_id": "gkz"
+   },
+   "canonical": {
+    "model_id": 12,
+    "elements": [
+     {
+      "field": "AU",
+      "unit": null
+     }
+    ],
+    "cutoff_field": null,
+    "cutoffs": [
+     0.1,
+     0.2,
+     0.3,
+     0.4,
+     0.5
+    ],
+    "balance": {
+     "cutoff": 1.0,
+     "off_cutoff": 0.5
+    },
+    "density": 2.7,
+    "filter_id": null,
+    "restrict": null,
+    "groups": [
+     {
+      "kind": "field",
+      "field": "CLASS"
+     },
+     {
+      "kind": "field",
+      "field": "DOM"
+     }
+    ],
+    "bench": null,
+    "curve": 0,
+    "template_id": "gkz"
+   },
+   "resolved": {
+    "model_id": 12,
+    "elements": [
+     {
+      "field": "AU",
+      "unit": "g/t"
+     }
+    ],
+    "cutoff_field": "AU",
+    "cutoffs": [
+     0.1,
+     0.2,
+     0.3,
+     0.4,
+     0.5
+    ],
+    "balance": {
+     "cutoff": 1.0,
+     "off_cutoff": 0.5
+    },
+    "density": 2.7,
+    "filter_id": null,
+    "restrict": null,
+    "groups": [
+     {
+      "kind": "field",
+      "field": "CLASS"
+     },
+     {
+      "kind": "field",
+      "field": "DOM"
+     }
+    ],
+    "bench": null,
+    "curve": 0,
+    "template_id": "gkz"
+   }
+  },
+  "bench_domain": {
+   "body": {
+    "model_id": 12,
+    "elements": [
+     "AU"
+    ],
+    "cutoffs": [
+     0.5,
+     1
+    ],
+    "groups": [
+     {
+      "kind": "bench"
+     },
+     "DOM"
+    ],
+    "bench": {
+     "h": "12,5",
+     "z0": -25
+    }
+   },
+   "canonical": {
+    "model_id": 12,
+    "elements": [
+     {
+      "field": "AU",
+      "unit": null
+     }
+    ],
+    "cutoff_field": null,
+    "cutoffs": [
+     0.5,
+     1.0
+    ],
+    "balance": null,
+    "density": null,
+    "filter_id": null,
+    "restrict": null,
+    "groups": [
+     {
+      "kind": "bench"
+     },
+     {
+      "kind": "field",
+      "field": "DOM"
+     }
+    ],
+    "bench": {
+     "h": 12.5,
+     "z0": -25.0,
+     "z_min": null,
+     "z_max": null
+    },
+    "curve": 100,
+    "template_id": null
+   },
+   "resolved": {
+    "model_id": 12,
+    "elements": [
+     {
+      "field": "AU",
+      "unit": "g/t"
+     }
+    ],
+    "cutoff_field": "AU",
+    "cutoffs": [
+     0.5,
+     1.0
+    ],
+    "balance": null,
+    "density": "SG",
+    "filter_id": null,
+    "restrict": null,
+    "groups": [
+     {
+      "kind": "bench"
+     },
+     {
+      "kind": "field",
+      "field": "DOM"
+     }
+    ],
+    "bench": {
+     "h": 12.5,
+     "z0": -25.0,
+     "z_min": -12.0,
+     "z_max": 33.0
+    },
+    "curve": 100,
+    "template_id": null
+   }
+  },
+  "restricted": {
+   "body": {
+    "model_id": 12,
+    "filter_id": 5,
+    "restrict": {
+     "op": "and",
+     "items": [
+      {
+       "cond": {
+        "field": "DOM",
+        "op": "=",
+        "value": "A"
+       }
+      },
+      {
+       "expr": "AU > 0.1"
+      }
+     ]
+    }
+   },
+   "canonical": {
+    "model_id": 12,
+    "elements": null,
+    "cutoff_field": null,
+    "cutoffs": [
+     null
+    ],
+    "balance": null,
+    "density": null,
+    "filter_id": 5,
+    "restrict": {
+     "op": "and",
+     "items": [
+      {
+       "cond": {
+        "field": "DOM",
+        "op": "=",
+        "value": "A"
+       }
+      },
+      {
+       "expr": "AU > 0.1"
+      }
+     ]
+    },
+    "groups": [],
+    "bench": null,
+    "curve": 100,
+    "template_id": null
+   },
+   "resolved": {
+    "model_id": 12,
+    "elements": [
+     {
+      "field": "AU",
+      "unit": "g/t"
+     },
+     {
+      "field": "CU",
+      "unit": "%"
+     }
+    ],
+    "cutoff_field": "AU",
+    "cutoffs": [
+     null
+    ],
+    "balance": null,
+    "density": "SG",
+    "filter_id": 5,
+    "restrict": {
+     "op": "and",
+     "items": [
+      {
+       "cond": {
+        "field": "DOM",
+        "op": "=",
+        "value": "A"
+       }
+      },
+      {
+       "expr": "AU > 0.1"
+      }
+     ]
+    },
+    "groups": [],
+    "bench": null,
+    "curve": 100,
+    "template_id": null
+   }
+  }
+ }
+}
