@@ -154,6 +154,8 @@ def _model_bodies(conn: sa.Connection, spec: Spec, model_id: int, codes_raw: Any
         gid = int(o["group"])
         if gid in renamed:
             code = renamed[gid]
+        elif o.get("code"):  # a vein of a system: its own code (the lithology code), not the name of the system
+            code = str(o["code"])
         else:
             code = names[gid]
             if o.get("threshold") is not None:

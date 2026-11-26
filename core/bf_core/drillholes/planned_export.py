@@ -37,15 +37,24 @@ def _text(value: float, decimal: str) -> str:
     return repr(float(value)).replace(".", decimal)
 
 
+FORMULA = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _safe(name: str) -> str:
+    """A name that starts like a formula (= + - @, tab, CR; one from a foreign project too) gets «'»: the spreadsheet
+    shows it, never runs it (`model/check.csv_bytes`). Only the name: the numbers stay numbers (−1,5)."""
+    return "'" + name if name[:1] in FORMULA else name
+
+
 def collar_rows(name: str, p: pl.Planned, decimal: str = ",") -> list[list[str]]:
     x, y, z = p.collar
-    return [[name, *(_text(v, decimal) for v in (x, y, z, p.length, p.azimuth, p.dip))]]
+    return [[_safe(name), *(_text(v, decimal) for v in (x, y, z, p.length, p.azimuth, p.dip))]]
 
 
 def survey_rows(name: str, p: pl.Planned, decimal: str = ",") -> list[list[str]]:
     depth, azimuth, dip = pl.stations(p)
-    return [[name, *(_text(v, decimal) for v in row)] for row in zip(depth.tolist(), azimuth.tolist(), dip.tolist(),
-                                                                       strict=True)]  # fmt: skip
+    rows = zip(depth.tolist(), azimuth.tolist(), dip.tolist(), strict=True)
+    return [[_safe(name), *(_text(v, decimal) for v in row)] for row in rows]
 
 
 def _check(path: str, fmt: str) -> Path:

@@ -108,6 +108,20 @@ def test_a_hole_that_turns_is_desurvey_on_the_stations_every_10_m() -> None:
     assert np.abs(at(pl.trajectory(p), [255.0]) - straight).max() > 1.0
 
 
+def test_a_put_that_moves_the_target_without_a_length_ends_the_hole_at_the_new_target() -> None:
+    first = pl.parse({"collar": [0.0, 0.0, 0.0], "target": [30.0, 40.0, 0.0]})  # 50 m
+    assert first.length == pytest.approx(50.0, abs=1e-9)
+    farther = pl.parse({"target": [60.0, 80.0, 0.0]}, first.meta())
+    assert farther.length == pytest.approx(100.0, abs=1e-9)  # not 422 `target_beyond_length`
+    nearer = pl.parse({"target": [3.0, 4.0, 0.0]}, farther.meta())
+    assert nearer.length == pytest.approx(5.0, abs=1e-9)  # not a hole of 100 m to a point 5 m away
+    longer = pl.parse({"target": [3.0, 4.0, 0.0], "length": 80.0}, nearer.meta())
+    assert longer.length == 80.0  # a length given is kept (the hole goes on past the point)
+    same = pl.parse({"target": [3.0, 4.0, 0.0]}, longer.meta())
+    assert same.length == 80.0  # the same target: nothing moved
+    assert pl.parse({"dip": -10.0}, longer.meta()).length == 80.0  # another key: the length stays
+
+
 def test_td34_3_a_hole_through_the_target_has_the_point_on_its_path() -> None:
     rng = np.random.default_rng(34)
     worst = 0.0
@@ -371,6 +385,23 @@ def test_plan_and_fact_of_equal_paths_is_zero_and_a_shifted_hole_is_by_the_shift
 
 
 # --- the files ----------------------------------------------------------------------------------------------------
+
+
+def test_csv_name_that_looks_like_a_formula_is_quoted_and_the_numbers_are_not(tmp_path: Path) -> None:
+    import csv
+
+    def rows(f: str) -> list[list[str]]:
+        with (tmp_path / f).open(encoding="utf-8-sig", newline="") as fh:
+            return list(csv.reader(fh, delimiter=","))
+
+    p = pl.parse({**BASE, "change": {"azimuth": 1.5, "dip": 0.5}})
+    for name in ("=SUM(A1)", "+1", "-X", "@cmd", "\tTab", "\rCR"):
+        px.export(name, p, "csv", str(tmp_path), overwrite=True, delimiter=",", decimal=".")
+        for f in ("collar.csv", "survey.csv"):
+            assert rows(f)[1][0] == "'" + name
+    px.export("ПС-2", p, "csv", str(tmp_path), overwrite=True, delimiter=",", decimal=".")
+    assert rows("survey.csv")[1][0] == "ПС-2"  # a plain name stays
+    assert all(not c.startswith("'") for c in rows("survey.csv")[1][1:])  # the numbers are never quoted
 
 
 def test_csv_and_dxf_files_the_formats_and_the_refusals(tmp_path: Path) -> None:

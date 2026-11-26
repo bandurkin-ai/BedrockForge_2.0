@@ -94,6 +94,10 @@ def domains_of(spec: ModelSpec, relations: Mapping[int, str] | None = None) -> t
         if g.type == "fault":
             raise _bad("bad_param", f"У разлома «{g.name}» нет отношений.", "Разлом задаёт крылья групп, а не стек.",
                        param=f"relations.{gid}")  # fmt: skip
+        if g.type != "domain" and value != g.relation:  # a shell, a vein, an expansion is not in the stack
+            raise _bad("bad_param", f"У группы «{g.name}» нет отношения к другим группам.",
+                       "Отношения задаются доменам литологии: оболочки, жилы и расширения в стек не входят.",
+                       param=f"relations.{gid}")  # fmt: skip
         if value not in RELATIONS:
             known = ", ".join(NAMES[r] for r in RELATIONS)
             raise _bad("bad_param", f"Отношение группы «{g.name}»: неизвестное значение «{value}».",

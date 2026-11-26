@@ -14,7 +14,8 @@ a target point (`target`).
     zero curvature): `azimuth` and `dip` are solved from the collar and the target and stored in `meta`, what the
     user gave for them is replaced; the point is on the path at the depth |target − collar| (1e-6 m). `length` shorter
     than that distance — 422 `target_beyond_length` {need}; a hole longer than it goes on past the point; no `length`
-    — the hole ends at the point.
+    — the hole ends at the point; a `PUT` that moves the target of such a hole and gives no `length` ends the hole at
+    the new point (the old length is the distance to the old one).
 
 The path is given every 1 m of depth and at the end (`depth_grid`); the survey stations are what `export` writes
 (`collar.csv`, `survey.csv`) — a set that takes them back has the same path.
@@ -153,7 +154,9 @@ def parse(raw: Mapping[str, Any], base: Mapping[str, Any] | None = None) -> Plan
     if target_raw is not None:
         target = point_of(target_raw, "Цель", "target")
         wanted = None
-        if m.get("length") is not None:
+        stored = None if base is None or base.get("target") is None else point_of(base["target"], "Цель", "target")
+        moved = stored is not None and "length" not in raw and target != stored  # the old length is not the new one
+        if m.get("length") is not None and not moved:
             wanted = _number(m["length"], "Длина", "length", 0.0, LENGTH_MAX, open_low=True)
         azimuth0 = 0.0
         if m.get("azimuth") is not None:

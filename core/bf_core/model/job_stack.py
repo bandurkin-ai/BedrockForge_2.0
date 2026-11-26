@@ -58,20 +58,14 @@ WING_MAX = 127  # `implicit_points.wing` and `implicit_patches.wing` are int8
 VEIN_KEYS = ("bound", "polygon", "offset", "t_min")  # the parameters of a vein of 8.9.3 inside `params.veins[i]`
 
 
-# --- the refusals before the job --------------------------------------------------------------------------------------
+# --- the refusals before the job, the numbers of the wings ------------------------------------------------------------
 
 
-def check_stack(spec: ModelSpec) -> None:
-    """What the route can refuse before the job reads anything (e19-api §1): the relations of the domains, a cycle of
-    the order of the solution, a fault that is not in the model, more faults than the wings allow."""
-    from . import faults, stack
-
-    groups = stack.domains_of(spec)
-    stack.StackPlan(groups)
-    faults.used_faults(spec, groups)
-
-
-# --- the numbers of the wings -----------------------------------------------------------------------------------------
+def _too_many(group: str = "") -> ApiError:
+    of = f"группы «{group}»" if group else "группы"
+    return bad("bad_param", f"У {of} слишком много полей крыльев: разломы дают их больше {WING_MAX}.",
+               "Оставьте у группы меньше разломов (сильнее всего растёт число разломов с конечным радиусом) "
+               "или задайте разломам бесконечный радиус.", "faults")  # fmt: skip
 
 
 def wing_id(faults: int, finite: list[int], mask: int, key: tuple[int, ...]) -> int:
@@ -81,10 +75,39 @@ def wing_id(faults: int, finite: list[int], mask: int, key: tuple[int, ...]) -> 
     full = (1 << len(finite)) - 1
     out = code if mask == full else ((mask + 1) << faults) + code
     if out > WING_MAX:
-        raise bad("bad_param", "У группы слишком много полей крыльев: разломы с конечным радиусом дают их больше "
-                  f"{WING_MAX}.", "Оставьте у группы не больше трёх разломов или задайте разломам бесконечный радиус.",
-                  "faults")  # fmt: skip
+        raise _too_many()
     return out
+
+
+def max_wing(finite: list[bool]) -> int:
+    """The largest number `wing_id` can give a group cut by faults of which `finite[k]` have a radius (the order of
+    the list is the order of the wing code): the largest code of a wing of the full fit or of a blend."""
+    m = len(finite)
+    at = [k for k, f in enumerate(finite) if f]
+    code_all = sum(1 << k for k in range(m) if not finite[k])  # the infinite faults divide every fit
+    full = (1 << len(at)) - 1
+    best = 0
+    for mask in range(full + 1):
+        code = code_all + sum(1 << at[j] for j in range(len(at)) if mask >> j & 1)
+        best = max(best, code if mask == full else ((mask + 1) << m) + code)
+    return best
+
+
+def check_stack(spec: ModelSpec) -> None:
+    """What the route can refuse before the job reads anything (e19-api §1): the relations of the domains, a cycle of
+    the order of the solution, a fault that is not in the model, more faults than the wings allow (the number of a
+    wing is a signed byte: `wing_id` would refuse at the end of the build)."""
+    from . import faults, stack
+
+    groups = stack.domains_of(spec)
+    stack.StackPlan(groups)
+    used = faults.used_faults(spec, groups)
+    for g in groups:
+        if not g.faults:
+            continue
+        flags = [f.params.get("radius") is not None for f in used if f.id in g.faults]
+        if max_wing(flags) > WING_MAX:
+            raise _too_many(g.name)
 
 
 def _keys(xyz: Any, f: Any) -> Any:
@@ -99,7 +122,17 @@ def used_rows(points: Points, gid: int, rec: Record) -> Any:
         return None
     ka = _keys(points.xyz[idx], points.f[idx])
     order = np.argsort(ka, kind="stable")
-    at = np.minimum(np.searchsorted(ka[order], _keys(rec.xyz, rec.f)), len(order) - 1)
+    kq = _keys(rec.xyz, rec.f)
+    # equal (x, y, z, f) — two contacts of different holes at one place — are taken one by one, in their order
+    # (the k-th of the field is the k-th of the data among the equal ones), never both as the first
+    qo = np.argsort(kq, kind="stable")
+    sq = kq[qo]
+    first = np.ones(len(sq), dtype=bool)
+    first[1:] = sq[1:] != sq[:-1]
+    start = np.maximum.accumulate(np.where(first, np.arange(len(sq)), 0))
+    nth = np.empty(len(sq), dtype=np.int64)
+    nth[qo] = np.arange(len(sq)) - start
+    at = np.minimum(np.searchsorted(ka[order], kq) + nth, len(order) - 1)
     rows = idx[order[at]]
     if not (np.array_equal(points.xyz[rows], rec.xyz) and np.array_equal(points.f[rows], rec.f)):
         raise ApiError(500, "internal", "Точки поля не найдены в данных группы.",

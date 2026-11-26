@@ -433,6 +433,18 @@ def test_bad_relations_argument_is_refused_in_russian() -> None:
     assert bad_order.value.code == "bad_param" and bad_order.value.extra["param"] == "order"
 
 
+def test_a_relation_given_to_a_group_outside_the_stack_is_refused_unless_it_is_the_one_it_has() -> None:
+    from dataclasses import replace
+
+    base = model([domain(1, "a"), domain(2, "b"), domain(3, "c")], BOX_L, h=H)
+    spec = replace(base, groups=(*base.groups[:2], replace(base.groups[2], type="vein_system")))  # fmt: skip
+    with pytest.raises(ApiError) as err:
+        domains_of(spec, {3: "erode"})
+    e = err.value
+    assert e.status == 422 and e.code == "bad_param" and e.extra["param"] == "relations.3" and e.hint
+    assert [g.id for g in domains_of(spec, {3: "conformable", 1: "erode"})] == [1, 2]  # the stored one: nothing to say
+
+
 def test_a_group_whose_data_are_all_dropped_has_no_contacts() -> None:
     """The older layer has data only above the cut: nothing is left, the message says why."""
     over = points(2, "Пласт", [("contact", column(GX, GY, np.full_like(GX, 20.0)), np.zeros_like(GX)),

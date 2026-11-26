@@ -347,6 +347,11 @@ def parse_relations(body: Mapping[str, Any], spec: ModelSpec) -> ModelSpec:
                       f"relations.{key}")  # fmt: skip
     groups = [replace(by_id[i], relation=choice(rel.get(str(i)), RELATIONS, by_id[i].relation, "Отношение группы",
                                                 f"relations.{i}")) for i in order]  # fmt: skip
+    for g, old in zip(groups, (by_id[i] for i in order), strict=True):
+        if old.type != "domain" and g.relation != old.relation:  # only a domain is in the stack: no silent no-op
+            raise bad("bad_param", f"У группы «{g.name}» нет отношения к другим группам.",
+                      "Отношения задаются доменам литологии: оболочки, жилы и расширения в стек не входят.",
+                      f"relations.{g.id}")  # fmt: skip
     return _checked(replace(spec, groups=(*groups, *(g for g in spec.groups if g.type == "fault"))), "groups")
 
 

@@ -114,6 +114,26 @@ def test_the_rows_make_read_change_and_delete_with_events_and_versions(vc) -> No
                                                                         "Проектная скважина (2)"]  # fmt: skip
 
 
+def test_a_put_does_not_look_for_the_stored_set_and_a_broken_meta_does_not_fail_a_read(vc) -> None:  # type: ignore[no-untyped-def]
+    made = make(vc, set_id=vc.set_id)
+    with dialect.write_tx(vc.project.engine) as conn:  # the set is gone (deleted; or not in the file of `.bfggis`)
+        conn.execute(sa.update(objects).where(objects.c.id == vc.set_id).values(state="deleted"))
+    r = vc.put(f"{URL}/{made['id']}", json={"expected_version": 1, "name": "Переименована"})
+    assert r.status_code == 200 and r.json()["name"] == "Переименована" and r.json()["meta"]["set_id"] == vc.set_id
+    same = vc.put(f"{URL}/{made['id']}", json={"expected_version": 2, "set_id": vc.set_id, "length": 30.0})
+    assert same.status_code == 200  # the same number given back: nothing to check
+    refused(vc.put(f"{URL}/{made['id']}", json={"expected_version": 3, "set_id": 99999}), 404, "set_not_found")
+    cleared = vc.put(f"{URL}/{made['id']}", json={"expected_version": 3, "set_id": None})
+    assert cleared.status_code == 200 and cleared.json()["meta"]["set_id"] is None
+    with dialect.write_tx(vc.project.engine) as conn:  # a meta that does not parse (a foreign file, a hand edit)
+        conn.execute(sa.update(objects).where(objects.c.id == made["id"]).values(meta={"v": 1, "collar": "x"}))
+    one = vc.get(f"{URL}/{made['id']}")
+    assert one.status_code == 200 and "trajectory" not in one.json() and one.json()["path_error"]["code"] == "bad_param"
+    assert one.json()["path_error"]["message"] and one.json()["path_error"]["hint"]
+    listed = vc.get(URL, params={"trajectory": "true"})
+    assert listed.status_code == 200 and listed.json()["planned_holes"][0]["path_error"]["code"] == "bad_param"
+
+
 def test_td34_3_through_the_route_and_the_object_is_not_a_hole_of_a_set(vc) -> None:  # type: ignore[no-untyped-def]
     with dialect.read_tx(vc.project.engine) as conn:
         before = conn.execute(sa.select(sa.func.count()).select_from(dh_holes)).scalar()

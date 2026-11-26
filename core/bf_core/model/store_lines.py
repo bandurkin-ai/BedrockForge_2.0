@@ -96,8 +96,9 @@ def commit(conn: sa.Connection, store: BlobStore, model_id: int, model: str, sta
     """Inside the write transaction: a file of the model and a layer for every pair; the entries of `meta.outputs`."""
     if not staged.items:
         return []
+    # the owner is `parent_id` (`.bfggis` renumbers it); `meta` keeps no copy of the id, it would be stale there
     file_id = ls.create_file(conn, store, name=f"{model} · линии пересечения", parent_id=model_id,
-                             meta={"format": FILE_FORMAT, "model_id": model_id})  # fmt: skip
+                             meta={"format": FILE_FORMAT})
     entries = []
     for k, (out, name, layer) in enumerate(staged.items):
         lid = ls.commit_layer(conn, store, layer, file_id=file_id, sort_key=float(k))

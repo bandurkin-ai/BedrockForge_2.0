@@ -116,6 +116,20 @@ def test_td33_2_a_recoded_interval_of_10_m_is_the_first_of_the_list_and_off_the_
     assert out["agree_length"] == pytest.approx(200.0 - 30.0, abs=TOL)
 
 
+def test_every_body_without_a_group_is_the_other_of_the_priority_not_only_the_first(w: W) -> None:
+    """A model with a fault has a «Прочее» a wing: an interval inside the second one is not «Вне модели» (Д-33)."""
+    upper, lower = layers()
+    far_a = cube(2, 50.0, (200.0, 0.0, -50.0), seed=None)  # two bodies with no group, apart from the layers
+    far_b = cube(2, 50.0, (400.0, 0.0, -50.0), seed=None)
+    ident = model_with(w, [("Верх", 1, upper, {}), ("Низ", 2, lower, {}),
+                           ("Прочее, крыло 0", None, far_a, {}), ("Прочее, крыло 1", None, far_b, {})])  # fmt: skip
+    set_id = new_set(w, [vertical("V-A", 225.0, 25.0), vertical("V-B", 425.0, 25.0), vertical("V-X", 800.0, 25.0)])
+    rows: Rows = [("V-A", 10.0, 20.0, "окисл"), ("V-B", 10.0, 20.0, "окисл"), ("V-X", 10.0, 20.0, "окисл")]
+    out = compare(w, ident, set_id, lith(w, set_id, rows))
+    assert cell(out, "length", "окисл", ch.OTHER) == pytest.approx(20.0, abs=TOL)  # both wings: 2 × 10 m
+    assert cell(out, "length", "окисл", ch.OUTSIDE) == pytest.approx(10.0, abs=TOL)  # only the hole beside them
+
+
 # --- the matrix ---------------------------------------------------------------------------------------------------
 
 
