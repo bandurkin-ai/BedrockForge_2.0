@@ -423,3 +423,24 @@ def test_forged_nesting_is_caught_in_one_pass_as_pit_internal(monkeypatch):
         SH.shells(syn.graph, syn.values, RFS[::6])
     assert (e.value.status, e.value.code) == (500, "pit_internal") and e.value.hint
     assert e.value.extra["arcs"] > 0 and e.value.extra["shell"] == 1 and e.value.extra["predecessor_shell"] > 1
+
+
+@pytest.mark.parametrize("n", [2, 3, 6])
+@pytest.mark.parametrize("solver", ["hpf", "auto"])
+def test_a_column_of_n_nodes_with_the_hpf_label_n(n, solver):
+    """A column of n blocks (the block above is the predecessor): the bottom one pays, every other one costs. The sink is
+    at the distance n from the bottom node, and a graph of 2 nodes appears in the shells on its own (finding 2 of the
+    review: the labels of HPF reach n). `solver="hpf"` has no reserve, so a RuntimeError of the solver would show."""
+    g = G.build_graph((1, 1, n), np.zeros(n, np.int64), np.zeros(n, bool), None, [np.array([[0, 0, 1]], np.int32)])
+
+    def values(rf):
+        return np.array([60.0 * rf - 5.0] + [-10.0] * (n - 1))  # the head pays at RF ≥ 0.25·(n − 1) + …
+
+    rfs = [0.3, 0.6, 0.9, 1.2, 1.5]
+    res = SH.shells(g, values, rfs, solver=solver)
+    ref = SH.shells(g, values, rfs, solver="ortools")
+    assert res.pit.tobytes() == ref.pit.tobytes() and res.blocks.tolist() == ref.blocks.tolist()
+    for k, rf in enumerate(rfs):
+        pays = 60.0 * rf - 5.0 > 10.0 * (n - 1) * (1 + 1e-9)
+        assert bool(res.mask(k).all()) == pays and bool(res.mask(k).any()) == pays, (n, rf)
+    assert res.blocks[-1] == (n if 60.0 * 1.5 - 5.0 > 10.0 * (n - 1) else 0)
