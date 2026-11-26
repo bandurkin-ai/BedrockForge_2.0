@@ -68,14 +68,14 @@ OPS = tuple(STEPS)
 #: the checks), the section and the click of the view (`view`)
 OTHER = (
     "checks", "check", "levels", "preview", "view", "composites", "intercepts", "stats", "geostat", "blocks",
-    "estimate", "simulate", "implicit", "resources",
+    "estimate", "simulate", "implicit", "resources", "pit",
 )  # fmt: skip
 #: The quick worker: the checks of a body, then the operations — the stitch first; the heavy one meanwhile the strips
 #: of a stitch (`preview`), so that on a cold cache the first stitch has its two halves compiled at once (~5 s, not
 #: ~8 s), then what follows an operation and what the process of the API needs, then the operations backwards.
 QUICK = (
     "checks", *OPS, "levels", "preview", "view", "check", "composites", "intercepts", "stats", "geostat", "blocks",
-    "estimate", "simulate", "implicit", "resources",
+    "estimate", "simulate", "implicit", "resources", "pit",
 )  # fmt: skip
 HEAVY = (
     "preview",
@@ -86,6 +86,7 @@ HEAVY = (
     "simulate",  # SGS, SIS, co-SGS (~15 s each cold; Э18б)
     "implicit",  # RBF kernels, the field, veins (~14 s cold; ADR 0026)
     "resources",  # the kernels of the resource report (8.10; ADR 0027)
+    "pit",  # the kernels of the pit optimiser (8.11; ADR 0028)
     *reversed(OPS),
     "checks",
     "composites",
@@ -365,6 +366,10 @@ def warm(order: Iterable[str] = QUICK, *, busy: Callable[[], bool] | None = None
                     from bf_core.resources.warm import warm as warm_resources
 
                     warm_resources()
+                elif name == "pit":
+                    from bf_core.mine.warm import warm as warm_pit
+
+                    warm_pit()
                 elif name == "stats":
                     from bf_core.geo import sdf
                     from bf_core.geostat.estimate import contact as est_contact

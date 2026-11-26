@@ -202,6 +202,20 @@ def check_pyproj() -> dict[str, Any]:
     return {"name": info.name}
 
 
+def check_ortools() -> dict[str, Any]:
+    """OR-Tools: SimpleMaxFlow on three nodes (the reference and fallback solver of the pit optimiser, ADR 0028)."""
+    import numpy as np
+    import ortools
+    from ortools.graph.python import max_flow
+
+    mf = max_flow.SimpleMaxFlow()
+    mf.add_arcs_with_capacity(
+        np.array([0, 1], dtype=np.int32), np.array([1, 2], dtype=np.int32), np.array([5, 3], dtype=np.int64)
+    )
+    assert mf.solve(0, 2) == max_flow.SimpleMaxFlow.Status.OPTIMAL and mf.optimal_flow() == 3
+    return {"ortools": ortools.__version__, "flow": int(mf.optimal_flow())}
+
+
 CHECKS: dict[str, Callable[[], dict[str, Any]]] = {
     "pyproj": check_pyproj,
     "worker": check_worker,
@@ -214,6 +228,7 @@ CHECKS: dict[str, Callable[[], dict[str, Any]]] = {
     "earcut": check_earcut,
     "pyfqmr_skimage": check_pyfqmr,
     "duckdb_pyarrow": check_duckdb_arrow,
+    "ortools": check_ortools,
 }
 
 
