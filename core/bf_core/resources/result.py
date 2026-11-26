@@ -222,20 +222,53 @@ def present_groups(sums: cp.Sums) -> np.ndarray:
     return np.flatnonzero(n[:, :, 0].sum(axis=1) > 0)
 
 
+def _fin(x: float) -> float | None:
+    """A number that is not finite (an overflow, a mean of a weight that is not a number) is a gap: null, never inf."""
+    return x if math.isfinite(x) else None
+
+
 def _cells(q: np.ndarray, n: np.ndarray, plan: Plan) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
     for i, (name, k) in enumerate(zip(plan.names, plan.ks, strict=True)):
         wt, total, miss = float(q[2 + 3 * i]), float(q[3 + 3 * i]), float(q[4 + 3 * i])
         has = wt > 0.0
-        out[name] = {"wt": wt, "sum": total, "grade": total / wt if has else None,
-                     "metal": total * k if has and k is not None else None, "missing_t": miss,
+        grade = total / wt if has else None
+        metal = total * k if has and k is not None else None
+        out[name] = {"wt": _fin(wt), "sum": _fin(total), "grade": None if grade is None else _fin(grade),
+                     "metal": None if metal is None else _fin(metal), "missing_t": _fin(miss),
                      "missing_n": int(n[1 + i])}  # fmt: skip
     return out
 
 
 def _row(g: list[str | None], total: bool, r: RowRange, q: np.ndarray, n: np.ndarray, plan: Plan) -> dict[str, Any]:
     return {"g": g, "total": total, "kind": r.kind, "cutoff": r.cutoff, "cutoff_to": r.cutoff_to, "blocks": int(n[0]),
-            "volume": float(q[0]), "tonnes": float(q[1]), "elements": _cells(q, n, plan)}  # fmt: skip
+            "volume": _fin(float(q[0])), "tonnes": _fin(float(q[1])), "elements": _cells(q, n, plan)}  # fmt: skip
+
+
+def not_finite(sums: cp.Sums, plan: Plan) -> list[str]:
+    """What of the report would be not finite (the names: the elements, «масса», «объём»), by the arrays of every
+    table at once — the rows themselves show it as gaps (`_fin`)."""
+    present = present_groups(sums)
+    names: dict[str, None] = {}
+    with np.errstate(all="ignore"):
+        for r in row_ranges(plan):
+            tables = [sums.range_of(False, r.lo, r.hi)[0]]
+            if len(present):
+                tables.append(sums.range_of(True, r.glo, r.ghi)[0][present])
+            for q in tables:
+                if not np.isfinite(q[:, 0]).all():
+                    names["объём"] = None
+                if not np.isfinite(q[:, 1]).all():
+                    names["масса"] = None
+                for i, (name, k) in enumerate(zip(plan.names, plan.ks, strict=True)):
+                    wt, total = q[:, 2 + 3 * i], q[:, 3 + 3 * i]
+                    has = wt > 0.0
+                    grade = np.where(has, total / np.where(has, wt, 1.0), 0.0)
+                    metal = np.where(has, total * (0.0 if k is None else k), 0.0)
+                    cols = (wt, total, q[:, 4 + 3 * i], grade, metal)
+                    if not all(np.isfinite(c).all() for c in cols):
+                        names[name] = None
+    return list(names)
 
 
 def row_count(sums: cp.Sums, plan: Plan) -> int:
@@ -247,13 +280,12 @@ def iter_rows(sums: cp.Sums, plan: Plan) -> Iterator[dict[str, Any]]:
     spec = plan.spec
     present = present_groups(sums)
     labels: list[list[str | None]] = [list(spec.group_labels(int(c))) for c in present]  # type: ignore[arg-type]
-    gs, gc, gn = sums.group_view()
     for r in row_ranges(plan):
-        q, n = rk.range_sums(*sums.total_view(), r.lo, r.hi)
+        q, n = sums.range_of(False, r.lo, r.hi)  # the sums of the tables are taken once (`Sums.range_of`)
         yield _row([None] * plan.nkeys, True, r, q[0], n[0], plan)
         if len(present) == 0:
             continue
-        qg, ng = rk.range_sums(gs, gc, gn, r.glo, r.ghi)
+        qg, ng = sums.range_of(True, r.glo, r.ghi)
         for code, lab in zip(present, labels, strict=True):
             yield _row(lab, False, r, qg[code], ng[code], plan)
 
@@ -292,19 +324,20 @@ def curve_of(sums: cp.Sums, plan: Plan) -> dict[str, Any] | None:
     if plan.curve is None:
         return None
     core = plan.core
-    e = len(core.edges)
-    s, c, n = sums.total_view()
-    suf, cnt = rk.suffix_sums(s[:, : e + 1], c[:, : e + 1], n[:, : e + 1])  # the value bins only (no «нет g_б»)
+    suf, cnt = sums.suffix(False)  # the value bins only (no «нет g_б»)
     idx = np.array([rk.cutoff_bin(core.edges, float(x)) for x in plan.curve], dtype=np.int64)
     q, k = suf[0, idx], cnt[0, idx]  # [points, Q], [points, K]
     elements: dict[str, dict[str, list[float | None]]] = {}
     for i, (name, km) in enumerate(zip(plan.names, plan.ks, strict=True)):
         wt, total = q[:, 2 + 3 * i], q[:, 3 + 3 * i]
         has = wt > 0.0
-        elements[name] = {
-            "grade": [float(t / w) if h else None for t, w, h in zip(total, wt, has, strict=True)],
-            "metal": [float(t * km) if h and km is not None else None for t, h in zip(total, has, strict=True)],
-        }
+        with np.errstate(all="ignore"):
+            elements[name] = {
+                "grade": [_fin(float(t / w)) if h else None for t, w, h in zip(total, wt, has, strict=True)],
+                "metal": [
+                    _fin(float(t * km)) if h and km is not None else None for t, h in zip(total, has, strict=True)
+                ],  # fmt: skip
+            }
     return {"field": core.cutoff_field, "cutoffs": [float(x) for x in plan.curve],
             "blocks": [int(x) for x in k[:, 0]], "volume": [float(x) for x in q[:, 0]],
             "tonnes": [float(x) for x in q[:, 1]], "elements": elements}  # fmt: skip
@@ -324,4 +357,9 @@ def build(sums: cp.Sums, plan: Plan, *, max_rows: int | None = None) -> Result:
     if max_rows is not None and total > len(rows):
         warns.append(_warning("rows_truncated", f"Показано {len(rows)} строк из {total}.",
                               "Сохраните отчёт, чтобы смотреть все строки."))  # fmt: skip
+    bad = not_finite(sums, plan)
+    if bad:
+        warns.append(_warning("value_not_finite", f"Значения вне диапазона чисел показаны пустыми: {', '.join(bad)}.",
+                              "Проверьте содержания, плотность и объёмы блоков: слишком большие или слишком малые "
+                              "значения."))  # fmt: skip
     return Result(rows, total, totals, curve_of(sums, plan), dict(sums.excluded), warns)

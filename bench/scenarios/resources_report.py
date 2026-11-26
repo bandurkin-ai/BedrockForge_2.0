@@ -8,6 +8,9 @@ DOM and GEO, the elements AU, CU, AG, the restrictor `CU > 0,3` and the curve of
   report_s     the whole job: the read of the model and the rules, the pass, the control, the rows, the curve
   again_s      the same once more
   read_s, kernel_s, control_s   the stages of the job (what it tells in `seconds`)
+`with_status` (a parameter, true by default): the model has `DENS_SRC` and `STATUS` of an estimate, so the control makes
+its second pass over the model (the restrictor, the shares, the volumes) — the worst case of the time of ТЗ; false —
+the model without them (the pass is not made).
 What is checked (a failure stops the run), by numpy over the columns (the sums of the report are Neumaier's, in the
 order of the rows: 1e-9 of numpy's pairwise sums): every row of the table — the blocks exactly, the volume, the
 tonnes, the grades and their sums 1e-9, the blocks without a grade exactly — for the total and for every group of
@@ -35,7 +38,7 @@ def load() -> None:
 def prepare(params: dict[str, Any], work: Path) -> None:
     ctx = bc.Ctx.create(work)
     try:
-        ctx.keep(**rc.prepare_model(ctx, int(params["rows"])))
+        ctx.keep(**rc.prepare_model(ctx, int(params["rows"]), with_status=bool(params.get("with_status", True))))
     finally:
         ctx.close()
 
@@ -50,6 +53,26 @@ def shares(ch: Any) -> list[tuple[Any, Any]]:
 def labels(code: int) -> list[str]:
     d1, d2 = divmod(code, RADIX[1])
     return [rc.EMPTY if d1 == 0 else rc.DOM[d1 - 1], rc.EMPTY if d2 == 0 else rc.GEO[d2 - 1]]
+
+
+def check_status(control: dict[str, Any], model: Any) -> None:
+    """The second pass of the control (`DENS_SRC`, `STATUS` of an estimate) against numpy: the blocks of the restrictor
+    with each status and with the density by default, exactly."""
+    import numpy as np
+
+    stat = [0, 0, 0, 0]
+    dens_blocks = 0
+    for ch in model.iter(["CU", "STATUS", "DENS_SRC", "DENS"], bc.PORTION):
+        inside = np.asarray(ch.cols["CU"], dtype=np.float64) > rc.CU_MIN
+        for s in (1, 2, 3):
+            stat[s] += int((inside & (ch.cols["STATUS"] == s)).sum())
+        dens = np.asarray(ch.cols["DENS"], dtype=np.float64)
+        dens_blocks += int((inside & (ch.cols["DENS_SRC"] == 1) & np.isfinite(dens) & (dens >= 0.0)).sum())
+    assert control["default_density"]["blocks"] == dens_blocks > 0, (control["default_density"], dens_blocks)
+    for el, st in control["status"].items():
+        got = [0] + [int(i["blocks"]) for i in st["items"]]
+        assert got == [0, *stat[1:]], (el, got, stat)
+    assert set(control["status"]) == set(rc.ELEMENTS), list(control["status"])
 
 
 def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
@@ -73,6 +96,8 @@ def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
         assert ans["control"]["sum_groups"]["ok"], ans["control"]["sum_groups"]
         assert rc.same_bits(ans, again), "again"
         assert 0 < ans["rows"][0]["blocks"] < meta["rows"], "the restrictor"
+        if params.get("with_status", True):
+            check_status(ans["control"], ctx.model(mid))
         info["blocks"] = ans["rows"][0]["blocks"]
         info["groups"] = len(ref.present())
     finally:

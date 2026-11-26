@@ -56,6 +56,7 @@ from .spec_parts import (
     EMPTY_LABEL,
     EXPORT_FORMATS,
     H_MAX,
+    H_MIN,
     KEY_KINDS,
     KIND,
     MAX_BENCHES,
@@ -274,10 +275,12 @@ def _cutoffs(raw: Any) -> tuple[float | None, ...]:
         step = _num(raw.get("step"), "Шаг бортов", "cutoffs.step", 0.0, CUT_LIMIT, lo_open=True)
         if hi < lo:
             raise bad("bad_param", "Борта: «до» меньше «от».", "Задайте «до» не меньше «от».", "cutoffs.to")
-        count = math.floor((hi - lo) / step * (1 + 1e-12) + 1e-9) + 1
-        if count > MAX_CUTOFFS:
-            raise bad("bad_param", f"Бортов больше {MAX_CUTOFFS}.", "Увеличьте шаг или сузьте диапазон.",
-                      "cutoffs.step")
+        ratio = (hi - lo) / step * (1 + 1e-12) + 1e-9  # a step of 1e-320 gives inf: not a count
+        if not math.isfinite(ratio) or ratio >= MAX_CUTOFFS:
+            raise bad(
+                "bad_param", f"Бортов больше {MAX_CUTOFFS}.", "Увеличьте шаг или сузьте диапазон.", "cutoffs.step"
+            )
+        count = math.floor(ratio) + 1
         return tuple(dict.fromkeys(_clean(lo + i * step) for i in range(count)))
     if not isinstance(raw, list) or not raw or len(raw) > MAX_CUTOFFS:
         raise bad("bad_param", f"Борта: список из 1–{MAX_CUTOFFS} чисел или диапазон {{от, до, шаг}}.",
@@ -335,7 +338,13 @@ def _keys(raw: Any) -> tuple[Key, ...]:
 
 def _bench(raw: Any) -> Bench:
     b = obj(raw, "Уступы", "bench")
-    h = BENCH_H if b.get("h") in (None, "") else _num(b["h"], "Высота уступа H", "bench.h", 0.0, H_MAX, lo_open=True)
+    h = (
+        BENCH_H
+        if b.get("h") in (None, "")
+        else _num(
+            b["h"], "Высота уступа H", "bench.h", H_MIN, H_MAX, hint="Задайте высоту уступа от 0,000001 до 1000 м."
+        )
+    )
     labels = (("z0", "Отметка Z0"), ("z_min", "Нижняя отметка"), ("z_max", "Верхняя отметка"))
     z0, z_min, z_max = (None if b.get(k) in (None, "") else _num(b[k], lb, f"bench.{k}", -Z_LIMIT, Z_LIMIT)
                         for k, lb in labels)
@@ -412,7 +421,9 @@ def defaults_json() -> dict[str, Any]:
 
 def ranges_json() -> dict[str, Any]:
     """The ranges for the form: key → {lo, hi, lo_open, integer, unit}."""
-    return {"bench.h": {"lo": 0.0, "hi": H_MAX, "lo_open": True, "integer": False, "unit": "м"},
-            "bench.z": {"lo": -Z_LIMIT, "hi": Z_LIMIT, "lo_open": False, "integer": False, "unit": "м"},
-            "cutoff": {"lo": -CUT_LIMIT, "hi": CUT_LIMIT, "lo_open": False, "integer": False, "unit": ""},
-            "curve": {"lo": 2, "hi": CURVE_MAX, "lo_open": False, "integer": True, "unit": "точек (0 — без кривой)"}}
+    return {
+        "bench.h": {"lo": H_MIN, "hi": H_MAX, "lo_open": False, "integer": False, "unit": "м"},
+        "bench.z": {"lo": -Z_LIMIT, "hi": Z_LIMIT, "lo_open": False, "integer": False, "unit": "м"},
+        "cutoff": {"lo": -CUT_LIMIT, "hi": CUT_LIMIT, "lo_open": False, "integer": False, "unit": ""},
+        "curve": {"lo": 2, "hi": CURVE_MAX, "lo_open": False, "integer": True, "unit": "точек (0 — без кривой)"},
+    }

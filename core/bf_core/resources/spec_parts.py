@@ -29,7 +29,7 @@ MAX_BENCHES, MAX_COMBINATIONS, MAX_CELLS = 1000, 20_000, 2_000_000
 CURVE_DEFAULT, CURVE_MAX = 100, 500
 BENCH_H = 10.0  # default height of a bench, m
 Z_LIMIT = 1e7  # |Z0|, |z_min|, |z_max| ≤ 10⁷ m
-H_MAX = 1000.0
+H_MIN, H_MAX = 1e-6, 1000.0  # the height of a bench, m (below 1 µm z / h does not fit a double)
 CUT_LIMIT = 1e12  # |cut-off| ≤ 10¹²
 PAGE_SIZE_MAX, REPORT_PAGE_MAX = 1000, 5000
 NAME_MAX, FIELD_MAX, UNIT_MAX, TEMPLATE_MAX, PATH_MAX = 200, 100, 20, 64, 1024
@@ -215,7 +215,6 @@ def bench_label(z_from: float, z_to: float) -> str:
     return f"{one(z_from)}…{one(z_to)}"
 
 
-
 def default_elements(fields: Sequence[Mapping[str, Any]]) -> list[str]:
     """The fields `*_CUT`, else those with the role `grade` (7.31)."""
     nums = [f for f in fields if f["kind"] == "number"]
@@ -246,6 +245,10 @@ def resolve_bench(bench: Bench, z_range: tuple[float, float]) -> Bench:
         raise bad("bad_param", "Уступы: нижняя граница не меньше верхней.", "Задайте z_min меньше z_max.",
                   "bench.z_max")  # fmt: skip
     h = bench.h
+    far = (z_min / h, (z_max - z_min) / h, z_max / h)  # a range that does not fit a double is not a bench count
+    if not all(math.isfinite(x) for x in far) or (bench.z0 is not None and not math.isfinite((z_max - bench.z0) / h)):
+        raise bad("bad_param", f"Уступов больше {MAX_BENCHES}.", "Увеличьте высоту уступа или сузьте диапазон.",
+                  "bench.h")  # fmt: skip
     z0 = bench.z0 if bench.z0 is not None else math.floor(z_min / h + 1e-9) * h
     j0 = math.floor((z_min - z0) / h + 1e-9)
     j1 = math.ceil((z_max - z0) / h - 1e-9) - 1

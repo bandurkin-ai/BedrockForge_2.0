@@ -68,11 +68,10 @@ def _array(kind: str, values: Any, name: str) -> Any:
         return pa.array(np.asarray(values, dtype=bool))
     if kind == "i8":
         return pa.array(np.asarray(values, dtype=np.int64))
-    a = np.asarray([np.nan if v is None else v for v in values] if not isinstance(values, np.ndarray) else values,
-                   dtype=np.float64)
-    if np.isinf(a).any():
-        raise ValueError(f"column {name}: infinite value")
-    return pa.array(a, mask=np.isnan(a))  # NaN is a gap: a null, not 0
+    a = np.asarray(
+        [np.nan if v is None else v for v in values] if not isinstance(values, np.ndarray) else values, dtype=np.float64
+    )
+    return pa.array(a, mask=~np.isfinite(a))  # NaN and ±inf are gaps (a null, not 0); `result.build` warns of them
 
 
 def _table(cols: Sequence[tuple[str, str]], columns: Mapping[str, Any], meta: Mapping[str, str] | None) -> pa.Table:

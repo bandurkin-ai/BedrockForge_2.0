@@ -7,7 +7,9 @@ docs/progress/e20-api.md §5, §6, §10): the job `resources.export` (quick).
     body    {format: "xlsx" | "csv", path, template?, cutoff?, what?, overwrite?}    (`spec.parse_export` + `what`)
     what    CSV only: `table` (default: every row of the result) | `form` (the form of the template) | `both` (the
             table in the chosen file and «‹имя› · форма.csv»); the XLSX always has all the sheets (`xlsx.py`)
-    params  {report_id, format, path, what, template, cutoff, overwrite}   (`path` — with the extension, checked)
+    params  {report_id, format, path, what, template, cutoff, overwrite, record?}   (`path` — with the extension,
+            checked; `record` false — the route sets it for a project «только просмотр»: the files are made, the
+            project is not written: no `put_xlsx`, no `record_file`, `recorded: false`)
     out     {path, files, format, what, bytes, rows, sheets, form_rows, recorded, seconds, events}
 
 The form (`forms.build`) is made by the core from the rows of the result and the template: the `template` of the body,
@@ -18,7 +20,8 @@ else the `template_id` of the report, else a generic one (the groups of the firs
 A file is written aside («‹имя›.‹случайное›.part» in the folder of the target) and renamed when it is whole, all the
 files of one export or none (`composites/ore_report.write_files`): a cancel, a failure and a full disk leave nothing
 and the files there before stay as they were. A file that is there — 409 `files_exist {files}` unless `overwrite`
-(at the request and again in the job: a file may come meanwhile). Errors `{code, message, hint}`: 404
+(at the request, at the start of the job and again before the files are put in place: a file may come meanwhile).
+Errors `{code, message, hint}`: 404
 `resource_report_not_found`, `template_not_found`; 409 `report_building`, `files_exist`, `resource_report_broken`;
 422 `bad_param {param}` (`format`, `what`, `path`, `cutoff`), `bad_path` (inside the folder of the project).
 
@@ -416,25 +419,28 @@ def run_export(engine: sa.Engine, folder: Path, params: Mapping[str, Any], *, ti
             stats.update(xl.write_book(parts[0], data, tick))
         else:
             stats["rows"] = _write_csv(parts, files, data, form, tick)
+        check_clash([f for f, _k in files], bool(params.get("overwrite")))  # a file may come while this one is made
 
     ore_report.write_files([f for f, _k in files], write)
     # no tick from here on: a cancel after the files are in place would report them as not written
     entries = [{"format": fmt, "path": str(f), "sha256": _sha(f), "at": at.isoformat()} for f, _k in files]
     size = sum(f.stat().st_size for f, _k in files)
-    staged = store.stage_file(target) if fmt == "xlsx" else None
+    record = bool(params.get("record", True))  # False: a project «только просмотр» — nothing is written into it
+    staged = store.stage_file(target) if fmt == "xlsx" and record else None
     recorded = False
     try:
-        with dialect.write_tx(engine) as conn:
-            try:
-                now = rst.info(conn, rid)
-            except ApiError:
-                now = None  # deleted meanwhile
-            if now is not None and int(now["version"]) == version and now["state"] == "ready":
-                if staged is not None:
-                    rst.put_xlsx(conn, store, rid, staged)
-                for e in entries:
-                    rst.record_file(conn, rid, e)
-                recorded = True
+        if record:
+            with dialect.write_tx(engine) as conn:
+                try:
+                    now = rst.info(conn, rid)
+                except ApiError:
+                    now = None  # deleted meanwhile
+                if now is not None and int(now["version"]) == version and now["state"] == "ready":
+                    if staged is not None:
+                        rst.put_xlsx(conn, store, rid, staged)
+                    for e in entries:
+                        rst.record_file(conn, rid, e)
+                    recorded = True
     finally:
         if staged is not None and not recorded:
             staged[0].unlink(missing_ok=True)

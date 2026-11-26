@@ -28,6 +28,7 @@ router = APIRouter()
 Svc = Annotated[ProjectService, Depends(projects)]
 Sched = Annotated[Scheduler, Depends(jobs)]
 Payload = Annotated[Any, Body()]
+FIELDS = ("field_a", "field_b", "domain", "out")  # what `compare_job.parse` reads of the body
 KIND = "estimate.compare"  # = compare_job.KIND (this module loads the job only when it is needed)
 
 
@@ -48,6 +49,7 @@ def compare(svc: Svc, s: Sched, bm_id: int, body: Payload) -> dict[str, Any]:
     plan = cj.check(model, spec, expected)
     if KIND not in REGISTERED:
         raise ApiError(422, "not_ready", "Сравнение оценок ещё не подключено в этой сборке.", "Обновите программу.")
-    params = {**body, "model_id": bm_id, "expected_version": model.version, "rows": model.rows}
+    params = {k: body[k] for k in FIELDS if k in body}  # the checked fields only, not whatever the client sent
+    params.update({"model_id": bm_id, "expected_version": model.version, "rows": model.rows})
     key, job_id = s.submit(KIND, params, title=f"Сравнение оценок: {plan.a} и {plan.b} · {model.name}")
     return {"source": key, "id": job_id}

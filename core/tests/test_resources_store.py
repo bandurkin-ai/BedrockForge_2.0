@@ -154,8 +154,8 @@ def test_the_table_of_arrays_and_its_refusals() -> None:
     assert [r["cutoff"] for r in rows] == [None, 0.5] and rows[1]["elements"]["AU"]["grade"] is None
     with pytest.raises(ValueError, match="no columns"):
         sd.build_table({k: v for k, v in cols.items() if k != "tonnes"}, ["AU"], 0)
-    with pytest.raises(ValueError, match="infinite"):
-        sd.build_table({**cols, "volume": [math.inf, 1.0]}, ["AU"], 0)
+    inf = sd.build_table({**cols, "volume": [math.inf, 1.0]}, ["AU"], 0)  # ±inf is a gap too: a null (20.18б, № 7)
+    assert [r["volume"] for r in sd.table_rows(inf)] == [None, 1.0]
 
 
 def test_the_same_rows_are_the_same_bytes(w: W) -> None:

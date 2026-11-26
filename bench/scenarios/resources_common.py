@@ -35,8 +35,10 @@ SLIVER = 1e-12
 REL = 1e-9
 
 
-def fields() -> list[dict[str, Any]]:
-    return [
+def fields(with_status: bool = False) -> list[dict[str, Any]]:
+    """`with_status` — the fields the control makes its second pass for: `DENS_SRC` (the density of the domain by
+    default) and `STATUS` of an estimate (`prepare_model` marks AU, CU, AG and STATUS as the fields of an estimate)."""
+    out = [
         {"name": "AU", "dtype": "f8", "unit": "g/t"},
         {"name": "CU", "dtype": "f4", "unit": "%"},
         {"name": "AG", "dtype": "f8", "unit": "g/t"},
@@ -44,6 +46,9 @@ def fields() -> list[dict[str, Any]]:
         {"name": "DOM", "dtype": "cat", "labels": list(DOM)},
         {"name": "GEO", "dtype": "cat", "labels": list(GEO)},
     ]
+    if with_status:
+        out += [{"name": "DENS_SRC", "dtype": "i1"}, {"name": "STATUS", "dtype": "i1"}]
+    return out
 
 
 def values(rng: np.random.Generator, n: int) -> dict[str, np.ndarray]:
@@ -55,10 +60,37 @@ def values(rng: np.random.Generator, n: int) -> dict[str, np.ndarray]:
             "DOM": rng.integers(-1, 4, n).astype(np.int32), "GEO": rng.integers(-1, 5, n).astype(np.int32)}  # fmt: skip
 
 
-def prepare_model(ctx: bc.Ctx, rows: int, *, dz: float = 5.0, nz: int = 200) -> dict[str, Any]:
-    """The model of the scenario written into the project; `ctx.keep` is the caller's. → {model_id, rows, counts}."""
+def status_values(rng: np.random.Generator, n: int) -> dict[str, np.ndarray]:
+    """DENS_SRC 0 / 1 (a half) and STATUS 0 (none) … 3 (the draws come after those of `values`: the same grades)."""
+    return {"DENS_SRC": rng.integers(0, 2, n).astype(np.int8), "STATUS": rng.integers(0, 4, n).astype(np.int8)}
+
+
+def mark_estimates(ctx: bc.Ctx, model_id: int) -> None:
+    """AU, CU, AG and STATUS are the fields an estimate wrote (`source.op = estimate`): the control then counts the
+    blocks of each status (Д-27) in its second pass."""
+    import sqlalchemy as sa
+
+    from bf_core.db import dialect
+    from bf_core.db.schema import objects
+
+    est = {"op": "estimate", "params": {}, "inputs": [], "algo": "estimate-1"}
+    with dialect.write_tx(ctx.engine) as conn:
+        meta = dict(conn.execute(sa.select(objects.c.meta).where(objects.c.id == model_id)).scalar_one())
+        meta["fields"] = [{**f, "source": est} if f["name"] in (*ELEMENTS, "STATUS") else f for f in meta["fields"]]
+        conn.execute(sa.update(objects).where(objects.c.id == model_id).values(meta=meta))
+
+
+def prepare_model(
+    ctx: bc.Ctx, rows: int, *, dz: float = 5.0, nz: int = 200, with_status: bool = False
+) -> dict[str, Any]:  # fmt: skip
+    """The model of the scenario written into the project; `ctx.keep` is the caller's. → {model_id, rows, counts}.
+    `with_status` adds `DENS_SRC` and `STATUS` of an estimate: the control makes its second pass over the model."""
     size = [bc.SIZE[0], bc.SIZE[1], float(dz)]
-    return bc.regular_model(ctx, rows, fields(), values, nz=nz, size=size)
+    make = values if not with_status else lambda rng, n: {**values(rng, n), **status_values(rng, n)}
+    out = bc.regular_model(ctx, rows, fields(with_status), make, nz=nz, size=size)
+    if with_status:
+        mark_estimates(ctx, int(out["model_id"]))
+    return out
 
 
 def volume_of(dz: float) -> float:
