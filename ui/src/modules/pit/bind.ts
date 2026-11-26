@@ -25,6 +25,7 @@ import { checkText, runText } from "./format";
 import { calendarFormOfParams } from "./formsCalendar";
 import { rocksFormOfParams } from "./formsRocks";
 import { slopesFormOfParams } from "./formsSlopes";
+import { bindPitPanel } from "./bindPanel";
 import { bindCalendar, bindRocks, bindSlopes } from "./bindSetup";
 import { CalendarWindow } from "./CalendarWindow";
 import { CheckWindow } from "./CheckWindow";
@@ -402,6 +403,7 @@ export function bindPit(app: App): () => void {
   bindRocks(app);
   bindSlopes(app);
   bindCalendar(app);
+  bindPitPanel(app);
   // 21.18: bindReport(app), bindShow(app) · 21.19: bindSurfaces(app), bindSolid(app), bindCompare(app)
 
   // the scenarios belong to the project: another project — clean windows and the lists read again
