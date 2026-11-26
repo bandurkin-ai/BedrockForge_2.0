@@ -428,9 +428,9 @@ def test_forged_nesting_is_caught_in_one_pass_as_pit_internal(monkeypatch):
 @pytest.mark.parametrize("n", [2, 3, 6])
 @pytest.mark.parametrize("solver", ["hpf", "auto"])
 def test_a_column_of_n_nodes_with_the_hpf_label_n(n, solver):
-    """A column of n blocks (the block above is the predecessor): the bottom one pays, every other one costs. The sink is
-    at the distance n from the bottom node, and a graph of 2 nodes appears in the shells on its own (finding 2 of the
-    review: the labels of HPF reach n). `solver="hpf"` has no reserve, so a RuntimeError of the solver would show."""
+    """A column of n blocks (the block above is the predecessor): the bottom one pays, every other one costs. The sink
+    is at the distance n from the bottom node, and a graph of 2 nodes appears in the shells on its own (finding 2 of
+    the review: the labels of HPF reach n). `solver="hpf"` has no reserve, so a RuntimeError would show."""
     g = G.build_graph((1, 1, n), np.zeros(n, np.int64), np.zeros(n, bool), None, [np.array([[0, 0, 1]], np.int32)])
 
     def values(rf):
