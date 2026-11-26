@@ -20,10 +20,15 @@ The share f ∈ [0; 1] of a block (ADR 0023 §8):
     warning, as for a leaf without an id or one whose wireframe the project has lost (a filter of a `.bfggis` that did
     not carry it): the leaf is «недоступен» and nothing passes it.
 
-Whole subtrees without a wireframe or a surface are compiled to one expression (the same product and maximum, one
-pass). A field the model lacks — 422 `filter_field_missing {field, model}`. Memory: a chunk of `CHUNK` rows; `cancel`
-(a function that raises) is called between the chunks. A filter on two models is the direct expression (Д-02): the
-fields are looked up by name in each model alone.
+  * `slab` (Э20, ADR 0027 decision 9) — a layer along x, y, z (axes of the project) or u, v (axes of the swath frame
+    of 8.8.3, `frame` of the leaf): «centre» — 1 where from <= c < to (c — the centre of the block along the axis),
+    else 0; «share» (z only) — the part of the height of the block inside [from; to], overlap / height (the model is
+    turned about Z only, ADR 0023: the height is along Z). Adjacent layers sum to 1 for every block.
+
+Whole subtrees without a wireframe, a surface or a slab are compiled to one expression (the same product and maximum,
+one pass). A field the model lacks — 422 `filter_field_missing {field, model}`. Memory: a chunk of `CHUNK` rows;
+`cancel` (a function that raises) is called between the chunks. A filter on two models is the direct expression
+(Д-02): the fields are looked up by name in each model alone.
 """
 
 from __future__ import annotations
@@ -166,7 +171,41 @@ def _surface(b: Build, body: Mapping[str, Any], path: str) -> Weights:
     return run
 
 
-LEAVES: dict[str, Builder] = {"wireframe": _wireframe, "surface": _surface}
+def _slab(b: Build, body: Mapping[str, Any], path: str) -> Weights:
+    """The leaf «слой» (module docstring)."""
+    lo, hi, axis, share = float(body["from"]), float(body["to"]), str(body["axis"]), body["by"] == "share"
+    grid = b.model.grid
+    direction: np.ndarray | None = None
+    if axis in ("u", "v"):
+        from bf_core.stats import swath_frame
+
+        fr = body.get("frame") or {}
+        frame = swath_frame.frame(fr.get("azimuth", 0.0), fr.get("dip", 0.0), fr.get("roll", 0.0))
+        direction = frame.u if axis == "u" else frame.v
+
+    def run(chunk: Chunk) -> np.ndarray:
+        centre = grid.to_project(geometry.row_local_centres(grid, chunk.p, chunk.s, chunk.w))
+        if share:
+            box = geometry.row_boxes(grid, chunk.p, chunk.s, chunk.w)
+            height = box[:, 5] - box[:, 2]
+            # the turn is about Z: the block spans centre_z ± height/2 in the project
+            top = np.minimum(centre[:, 2] + height * 0.5, hi)
+            bottom = np.maximum(centre[:, 2] - height * 0.5, lo)
+            out = np.zeros(chunk.n, dtype=np.float64)
+            np.divide(np.maximum(top - bottom, 0.0), height, out=out, where=height > 0.0)
+            return np.clip(out, 0.0, 1.0)
+        if direction is not None:
+            from bf_core.stats import swath_frame
+
+            c = swath_frame.project(centre, direction)
+        else:
+            c = centre[:, "xyz".index(axis)]
+        return ((c >= lo) & (c < hi)).astype(np.float64)
+
+    return run
+
+
+LEAVES: dict[str, Builder] = {"wireframe": _wireframe, "surface": _surface, "slab": _slab}
 
 
 # --- the tree ---------------------------------------------------------------------------------------------------------

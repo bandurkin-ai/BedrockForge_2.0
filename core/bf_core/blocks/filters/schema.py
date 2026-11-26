@@ -5,6 +5,7 @@
          | {cond: {field, op: "=" | "<>" | ">" | ">=" | "<" | "<=" | "empty" | "notempty" | "in", value? | values?}}
          | {wireframe: {id, side: "inside" | "outside", by: "frac" | "centre", m: 4}}
          | {surface: {id, side: "above" | "below", by: "centre" | "frac"}}
+         | {slab: {axis: "x" | "y" | "z" | "u" | "v", from, to, by: "centre" | "share", frame?}}
 
 `normalize_rules` checks a tree and returns its canonical form (defaults filled, numbers as numbers: «0,5» → 0.5;
 nothing else is changed); a refusal is 422 `filter_rules {param: "rules.items.0.cond.op"}` in Russian, a wrong
@@ -12,8 +13,13 @@ expression is 422 `expr_syntax {param, pos, …}` (`calc.ExprError`). Limits: de
 1–1000, `expr` ≤ 4000 characters. The id of a wireframe or a surface may be null: the leaf the archive of a
 `.bfggis` did not have (`remap.py`) — «недоступен», its share is 0 (`restrict.py`).
 
+The leaf `slab` (Э20, ADR 0027 decision 9) is a layer between two planes: `axis` x, y, z — the axes of the project,
+u, v — the axes of the swath frame of 8.8.3 (`stats/swath_frame`; `frame` {azimuth, dip, roll} in degrees, defaults 0,
+only for u and v); `from` < `to` are numbers; `by` «centre» — 1 where from <= c < to, «share» — the share of the
+height of the block inside [from; to], only for z. It names no object: `leaves`, `object_ids`, `remap_ids` pass it by.
+
 `to_text` writes the whole tree as one expression of 8.7.4 (the canonical form of `calc`: upper-case words, the
-fewest parentheses); null when the tree has a wireframe or a surface, or when the text would be longer than the
+fewest parentheses); null when the tree has a wireframe, a surface or a slab, or when the text would be longer than the
 parser takes. `title_of` — the description in Russian that the windows show. Nothing here needs numpy.
 """
 
@@ -45,7 +51,10 @@ NO_VALUE_OPS = ("empty", "notempty")
 SIDES = {"wireframe": ("inside", "outside"), "surface": ("above", "below")}
 BY = {"wireframe": ("frac", "centre"), "surface": ("centre", "frac")}
 LEAVES = ("wireframe", "surface")
-NODE_KEYS = ("op", "expr", "cond", "wireframe", "surface")
+SLAB_AXES = ("x", "y", "z", "u", "v")
+SLAB_BY = ("centre", "share")
+SLAB_FRAME = ("azimuth", "dip", "roll")
+NODE_KEYS = ("op", "expr", "cond", "wireframe", "surface", "slab")
 CODE = "filter_rules"
 _NUMBER = re.compile(r"^[+-]?(\d+([.,]\d*)?|[.,]\d+)([eE][+-]?\d+)?$")
 
@@ -146,6 +155,58 @@ def _leaf(kind: str, raw: Any, path: str) -> dict[str, Any]:
     return out
 
 
+def _slab_frame(raw: Any, path: str) -> dict[str, float]:
+    """`frame` of a slab along u or v: the angles of the swaths in degrees (missing — 0), the dip within ±90°."""
+    hint = "Укажите азимуты, наклон и поворот в градусах, например {azimuth: 90}."
+    if raw is None:
+        raw = {}
+    if not isinstance(raw, Mapping):
+        raise bad(path, "Оси полосы u и v задаются углами: азимут, наклон, поворот.", hint)
+    extra = set(raw) - set(SLAB_FRAME)
+    if extra:
+        raise bad(path, f"В осях полосы лишнее: «{sorted(map(str, extra))[0][:40]}».", "Оставьте azimuth, dip и roll.")
+    out: dict[str, float] = {}
+    for name in SLAB_FRAME:
+        v = 0.0 if raw.get(name) is None else _number(raw[name])
+        if v is None:
+            raise bad(f"{path}.{name}", "Угол — число в градусах.", hint)
+        out[name] = v
+    if abs(out["dip"]) > 90.0:
+        raise bad(f"{path}.dip", "Наклон оси полос — от −90° до +90°.", "Отрицательный наклон — ось идёт вниз.")
+    return out
+
+
+def _slab(raw: Any, path: str) -> dict[str, Any]:
+    if not isinstance(raw, Mapping):
+        raise bad(path, "Правило слоя: нужны ось, границы «от» и «до» и способ.", "Выберите ось и границы слоя.")
+    extra = set(raw) - {"axis", "from", "to", "by", "frame"}
+    if extra:
+        raise bad(path, f"В правиле слоя лишнее: «{sorted(map(str, extra))[0][:40]}».", "Уберите лишние ключи.")
+    axis = raw.get("axis")
+    if axis not in SLAB_AXES:
+        raise bad(f"{path}.axis", "Ось слоя: x, y, z, u или v.", "Выберите ось.")
+    lim: dict[str, float] = {}
+    for key, word in (("from", "нижняя"), ("to", "верхняя")):
+        v = _number(raw.get(key))
+        if v is None:
+            raise bad(f"{path}.{key}", f"Граница слоя ({word}) — число.", "Введите число, например 250 или 12,5.")
+        lim[key] = v
+    if not lim["from"] < lim["to"]:
+        raise bad(f"{path}.to", "Граница «от» должна быть меньше границы «до».", "Поменяйте границы слоя местами.")
+    by = raw.get("by", SLAB_BY[0])
+    if by not in SLAB_BY:
+        raise bad(f"{path}.by", f"Способ: {' или '.join(SLAB_BY)}.", "Выберите способ.")
+    if by == "share" and axis != "z":
+        raise bad(f"{path}.by", "Доля блока в слое считается только по оси z.", "Выберите способ «по центру».")
+    out: dict[str, Any] = {"axis": axis, "from": lim["from"], "to": lim["to"], "by": by}
+    if axis in ("u", "v"):
+        out["frame"] = _slab_frame(raw.get("frame"), f"{path}.frame")
+    elif raw.get("frame") is not None:
+        raise bad(f"{path}.frame", "Углы осей задаются только для осей u и v.",
+                  "Уберите frame или выберите ось u или v.")  # fmt: skip
+    return out
+
+
 def _expr(raw: Any, path: str) -> str:
     if not isinstance(raw, str):
         raise bad(path, "Выражение — текст по правилам калькулятора.", "Введите выражение, например AU > 1.")
@@ -167,12 +228,12 @@ class _Walk:
         if self.nodes > MAX_NODES:
             raise bad(path, "В фильтре больше 500 правил.", "Разделите фильтр на несколько.")
         if not isinstance(raw, Mapping):
-            raise bad(path, "Правило — набор «И / ИЛИ / НЕ», выражение, условие, каркас или поверхность.",
+            raise bad(path, "Правило — набор «И / ИЛИ / НЕ», выражение, условие, каркас, поверхность или слой.",
                       "Выберите вид правила.")  # fmt: skip
         keys = [k for k in NODE_KEYS if k in raw]
         extra = set(raw) - set(NODE_KEYS) - ({"items"} if "op" in raw else set())
         if len(keys) != 1 or extra:
-            raise bad(path, "У правила должно быть ровно одно из: op, expr, cond, wireframe, surface.",
+            raise bad(path, "У правила должно быть ровно одно из: op, expr, cond, wireframe, surface, slab.",
                       "Уберите лишние ключи правила.")  # fmt: skip
         key = keys[0]
         if key == "op":
@@ -181,6 +242,8 @@ class _Walk:
             return {"expr": _expr(raw["expr"], f"{path}.expr")}
         if key == "cond":
             return {"cond": _cond(raw["cond"], f"{path}.cond")}
+        if key == "slab":
+            return {"slab": _slab(raw["slab"], f"{path}.slab")}
         return {key: _leaf(key, raw[key], f"{path}.{key}")}
 
     def _group(self, raw: Mapping[str, Any], path: str, depth: int) -> dict[str, Any]:
@@ -292,7 +355,7 @@ def _cond_expr(c: Mapping[str, Any]) -> cn.Expr:
 
 
 def _as_expr(node: Mapping[str, Any]) -> Expr | None:
-    """The tree as an expression of `calc`; None when a wireframe or a surface is in it."""
+    """The tree as an expression of `calc`; None when a wireframe, a surface or a slab is in it."""
     if "expr" in node:
         return parse(node["expr"])
     if "cond" in node:
@@ -355,6 +418,10 @@ def _title(node: Mapping[str, Any], names: Mapping[int, str]) -> tuple[str, int]
         return tree.to_text(), prec
     if "cond" in node:
         return _cond_title(node["cond"]), _ATOM
+    if "slab" in node:
+        body = node["slab"]
+        share = " (по доле)" if body["by"] == "share" else ""
+        return f"{str(body['axis']).upper()} от {_num(body['from'])} до {_num(body['to'])}{share}", _ATOM
     for kind in LEAVES:
         if kind in node:
             body = node[kind]
