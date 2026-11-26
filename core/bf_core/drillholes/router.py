@@ -479,3 +479,7 @@ router.include_router(_tools)
 from .routes_from_model import router as _from_model  # noqa: E402 - «Модель на скважины» (Д-34 ч. 1)
 
 router.include_router(_from_model)
+
+from .routes_planned import router as _planned  # noqa: E402 - «Проектные скважины» (Д-34 ч. 2): `/planned_holes`
+
+router.routes.extend(_planned.routes)  # as they are: the paths are `/planned_holes…`, not under `/drillholes`

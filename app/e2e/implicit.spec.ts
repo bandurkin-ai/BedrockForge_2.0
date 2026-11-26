@@ -52,16 +52,25 @@ const rowsList = async (page: Page) => (await coreApi<{ models: Row[] }>(page, "
 /** The last job of `kind` once it is over (the jobs list of the core; the waits are polls of the state). */
 async function lastJob(page: Page, kind: string, timeout: number, after = 0): Promise<CoreJob> {
   let job: CoreJob | undefined;
-  await expect
-    .poll(
-      async () => {
-        const jobs = (await coreApi<{ jobs: CoreJob[] }>(page, "GET", "/jobs")).body.jobs.filter((j) => j.kind === kind && j.id > after);
-        job = jobs.sort((a, b) => b.id - a.id)[0];
-        return job?.status ?? "none";
-      },
-      { timeout, intervals: [200, 400, 800] },
-    )
-    .toMatch(/^(done|failed|cancelled)$/);
+  try {
+    await expect
+      .poll(
+        async () => {
+          const jobs = (await coreApi<{ jobs: CoreJob[] }>(page, "GET", "/jobs")).body.jobs.filter((j) => j.kind === kind && j.id > after);
+          job = jobs.sort((a, b) => b.id - a.id)[0];
+          return job?.status ?? "none";
+        },
+        { timeout, intervals: [200, 400, 800] },
+      )
+      .toMatch(/^(done|failed|cancelled)$/);
+  } catch (e) {
+    // what the window and the core say when no job comes (the log of a CI run is all there is to read a failure on another machine)
+    const all = (await coreApi<{ jobs: CoreJob[] }>(page, "GET", "/jobs").catch(() => null))?.body.jobs ?? [];
+    const jobsLine = all.slice(0, 8).map((j) => `${j.id}:${j.kind}:${j.status}`).join(", ");
+    const models = (await rowsList(page).catch(() => [])).map((m) => `${m.id}:${m.name}:${m.state}`).join(", ");
+    const alerts = await page.locator('[role="alert"], [role="status"], [data-testid*="toast"], [data-testid*="issue"]').allInnerTexts().catch(() => []);
+    throw new Error(`${kind} after ${after}: no end in ${timeout} ms. jobs: [${jobsLine}]; models: [${models}]; messages: ${JSON.stringify(alerts).slice(0, 600)}\n${String(e)}`);
+  }
   expect(job!.status, JSON.stringify(job!.error)).toBe("done");
   return job!;
 }

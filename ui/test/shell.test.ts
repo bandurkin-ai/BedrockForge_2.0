@@ -25,7 +25,7 @@ describe("ribbon (ТЗ 7.0.4)", () => {
   });
 
   it("«Главная» has no «Вид» and «Разрез» groups; view and section stay on «Вид» (Д-05, Д-08)", () => {
-    expect(tabs[0].groups.map((g) => g.title)).toEqual(["Проект", "Загрузка", "OMF", "Выделение", "Ассистент", "Настройка"]);
+    expect(tabs[0].groups.map((g) => g.title)).toEqual(["Проект", "Загрузка", "OMF", "Скважины", "Выделение", "Ассистент", "Настройка"]);
     const at = (command: string, args?: Record<string, unknown>) =>
       items.find((i) => i.command === command && JSON.stringify(i.args ?? {}) === JSON.stringify(args ?? {}))?.group;
     for (const view of ["top", "front", "side", "section"]) expect(at("scene.view", { view })).toMatch(/^Вид › /);

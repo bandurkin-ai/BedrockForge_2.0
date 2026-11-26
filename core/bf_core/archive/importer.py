@@ -19,6 +19,7 @@ import bf_core
 from bf_core.blocks.filters.remap import remap_filters
 from bf_core.db import dialect, migrate
 from bf_core.db.schema import blobs, project_md, project_meta
+from bf_core.drillholes.planned_remap import remap_planned
 from bf_core.geostat.remap import remap_geostat
 from bf_core.model.remap import remap_implicit
 from bf_core.ops.provenance import remap_lineage
@@ -273,6 +274,7 @@ def _restore(
     remap_geostat(conn, maps.get("objects", {}), maps.get("dh_tables", {}))  # variogram models (ADR 0022 §12)
     remap_filters(conn, maps.get("objects", {}))  # ids of wireframes in the rules of the filters (ADR 0023 §8)
     remap_implicit(conn, maps.get("objects", {}), maps.get("dh_tables", {}), maps.get("dh_results", {}))  # ADR 0026 §26
+    remap_planned(conn, maps.get("objects", {}))  # ADR 0026 §26: meta.set_id of the planned holes
     remap_lineage(conn, maps)  # the graph of dependencies (ADR 0025 §11)
     # files: into place and registered (owners came with blob_owners)
     now = dialect.utcnow()

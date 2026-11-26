@@ -25,7 +25,7 @@ describe("the ranges and the defaults of the core", () => {
   });
   it("the defaults of the answer are the numbers of 8.9.4", () => {
     expect(D.params).toMatchObject({ h_divisor: 200, levels: 2, kernel: "linear", s_contact: 0, s_grade: 0.05, cond_target: 1e8, n_patch: 1000, n_min: 100, delta: 0.25, d_max: 30, step: 5, v_min: 0, clip: "boundary" });
-    expect(D.params.limits).toEqual({ groups: 50, codes: 1000, manual: 100 });
+    expect(D.params.limits).toEqual({ groups: 50, codes: 1000, manual: 100, veins: 20 });
     expect(D.ranges.h).toMatchObject({ lo: 0.1, hi: 100 });
   });
   it("the ranges of the answer win over the mirror", () => {

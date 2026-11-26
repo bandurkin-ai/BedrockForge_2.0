@@ -1,5 +1,5 @@
 {
- "_note": "ЧАСТЬ КЛЮЧЕЙ — ответы настоящего ядра (BF_REGEN_IMPLICIT=1 uv run pytest -q tests/test_implicit_contract.py, 19.16, фикстура tests/modapi_world.py), части ключей — ЧЕРНОВИК форм (docs/progress/e19-api.md §5–§10): trend_*, build_iso_error и ключи *_b пишут подшаги 19.8, 19.32+; defaults, bad_param, refusals пишет spec.py (BF_REGEN_IMPLICIT=1 uv run pytest -q tests/test_implicit_spec.py). Интерфейс принимается только на настоящих ответах.",
+ "_note": "ЧАСТЬ КЛЮЧЕЙ — ответы настоящего ядра (BF_REGEN_IMPLICIT=1 uv run pytest -q tests/test_implicit_contract.py, 19.16, 19.36, фикстура tests/modapi_world.py), части ключей — ЧЕРНОВИК форм (docs/progress/e19-api.md §5–§10): trend_*, build_iso_error пишут подшаги 19.8+; ключи Э19б (relations, fault_*, group_faults*, vein_system_*, build_stack_*, model_stack, model_veins, delete_veins) — настоящие ответы 19.36, planned_* — 19.39; defaults, bad_param, refusals пишет spec.py (BF_REGEN_IMPLICIT=1 uv run pytest -q tests/test_implicit_spec.py). Интерфейс принимается только на настоящих ответах.",
  "defaults": {
   "status": 200,
   "body": {
@@ -423,7 +423,7 @@
     {
      "id": 6,
      "name": "Литология",
-     "version": 7,
+     "version": 5,
      "state": "ready",
      "stale": false,
      "stale_reason": null,
@@ -485,10 +485,10 @@
      "stats": {
       "points": 3316,
       "patches": 16,
-      "seconds": 3.445
+      "seconds": 4.4
      },
-     "created_at": "2026-11-25T22:27:12.701240Z",
-     "updated_at": "2026-11-25T22:27:13.377411Z"
+     "created_at": "2026-11-26T01:53:37.559641Z",
+     "updated_at": "2026-11-26T01:53:37.721228Z"
     }
    ]
   }
@@ -747,15 +747,6 @@
    "hint": "Проверьте коды группы и таблицу или добавьте ручные точки и линии."
   }
  },
- "not_ready": {
-  "status": 422,
-  "body": {
-   "group": 4,
-   "code": "not_ready",
-   "message": "Группа «Разлом» (разлом) пока не строится.",
-   "hint": "Уберите эти группы и отношения или дождитесь следующего выпуска."
-  }
- },
  "build_submit": {
   "status": 200,
   "body": {
@@ -775,7 +766,7 @@
   "status": 200,
   "body": {
    "model_id": 6,
-   "version": 7,
+   "version": 5,
    "state": "ready",
    "mode": "build",
    "outputs": [
@@ -841,7 +832,7 @@
     "max_residual": 2.653877118063974e-12,
     "cond_max": 24344100.0,
     "eta_max": 0.0,
-    "seconds": 3.445,
+    "seconds": 4.4,
     "reused": {
      "patches": 0,
      "bricks": 0
@@ -857,7 +848,10 @@
       "cond_max": 113567.0,
       "eta_min": 0.0,
       "eta_max": 0.0,
-      "support_share": null
+      "support_share": null,
+      "faults": [],
+      "offset": null,
+      "offset_by_fault": null
      },
      {
       "group": 3,
@@ -869,10 +863,25 @@
       "cond_max": 24344100.0,
       "eta_min": 0.0,
       "eta_max": 0.0,
-      "support_share": null
+      "support_share": null,
+      "faults": [],
+      "offset": null,
+      "offset_by_fault": null
      }
     ],
-    "balance": 0.0
+    "balance": 0.0,
+    "stack": {
+     "order": [
+      1,
+      3
+     ],
+     "relations": {
+      "1": "conformable",
+      "3": "conformable"
+     },
+     "dropped": [],
+     "dropped_total": 0
+    }
    },
    "reused": {
     "patches": 0,
@@ -887,13 +896,13 @@
     "Сумма объёмов доменов и «Прочее» отличается от объёма границы на 0 (доля)."
    ],
    "stages": {
-    "Данные": 0.805,
-    "Тела": 0.12,
-    "Участки": 0.202,
-    "Изоповерхности": 2.317,
+    "Данные": 0.734,
+    "Тела": 0.109,
+    "Участки": 0.197,
+    "Изоповерхности": 3.359,
     "Проверки": 0.001,
-    "Запись": 0.092,
-    "total": 3.537
+    "Запись": 0.089,
+    "total": 4.489
    },
    "events": [
     [
@@ -946,7 +955,7 @@
   "body": {
    "id": 6,
    "name": "Литология",
-   "version": 7,
+   "version": 5,
    "meta": {
     "v": 1,
     "name": "Литология",
@@ -1017,7 +1026,7 @@
     },
     "h_used": 8.0,
     "algo": "rbf-1",
-    "created_at": "2026-11-25T22:27:12.701240+00:00",
+    "created_at": "2026-11-26T01:53:37.559641+00:00",
     "extent": [
      0.0,
      0.0,
@@ -1036,7 +1045,7 @@
      {
       "kind": "dh_table",
       "id": 1,
-      "fp": "66121540e8336:1",
+      "fp": "661243641ebd2:1",
       "name": "Литология"
      }
     ],
@@ -1085,7 +1094,7 @@
      "max_residual": 2.653877118063974e-12,
      "cond_max": 24344100.0,
      "eta_max": 0.0,
-     "seconds": 3.445,
+     "seconds": 4.4,
      "reused": {
       "patches": 0,
       "bricks": 0
@@ -1101,7 +1110,10 @@
        "cond_max": 113567.0,
        "eta_min": 0.0,
        "eta_max": 0.0,
-       "support_share": null
+       "support_share": null,
+       "faults": [],
+       "offset": null,
+       "offset_by_fault": null
       },
       {
        "group": 3,
@@ -1113,16 +1125,31 @@
        "cond_max": 24344100.0,
        "eta_min": 0.0,
        "eta_max": 0.0,
-       "support_share": null
+       "support_share": null,
+       "faults": [],
+       "offset": null,
+       "offset_by_fault": null
       }
      ],
-     "balance": 0.0
+     "balance": 0.0,
+     "stack": {
+      "order": [
+       1,
+       3
+      ],
+      "relations": {
+       "1": "conformable",
+       "3": "conformable"
+      },
+      "dropped": [],
+      "dropped_total": 0
+     }
     },
     "last_run": {
-     "at": "2026-11-25T22:27:17.101056+00:00",
+     "at": "2026-11-26T01:53:42.831002+00:00",
      "job": 1,
      "mode": "build",
-     "seconds": 3.445,
+     "seconds": 4.4,
      "params": "09b8f78b26a604fd97eba4730219c0da3a1b99b01469750db71c94af2518d9de"
     },
     "versions": {
@@ -1195,8 +1222,8 @@
      "triangles": 16162
     }
    ],
-   "created_at": "2026-11-25T22:27:12.701240Z",
-   "updated_at": "2026-11-25T22:27:13.377411Z"
+   "created_at": "2026-11-26T01:53:37.559641Z",
+   "updated_at": "2026-11-26T01:53:37.721228Z"
   }
  },
  "outputs": {
@@ -1266,7 +1293,7 @@
   "body": {
    "id": 6,
    "name": "Литология",
-   "version": 8,
+   "version": 6,
    "meta": {
     "v": 1,
     "name": "Литология",
@@ -1337,7 +1364,7 @@
     },
     "h_used": 8.0,
     "algo": "rbf-1",
-    "created_at": "2026-11-25T22:27:12.701240+00:00",
+    "created_at": "2026-11-26T01:53:37.559641+00:00",
     "extent": [
      0.0,
      0.0,
@@ -1356,7 +1383,7 @@
      {
       "kind": "dh_table",
       "id": 1,
-      "fp": "66121540e8336:1",
+      "fp": "661243641ebd2:1",
       "name": "Литология"
      }
     ],
@@ -1405,7 +1432,7 @@
      "max_residual": 2.653877118063974e-12,
      "cond_max": 24344100.0,
      "eta_max": 0.0,
-     "seconds": 3.445,
+     "seconds": 4.4,
      "reused": {
       "patches": 0,
       "bricks": 0
@@ -1421,7 +1448,10 @@
        "cond_max": 113567.0,
        "eta_min": 0.0,
        "eta_max": 0.0,
-       "support_share": null
+       "support_share": null,
+       "faults": [],
+       "offset": null,
+       "offset_by_fault": null
       },
       {
        "group": 3,
@@ -1433,16 +1463,31 @@
        "cond_max": 24344100.0,
        "eta_min": 0.0,
        "eta_max": 0.0,
-       "support_share": null
+       "support_share": null,
+       "faults": [],
+       "offset": null,
+       "offset_by_fault": null
       }
      ],
-     "balance": 0.0
+     "balance": 0.0,
+     "stack": {
+      "order": [
+       1,
+       3
+      ],
+      "relations": {
+       "1": "conformable",
+       "3": "conformable"
+      },
+      "dropped": [],
+      "dropped_total": 0
+     }
     },
     "last_run": {
-     "at": "2026-11-25T22:27:17.101056+00:00",
+     "at": "2026-11-26T01:53:42.831002+00:00",
      "job": 1,
      "mode": "build",
-     "seconds": 3.445,
+     "seconds": 4.4,
      "params": "09b8f78b26a604fd97eba4730219c0da3a1b99b01469750db71c94af2518d9de"
     },
     "versions": {
@@ -1515,8 +1560,8 @@
      "triangles": 16162
     }
    ],
-   "created_at": "2026-11-25T22:27:12.701240Z",
-   "updated_at": "2026-11-25T22:27:17.239450Z"
+   "created_at": "2026-11-26T01:53:37.559641Z",
+   "updated_at": "2026-11-26T01:53:42.927905Z"
   }
  },
  "update_submit": {
@@ -1530,7 +1575,7 @@
   "status": 200,
   "body": {
    "model_id": 6,
-   "version": 8,
+   "version": 6,
    "state": "ready",
    "mode": "update",
    "outputs": [
@@ -1596,7 +1641,7 @@
     "max_residual": 2.653877118063974e-12,
     "cond_max": 24344100.0,
     "eta_max": 0.0,
-    "seconds": 0.405,
+    "seconds": 0.375,
     "reused": {
      "patches": 16,
      "bricks": 4608
@@ -1612,7 +1657,10 @@
       "cond_max": 113567.0,
       "eta_min": 0.0,
       "eta_max": 0.0,
-      "support_share": null
+      "support_share": null,
+      "faults": [],
+      "offset": null,
+      "offset_by_fault": null
      },
      {
       "group": 3,
@@ -1624,10 +1672,25 @@
       "cond_max": 24344100.0,
       "eta_min": 0.0,
       "eta_max": 0.0,
-      "support_share": null
+      "support_share": null,
+      "faults": [],
+      "offset": null,
+      "offset_by_fault": null
      }
     ],
-    "balance": 0.0
+    "balance": 0.0,
+    "stack": {
+     "order": [
+      1,
+      3
+     ],
+     "relations": {
+      "1": "conformable",
+      "3": "conformable"
+     },
+     "dropped": [],
+     "dropped_total": 0
+    }
    },
    "reused": {
     "patches": 16,
@@ -1644,13 +1707,13 @@
     "Обновление: из кеша взято участков 16 из 16, кирпичей 4608."
    ],
    "stages": {
-    "Данные": 0.036,
-    "Тела": 0.083,
-    "Участки": 0.029,
-    "Изоповерхности": 0.257,
+    "Данные": 0.033,
+    "Тела": 0.074,
+    "Участки": 0.028,
+    "Изоповерхности": 0.239,
     "Проверки": 0.001,
-    "Запись": 0.115,
-    "total": 0.52
+    "Запись": 0.09,
+    "total": 0.465
    },
    "events": [
     [
@@ -1711,7 +1774,7 @@
    "model": {
     "id": 6,
     "name": "Литология",
-    "version": 8,
+    "version": 6,
     "state": "ready",
     "stale": false,
     "stale_reason": null,
@@ -1907,7 +1970,7 @@
    "model": {
     "id": 6,
     "name": "Литология",
-    "version": 8,
+    "version": 6,
     "state": "ready",
     "stale": false,
     "stale_reason": null,
@@ -1951,7 +2014,7 @@
    "model": {
     "id": 6,
     "name": "Литология",
-    "version": 8,
+    "version": 6,
     "state": "ready",
     "stale": false,
     "stale_reason": null,
@@ -2355,7 +2418,7 @@
     "length": 11921.7,
     "rows": 306,
     "journal": [],
-    "seconds": 0.104
+    "seconds": 0.066
    },
    "journal": [],
    "events": [
@@ -2476,7 +2539,7 @@
     },
     "h_used": 8.0,
     "algo": "rbf-1",
-    "created_at": "2026-11-25T22:27:18.442736+00:00",
+    "created_at": "2026-11-26T01:53:44.503228+00:00",
     "extent": [
      0.0,
      0.0,
@@ -2495,7 +2558,7 @@
      {
       "kind": "dh_table",
       "id": 1,
-      "fp": "66121540e8336:1",
+      "fp": "661243641ebd2:1",
       "name": "Литология"
      }
     ],
@@ -2528,8 +2591,8 @@
    "stale_reason": null,
    "source_lost": false,
    "outputs": [],
-   "created_at": "2026-11-25T22:27:18.442736Z",
-   "updated_at": "2026-11-25T22:27:18.442736Z"
+   "created_at": "2026-11-26T01:53:44.503228Z",
+   "updated_at": "2026-11-26T01:53:44.503228Z"
   }
  },
  "delete_conflict": {
@@ -2558,10 +2621,4948 @@
     9,
     10,
     11
-   ]
+   ],
+   "line_layers": []
   }
  },
  "read_only": {
+  "status": 423,
+  "body": {
+   "code": "project_read_only",
+   "message": "Проект открыт только для чтения: он уже открыт в другом окне BedrockForge.",
+   "hint": "Закройте проект в другом окне и откройте его заново."
+  }
+ },
+ "relations": {
+  "status": 200,
+  "body": {
+   "id": 14,
+   "version": 2
+  }
+ },
+ "relations_bad": {
+  "status": 422,
+  "body": {
+   "param": "relations.2",
+   "code": "bad_param",
+   "message": "Отношение группы: неизвестное значение «sideways».",
+   "hint": "Допустимо: conformable, erode, onlap, intrusion."
+  }
+ },
+ "fault_post": {
+  "status": 200,
+  "body": {
+   "id": 14,
+   "version": 3,
+   "group": {
+    "id": 5,
+    "name": "Разлом",
+    "type": "fault",
+    "codes": [],
+    "relation": "conformable",
+    "faults": [],
+    "params": {
+     "radius": null
+    }
+   }
+  }
+ },
+ "fault_bad": {
+  "status": 422,
+  "body": {
+   "param": "groups.5.codes",
+   "code": "bad_param",
+   "message": "У группы нет данных: ни кодов, ни ручных слоёв.",
+   "hint": "Выберите коды группы."
+  }
+ },
+ "group_faults": {
+  "status": 200,
+  "body": {
+   "id": 14,
+   "version": 4
+  }
+ },
+ "group_faults_bad": {
+  "status": 422,
+  "body": {
+   "param": "fault_ids.0",
+   "code": "bad_param",
+   "message": "Эта группа не разлом.",
+   "hint": "Выберите группу вида «Разлом»."
+  }
+ },
+ "build_stack_submit": {
+  "status": 200,
+  "body": {
+   "source": "project",
+   "id": 5
+  }
+ },
+ "build_stack_result": {
+  "status": 200,
+  "body": {
+   "model_id": 14,
+   "version": 4,
+   "state": "ready",
+   "mode": "build",
+   "outputs": [
+    {
+     "wireframe_id": 19,
+     "kind": "surface",
+     "group": 5,
+     "wing": null,
+     "threshold": null,
+     "name": "Стек и разлом · Разлом · поверхность",
+     "volume": null,
+     "area": 88200.0,
+     "triangles": 1974
+    },
+    {
+     "wireframe_id": 20,
+     "kind": "body",
+     "group": 5,
+     "wing": 0,
+     "threshold": null,
+     "name": "Стек и разлом · Разлом, крыло 0 (область)",
+     "volume": 17640000.0,
+     "area": 428400.0,
+     "triangles": 2118,
+     "region": true
+    },
+    {
+     "wireframe_id": 21,
+     "kind": "body",
+     "group": 5,
+     "wing": 1,
+     "threshold": null,
+     "name": "Стек и разлом · Разлом, крыло 1 (область)",
+     "volume": 19404000.0,
+     "area": 453600.0,
+     "triangles": 2118,
+     "region": true
+    },
+    {
+     "wireframe_id": 22,
+     "kind": "surface",
+     "group": 1,
+     "wing": null,
+     "threshold": null,
+     "name": "Стек и разлом · INT · поверхность",
+     "volume": 400860.9784810354,
+     "area": 27579.23361117117,
+     "triangles": 816
+    },
+    {
+     "wireframe_id": 23,
+     "kind": "body",
+     "group": 1,
+     "wing": null,
+     "threshold": null,
+     "name": "Стек и разлом · INT",
+     "volume": 400860.9784810354,
+     "area": 27579.23361117117,
+     "triangles": 816
+    },
+    {
+     "wireframe_id": 24,
+     "kind": "surface",
+     "group": 2,
+     "wing": null,
+     "threshold": null,
+     "name": "Стек и разлом · ALV · поверхность",
+     "volume": null,
+     "area": 179819.46549079195,
+     "triangles": 4376
+    },
+    {
+     "wireframe_id": 25,
+     "kind": "body",
+     "group": 2,
+     "wing": null,
+     "threshold": null,
+     "name": "Стек и разлом · ALV",
+     "volume": 12277255.882499775,
+     "area": 469355.58633313497,
+     "triangles": 4572
+    },
+    {
+     "wireframe_id": 26,
+     "kind": "surface",
+     "group": 3,
+     "wing": 0,
+     "threshold": null,
+     "name": "Стек и разлом · SS, крыло 0 · поверхность",
+     "volume": null,
+     "area": 134557.10008425327,
+     "triangles": 4145
+    },
+    {
+     "wireframe_id": 27,
+     "kind": "body",
+     "group": 3,
+     "wing": 0,
+     "threshold": null,
+     "name": "Стек и разлом · SS, крыло 0",
+     "volume": 3037827.2590081557,
+     "area": 193789.7071695,
+     "triangles": 6224
+    },
+    {
+     "wireframe_id": 28,
+     "kind": "surface",
+     "group": 3,
+     "wing": 1,
+     "threshold": null,
+     "name": "Стек и разлом · SS, крыло 1 · поверхность",
+     "volume": null,
+     "area": 142172.5316189783,
+     "triangles": 4319
+    },
+    {
+     "wireframe_id": 29,
+     "kind": "body",
+     "group": 3,
+     "wing": 1,
+     "threshold": null,
+     "name": "Стек и разлом · SS, крыло 1",
+     "volume": 3208706.692591319,
+     "area": 202257.6446030635,
+     "triangles": 6396
+    },
+    {
+     "wireframe_id": 30,
+     "kind": "surface",
+     "group": 4,
+     "wing": null,
+     "threshold": null,
+     "name": "Стек и разлом · SH · поверхность",
+     "volume": null,
+     "area": 146265.38625334593,
+     "triangles": 5155
+    },
+    {
+     "wireframe_id": 31,
+     "kind": "body",
+     "group": 4,
+     "wing": null,
+     "threshold": null,
+     "name": "Стек и разлом · SH",
+     "volume": 16087664.772804296,
+     "area": 574128.3966215147,
+     "triangles": 9160
+    },
+    {
+     "wireframe_id": 32,
+     "kind": "body",
+     "group": null,
+     "wing": 0,
+     "threshold": null,
+     "name": "Стек и разлом · Прочее, крыло 0",
+     "volume": 816393.0107586463,
+     "area": 240993.08571192287,
+     "triangles": 8302
+    },
+    {
+     "wireframe_id": 33,
+     "kind": "body",
+     "group": null,
+     "wing": 1,
+     "threshold": null,
+     "name": "Стек и разлом · Прочее, крыло 1",
+     "volume": 1215291.4038567764,
+     "area": 291306.9212085559,
+     "triangles": 9740
+    }
+   ],
+   "stats": {
+    "points": 6277,
+    "patches": 97,
+    "max_residual": 2.2808421817899216e-12,
+    "cond_max": 1300470.0,
+    "eta_max": 0.0,
+    "seconds": 3.576,
+    "reused": {
+     "patches": 0,
+     "bricks": 0
+    },
+    "by_group": [
+     {
+      "group": 1,
+      "wing": null,
+      "points": 1241,
+      "patches": 8,
+      "h_bar": 9.553846153846138,
+      "max_residual": 1.744382416291046e-12,
+      "cond_max": 113567.0,
+      "eta_min": 0.0,
+      "eta_max": 0.0,
+      "support_share": null,
+      "faults": [],
+      "offset": null,
+      "offset_by_fault": null
+     },
+     {
+      "group": 2,
+      "wing": null,
+      "points": 1300,
+      "patches": 36,
+      "h_bar": 4.999999999999989,
+      "max_residual": 5.258016244624741e-13,
+      "cond_max": 232186.0,
+      "eta_min": 0.0,
+      "eta_max": 0.0,
+      "support_share": null,
+      "faults": [],
+      "offset": null,
+      "offset_by_fault": null
+     },
+     {
+      "group": 3,
+      "wing": 0,
+      "points": 998,
+      "patches": 22,
+      "h_bar": 4.999999999999988,
+      "max_residual": 1.3500311979441904e-12,
+      "cond_max": 138244.0,
+      "eta_min": 0.0,
+      "eta_max": 0.0,
+      "support_share": null,
+      "faults": [
+       5
+      ],
+      "offset": {
+       "mean": 6.872674228090389,
+       "max": 61.84468224338155
+      },
+      "offset_by_fault": {
+       "5": {
+        "mean": 6.872674228090389,
+        "max": 61.84468224338155
+       }
+      }
+     },
+     {
+      "group": 3,
+      "wing": 1,
+      "points": 1052,
+      "patches": 22,
+      "h_bar": 4.999999999999987,
+      "max_residual": 1.1723955140041653e-12,
+      "cond_max": 259305.0,
+      "eta_min": 0.0,
+      "eta_max": 0.0,
+      "support_share": null,
+      "faults": [
+       5
+      ],
+      "offset": {
+       "mean": 6.872674228090389,
+       "max": 61.84468224338155
+      },
+      "offset_by_fault": {
+       "5": {
+        "mean": 6.872674228090389,
+        "max": 61.84468224338155
+       }
+      }
+     },
+     {
+      "group": 4,
+      "wing": null,
+      "points": 1351,
+      "patches": 8,
+      "h_bar": 4.9999999999999885,
+      "max_residual": 2.2808421817899216e-12,
+      "cond_max": 1300470.0,
+      "eta_min": 0.0,
+      "eta_max": 0.0,
+      "support_share": null,
+      "faults": [],
+      "offset": null,
+      "offset_by_fault": null
+     },
+     {
+      "group": 5,
+      "wing": null,
+      "points": 273,
+      "patches": 1,
+      "h_bar": 15.0,
+      "max_residual": 4.973799150320701e-14,
+      "cond_max": 21366.3,
+      "eta_min": 0.0,
+      "eta_max": 0.0,
+      "support_share": null,
+      "faults": [],
+      "offset": null,
+      "offset_by_fault": null
+     }
+    ],
+    "balance": 0.0,
+    "stack": {
+     "order": [
+      1,
+      2,
+      3,
+      4
+     ],
+     "relations": {
+      "1": "intrusion",
+      "2": "conformable",
+      "3": "conformable",
+      "4": "conformable"
+     },
+     "dropped": [
+      {
+       "group": 2,
+       "by": 1,
+       "relation": "intrusion",
+       "points": 8,
+       "of": 1308,
+       "undefined": 0
+      },
+      {
+       "group": 3,
+       "by": 1,
+       "relation": "intrusion",
+       "points": 25,
+       "of": 2075,
+       "undefined": 0
+      },
+      {
+       "group": 4,
+       "by": 1,
+       "relation": "intrusion",
+       "points": 29,
+       "of": 1380,
+       "undefined": 0
+      }
+     ],
+     "dropped_total": 62
+    },
+    "faults": {
+     "5": {
+      "radius": null,
+      "points": 273,
+      "wing_volumes": [
+       17640000.0,
+       19404000.0
+      ],
+      "balance": 0.0,
+      "max_residual": 4.973799150320701e-14
+     }
+    }
+   },
+   "reused": {
+    "patches": 0,
+    "bricks": 0
+   },
+   "journal": [
+    "Разломы: «Разлом»; порядок — разломы, затем группы по стеку отношений.",
+    "Разлом «Разлом»: точек 273, участков 1, η = 0, наибольшая невязка в данных 4,9738e-14, радиус влияния бесконечный.",
+    "Разлом «Разлом»: крыло 0 — 1,764e+07 м³, крыло 1 — 1,9404e+07 м³.",
+    "Группа «INT»: точек 1241, участков 8, η = 0, наибольшая обусловленность 113567, наибольшая невязка в данных 1,74438e-12.",
+    "«INT»: тело 400861 м³, контакт 27579,2 м².",
+    "Группа «ALV»: интрузия группы «INT» — отброшено точек 8 из 1308 (внутри тела группы «INT»).",
+    "Группа «ALV»: точек 1300, участков 36, η = 0, наибольшая обусловленность 232186, наибольшая невязка в данных 5,25802e-13.",
+    "«ALV»: тело 1,22773e+07 м³, контакт 179819 м².",
+    "Группа «SS»: интрузия группы «INT» — отброшено точек 25 из 2075 (внутри тела группы «INT»).",
+    "Группа «SS»: крыло 0: точек 998, участков 22, наибольшая невязка в данных 1,35003e-12.",
+    "«SS, крыло 0»: тело 3,03783e+06 м³, контакт 134557 м².",
+    "Группа «SS»: крыло 1: точек 1052, участков 22, наибольшая невязка в данных 1,1724e-12.",
+    "«SS, крыло 1»: тело 3,20871e+06 м³, контакт 142173 м².",
+    "Группа «SH»: интрузия группы «INT» — отброшено точек 29 из 1380 (внутри тела группы «INT»).",
+    "Группа «SH»: точек 1351, участков 8, η = 0, наибольшая обусловленность 1,30047e+06, наибольшая невязка в данных 2,28084e-12.",
+    "«SH»: тело 1,60877e+07 м³, контакт 146265 м².",
+    "Группа «SS»: смещение крыльев через «Разлом» — среднее 6,87267 м, наибольшее 61,8447 м.",
+    "«Прочее, крыло 0»: объём 816393 м³.",
+    "«Прочее, крыло 1»: объём 1,21529e+06 м³.",
+    "Сумма объёмов доменов и «Прочее» отличается от объёма границы на 0 (доля)."
+   ],
+   "stages": {
+    "Данные": 0.036,
+    "Участки": 0.361,
+    "Изоповерхности": 2.976,
+    "Тела": 0.201,
+    "Проверки": 0.002,
+    "Запись": 0.136,
+    "total": 3.712
+   },
+   "events": [
+    [
+     "implicit.changed",
+     {
+      "kind": "implicit_model",
+      "id": 14
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 19
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 20
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 21
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 22
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 23
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 24
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 25
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 26
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 27
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 28
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 29
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 30
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 31
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 32
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 33
+     }
+    ]
+   ]
+  }
+ },
+ "model_stack": {
+  "status": 200,
+  "body": {
+   "id": 14,
+   "name": "Стек и разлом",
+   "version": 4,
+   "meta": {
+    "v": 1,
+    "name": "Стек и разлом",
+    "boundary": {
+     "box": [
+      0.0,
+      0.0,
+      120.0,
+      420.0,
+      420.0,
+      330.0
+     ],
+     "wireframe_id": null,
+     "dtm_id": null
+    },
+    "h": 10.0,
+    "levels": 2,
+    "kernel": "linear",
+    "kernel_radius": null,
+    "smoothing": {
+     "mode": "manual",
+     "s": null
+    },
+    "trend_id": null,
+    "anisotropy": null,
+    "pou": {
+     "n_patch": 300,
+     "n_min": 100,
+     "delta": 0.25
+    },
+    "data": {
+     "set_id": 1,
+     "table": "1",
+     "field": "CODE",
+     "d_max": 30.0,
+     "step": 5.0
+    },
+    "groups": [
+     {
+      "id": 1,
+      "name": "INT",
+      "type": "domain",
+      "codes": [
+       "INT"
+      ],
+      "relation": "intrusion",
+      "faults": [],
+      "params": {}
+     },
+     {
+      "id": 2,
+      "name": "ALV",
+      "type": "domain",
+      "codes": [
+       "ALV"
+      ],
+      "relation": "conformable",
+      "faults": [],
+      "params": {}
+     },
+     {
+      "id": 3,
+      "name": "SS",
+      "type": "domain",
+      "codes": [
+       "SS"
+      ],
+      "relation": "conformable",
+      "faults": [
+       5
+      ],
+      "params": {}
+     },
+     {
+      "id": 4,
+      "name": "SH",
+      "type": "domain",
+      "codes": [
+       "SH"
+      ],
+      "relation": "conformable",
+      "faults": [],
+      "params": {}
+     },
+     {
+      "id": 5,
+      "name": "Разлом",
+      "type": "fault",
+      "codes": [],
+      "relation": "conformable",
+      "faults": [],
+      "params": {
+       "radius": null
+      }
+     }
+    ],
+    "manual": [
+     {
+      "layer_id": 16,
+      "role": "contact",
+      "group": 5
+     },
+     {
+      "layer_id": 17,
+      "role": "inside",
+      "group": 5
+     },
+     {
+      "layer_id": 18,
+      "role": "outside",
+      "group": 5
+     }
+    ],
+    "post": {
+     "v_min": 0.0,
+     "simplify": false,
+     "clip": "boundary",
+     "clip_id": null
+    },
+    "h_used": 10.0,
+    "algo": "rbf-1",
+    "created_at": "2026-11-26T01:53:44.909927+00:00",
+    "extent": [
+     0.0,
+     0.0,
+     120.0,
+     420.0,
+     420.0,
+     330.0
+    ],
+    "inputs": [
+     {
+      "kind": "dh_set",
+      "id": 1,
+      "fp": "traj:1:3:3:minimum_curvature",
+      "name": "Скважины"
+     },
+     {
+      "kind": "dh_table",
+      "id": 1,
+      "fp": "661243641ebd2:1",
+      "name": "Литология"
+     },
+     {
+      "kind": "object:line_layer",
+      "id": 16,
+      "fp": "1",
+      "name": "контакт"
+     },
+     {
+      "kind": "object:line_layer",
+      "id": 17,
+      "fp": "1",
+      "name": "внутри"
+     },
+     {
+      "kind": "object:line_layer",
+      "id": 18,
+      "fp": "1",
+      "name": "снаружи"
+     }
+    ],
+    "state": "ready",
+    "error": null,
+    "outputs": [
+     {
+      "wireframe_id": 19,
+      "kind": "surface",
+      "group": 5,
+      "wing": null,
+      "name": "Стек и разлом · Разлом · поверхность"
+     },
+     {
+      "wireframe_id": 20,
+      "kind": "body",
+      "group": 5,
+      "wing": 0,
+      "name": "Стек и разлом · Разлом, крыло 0 (область)",
+      "region": true
+     },
+     {
+      "wireframe_id": 21,
+      "kind": "body",
+      "group": 5,
+      "wing": 1,
+      "name": "Стек и разлом · Разлом, крыло 1 (область)",
+      "region": true
+     },
+     {
+      "wireframe_id": 22,
+      "kind": "surface",
+      "group": 1,
+      "wing": null,
+      "name": "Стек и разлом · INT · поверхность"
+     },
+     {
+      "wireframe_id": 23,
+      "kind": "body",
+      "group": 1,
+      "wing": null,
+      "name": "Стек и разлом · INT"
+     },
+     {
+      "wireframe_id": 24,
+      "kind": "surface",
+      "group": 2,
+      "wing": null,
+      "name": "Стек и разлом · ALV · поверхность"
+     },
+     {
+      "wireframe_id": 25,
+      "kind": "body",
+      "group": 2,
+      "wing": null,
+      "name": "Стек и разлом · ALV"
+     },
+     {
+      "wireframe_id": 26,
+      "kind": "surface",
+      "group": 3,
+      "wing": 0,
+      "name": "Стек и разлом · SS, крыло 0 · поверхность"
+     },
+     {
+      "wireframe_id": 27,
+      "kind": "body",
+      "group": 3,
+      "wing": 0,
+      "name": "Стек и разлом · SS, крыло 0"
+     },
+     {
+      "wireframe_id": 28,
+      "kind": "surface",
+      "group": 3,
+      "wing": 1,
+      "name": "Стек и разлом · SS, крыло 1 · поверхность"
+     },
+     {
+      "wireframe_id": 29,
+      "kind": "body",
+      "group": 3,
+      "wing": 1,
+      "name": "Стек и разлом · SS, крыло 1"
+     },
+     {
+      "wireframe_id": 30,
+      "kind": "surface",
+      "group": 4,
+      "wing": null,
+      "name": "Стек и разлом · SH · поверхность"
+     },
+     {
+      "wireframe_id": 31,
+      "kind": "body",
+      "group": 4,
+      "wing": null,
+      "name": "Стек и разлом · SH"
+     },
+     {
+      "wireframe_id": 32,
+      "kind": "body",
+      "group": null,
+      "wing": 0,
+      "name": "Стек и разлом · Прочее, крыло 0"
+     },
+     {
+      "wireframe_id": 33,
+      "kind": "body",
+      "group": null,
+      "wing": 1,
+      "name": "Стек и разлом · Прочее, крыло 1"
+     }
+    ],
+    "stats": {
+     "points": 6277,
+     "patches": 97,
+     "max_residual": 2.2808421817899216e-12,
+     "cond_max": 1300470.0,
+     "eta_max": 0.0,
+     "seconds": 3.576,
+     "reused": {
+      "patches": 0,
+      "bricks": 0
+     },
+     "by_group": [
+      {
+       "group": 1,
+       "wing": null,
+       "points": 1241,
+       "patches": 8,
+       "h_bar": 9.553846153846138,
+       "max_residual": 1.744382416291046e-12,
+       "cond_max": 113567.0,
+       "eta_min": 0.0,
+       "eta_max": 0.0,
+       "support_share": null,
+       "faults": [],
+       "offset": null,
+       "offset_by_fault": null
+      },
+      {
+       "group": 2,
+       "wing": null,
+       "points": 1300,
+       "patches": 36,
+       "h_bar": 4.999999999999989,
+       "max_residual": 5.258016244624741e-13,
+       "cond_max": 232186.0,
+       "eta_min": 0.0,
+       "eta_max": 0.0,
+       "support_share": null,
+       "faults": [],
+       "offset": null,
+       "offset_by_fault": null
+      },
+      {
+       "group": 3,
+       "wing": 0,
+       "points": 998,
+       "patches": 22,
+       "h_bar": 4.999999999999988,
+       "max_residual": 1.3500311979441904e-12,
+       "cond_max": 138244.0,
+       "eta_min": 0.0,
+       "eta_max": 0.0,
+       "support_share": null,
+       "faults": [
+        5
+       ],
+       "offset": {
+        "mean": 6.872674228090389,
+        "max": 61.84468224338155
+       },
+       "offset_by_fault": {
+        "5": {
+         "mean": 6.872674228090389,
+         "max": 61.84468224338155
+        }
+       }
+      },
+      {
+       "group": 3,
+       "wing": 1,
+       "points": 1052,
+       "patches": 22,
+       "h_bar": 4.999999999999987,
+       "max_residual": 1.1723955140041653e-12,
+       "cond_max": 259305.0,
+       "eta_min": 0.0,
+       "eta_max": 0.0,
+       "support_share": null,
+       "faults": [
+        5
+       ],
+       "offset": {
+        "mean": 6.872674228090389,
+        "max": 61.84468224338155
+       },
+       "offset_by_fault": {
+        "5": {
+         "mean": 6.872674228090389,
+         "max": 61.84468224338155
+        }
+       }
+      },
+      {
+       "group": 4,
+       "wing": null,
+       "points": 1351,
+       "patches": 8,
+       "h_bar": 4.9999999999999885,
+       "max_residual": 2.2808421817899216e-12,
+       "cond_max": 1300470.0,
+       "eta_min": 0.0,
+       "eta_max": 0.0,
+       "support_share": null,
+       "faults": [],
+       "offset": null,
+       "offset_by_fault": null
+      },
+      {
+       "group": 5,
+       "wing": null,
+       "points": 273,
+       "patches": 1,
+       "h_bar": 15.0,
+       "max_residual": 4.973799150320701e-14,
+       "cond_max": 21366.3,
+       "eta_min": 0.0,
+       "eta_max": 0.0,
+       "support_share": null,
+       "faults": [],
+       "offset": null,
+       "offset_by_fault": null
+      }
+     ],
+     "balance": 0.0,
+     "stack": {
+      "order": [
+       1,
+       2,
+       3,
+       4
+      ],
+      "relations": {
+       "1": "intrusion",
+       "2": "conformable",
+       "3": "conformable",
+       "4": "conformable"
+      },
+      "dropped": [
+       {
+        "group": 2,
+        "by": 1,
+        "relation": "intrusion",
+        "points": 8,
+        "of": 1308,
+        "undefined": 0
+       },
+       {
+        "group": 3,
+        "by": 1,
+        "relation": "intrusion",
+        "points": 25,
+        "of": 2075,
+        "undefined": 0
+       },
+       {
+        "group": 4,
+        "by": 1,
+        "relation": "intrusion",
+        "points": 29,
+        "of": 1380,
+        "undefined": 0
+       }
+      ],
+      "dropped_total": 62
+     },
+     "faults": {
+      "5": {
+       "radius": null,
+       "points": 273,
+       "wing_volumes": [
+        17640000.0,
+        19404000.0
+       ],
+       "balance": 0.0,
+       "max_residual": 4.973799150320701e-14
+      }
+     }
+    },
+    "last_run": {
+     "at": "2026-11-26T01:53:48.825613+00:00",
+     "job": 5,
+     "mode": "build",
+     "seconds": 3.576,
+     "params": "3ca8a025a6400f1f771ede90d009dd9b426ff1bfef6610fc7bfb4fe84efae5ea"
+    },
+    "versions": {
+     "numpy": "2.3.5",
+     "scipy": "1.18.1",
+     "numba": "0.68.1",
+     "skimage": "0.26.0",
+     "manifold3d": "3.5.4"
+    }
+   },
+   "state": "ready",
+   "error": null,
+   "stale": false,
+   "stale_reason": null,
+   "source_lost": false,
+   "outputs": [
+    {
+     "wireframe_id": 19,
+     "kind": "surface",
+     "group": 5,
+     "wing": null,
+     "threshold": null,
+     "name": "Стек и разлом · Разлом · поверхность",
+     "volume": null,
+     "area": 88200.0,
+     "triangles": 1974
+    },
+    {
+     "wireframe_id": 20,
+     "kind": "body",
+     "group": 5,
+     "wing": 0,
+     "threshold": null,
+     "name": "Стек и разлом · Разлом, крыло 0 (область)",
+     "volume": 17640000.0,
+     "area": 428400.0,
+     "triangles": 2118,
+     "region": true
+    },
+    {
+     "wireframe_id": 21,
+     "kind": "body",
+     "group": 5,
+     "wing": 1,
+     "threshold": null,
+     "name": "Стек и разлом · Разлом, крыло 1 (область)",
+     "volume": 19404000.0,
+     "area": 453600.0,
+     "triangles": 2118,
+     "region": true
+    },
+    {
+     "wireframe_id": 22,
+     "kind": "surface",
+     "group": 1,
+     "wing": null,
+     "threshold": null,
+     "name": "Стек и разлом · INT · поверхность",
+     "volume": 400860.9784810354,
+     "area": 27579.23361117117,
+     "triangles": 816
+    },
+    {
+     "wireframe_id": 23,
+     "kind": "body",
+     "group": 1,
+     "wing": null,
+     "threshold": null,
+     "name": "Стек и разлом · INT",
+     "volume": 400860.9784810354,
+     "area": 27579.23361117117,
+     "triangles": 816
+    },
+    {
+     "wireframe_id": 24,
+     "kind": "surface",
+     "group": 2,
+     "wing": null,
+     "threshold": null,
+     "name": "Стек и разлом · ALV · поверхность",
+     "volume": null,
+     "area": 179819.46549079195,
+     "triangles": 4376
+    },
+    {
+     "wireframe_id": 25,
+     "kind": "body",
+     "group": 2,
+     "wing": null,
+     "threshold": null,
+     "name": "Стек и разлом · ALV",
+     "volume": 12277255.882499775,
+     "area": 469355.58633313497,
+     "triangles": 4572
+    },
+    {
+     "wireframe_id": 26,
+     "kind": "surface",
+     "group": 3,
+     "wing": 0,
+     "threshold": null,
+     "name": "Стек и разлом · SS, крыло 0 · поверхность",
+     "volume": null,
+     "area": 134557.10008425327,
+     "triangles": 4145
+    },
+    {
+     "wireframe_id": 27,
+     "kind": "body",
+     "group": 3,
+     "wing": 0,
+     "threshold": null,
+     "name": "Стек и разлом · SS, крыло 0",
+     "volume": 3037827.2590081557,
+     "area": 193789.7071695,
+     "triangles": 6224
+    },
+    {
+     "wireframe_id": 28,
+     "kind": "surface",
+     "group": 3,
+     "wing": 1,
+     "threshold": null,
+     "name": "Стек и разлом · SS, крыло 1 · поверхность",
+     "volume": null,
+     "area": 142172.5316189783,
+     "triangles": 4319
+    },
+    {
+     "wireframe_id": 29,
+     "kind": "body",
+     "group": 3,
+     "wing": 1,
+     "threshold": null,
+     "name": "Стек и разлом · SS, крыло 1",
+     "volume": 3208706.692591319,
+     "area": 202257.6446030635,
+     "triangles": 6396
+    },
+    {
+     "wireframe_id": 30,
+     "kind": "surface",
+     "group": 4,
+     "wing": null,
+     "threshold": null,
+     "name": "Стек и разлом · SH · поверхность",
+     "volume": null,
+     "area": 146265.38625334593,
+     "triangles": 5155
+    },
+    {
+     "wireframe_id": 31,
+     "kind": "body",
+     "group": 4,
+     "wing": null,
+     "threshold": null,
+     "name": "Стек и разлом · SH",
+     "volume": 16087664.772804296,
+     "area": 574128.3966215147,
+     "triangles": 9160
+    },
+    {
+     "wireframe_id": 32,
+     "kind": "body",
+     "group": null,
+     "wing": 0,
+     "threshold": null,
+     "name": "Стек и разлом · Прочее, крыло 0",
+     "volume": 816393.0107586463,
+     "area": 240993.08571192287,
+     "triangles": 8302
+    },
+    {
+     "wireframe_id": 33,
+     "kind": "body",
+     "group": null,
+     "wing": 1,
+     "threshold": null,
+     "name": "Стек и разлом · Прочее, крыло 1",
+     "volume": 1215291.4038567764,
+     "area": 291306.9212085559,
+     "triangles": 9740
+    }
+   ],
+   "created_at": "2026-11-26T01:53:44.909927Z",
+   "updated_at": "2026-11-26T01:53:44.990117Z"
+  }
+ },
+ "update_stack_result": {
+  "status": 200,
+  "body": {
+   "model_id": 14,
+   "version": 4,
+   "state": "ready",
+   "mode": "update",
+   "outputs": [
+    {
+     "wireframe_id": 19,
+     "kind": "surface",
+     "group": 5,
+     "wing": null,
+     "threshold": null,
+     "name": "Стек и разлом · Разлом · поверхность",
+     "volume": null,
+     "area": 88200.0,
+     "triangles": 1974
+    },
+    {
+     "wireframe_id": 20,
+     "kind": "body",
+     "group": 5,
+     "wing": 0,
+     "threshold": null,
+     "name": "Стек и разлом · Разлом, крыло 0 (область)",
+     "volume": 17640000.0,
+     "area": 428400.0,
+     "triangles": 2118,
+     "region": true
+    },
+    {
+     "wireframe_id": 21,
+     "kind": "body",
+     "group": 5,
+     "wing": 1,
+     "threshold": null,
+     "name": "Стек и разлом · Разлом, крыло 1 (область)",
+     "volume": 19404000.0,
+     "area": 453600.0,
+     "triangles": 2118,
+     "region": true
+    },
+    {
+     "wireframe_id": 22,
+     "kind": "surface",
+     "group": 1,
+     "wing": null,
+     "threshold": null,
+     "name": "Стек и разлом · INT · поверхность",
+     "volume": 400860.9784810354,
+     "area": 27579.23361117117,
+     "triangles": 816
+    },
+    {
+     "wireframe_id": 23,
+     "kind": "body",
+     "group": 1,
+     "wing": null,
+     "threshold": null,
+     "name": "Стек и разлом · INT",
+     "volume": 400860.9784810354,
+     "area": 27579.23361117117,
+     "triangles": 816
+    },
+    {
+     "wireframe_id": 24,
+     "kind": "surface",
+     "group": 2,
+     "wing": null,
+     "threshold": null,
+     "name": "Стек и разлом · ALV · поверхность",
+     "volume": null,
+     "area": 179819.46549079195,
+     "triangles": 4376
+    },
+    {
+     "wireframe_id": 25,
+     "kind": "body",
+     "group": 2,
+     "wing": null,
+     "threshold": null,
+     "name": "Стек и разлом · ALV",
+     "volume": 12277255.882499775,
+     "area": 469355.58633313497,
+     "triangles": 4572
+    },
+    {
+     "wireframe_id": 26,
+     "kind": "surface",
+     "group": 3,
+     "wing": 0,
+     "threshold": null,
+     "name": "Стек и разлом · SS, крыло 0 · поверхность",
+     "volume": null,
+     "area": 134557.10008425327,
+     "triangles": 4145
+    },
+    {
+     "wireframe_id": 27,
+     "kind": "body",
+     "group": 3,
+     "wing": 0,
+     "threshold": null,
+     "name": "Стек и разлом · SS, крыло 0",
+     "volume": 3037827.2590081557,
+     "area": 193789.7071695,
+     "triangles": 6224
+    },
+    {
+     "wireframe_id": 28,
+     "kind": "surface",
+     "group": 3,
+     "wing": 1,
+     "threshold": null,
+     "name": "Стек и разлом · SS, крыло 1 · поверхность",
+     "volume": null,
+     "area": 142172.5316189783,
+     "triangles": 4319
+    },
+    {
+     "wireframe_id": 29,
+     "kind": "body",
+     "group": 3,
+     "wing": 1,
+     "threshold": null,
+     "name": "Стек и разлом · SS, крыло 1",
+     "volume": 3208706.692591319,
+     "area": 202257.6446030635,
+     "triangles": 6396
+    },
+    {
+     "wireframe_id": 30,
+     "kind": "surface",
+     "group": 4,
+     "wing": null,
+     "threshold": null,
+     "name": "Стек и разлом · SH · поверхность",
+     "volume": null,
+     "area": 146265.38625334593,
+     "triangles": 5155
+    },
+    {
+     "wireframe_id": 31,
+     "kind": "body",
+     "group": 4,
+     "wing": null,
+     "threshold": null,
+     "name": "Стек и разлом · SH",
+     "volume": 16087664.772804296,
+     "area": 574128.3966215147,
+     "triangles": 9160
+    },
+    {
+     "wireframe_id": 32,
+     "kind": "body",
+     "group": null,
+     "wing": 0,
+     "threshold": null,
+     "name": "Стек и разлом · Прочее, крыло 0",
+     "volume": 816393.0107586463,
+     "area": 240993.08571192287,
+     "triangles": 8302
+    },
+    {
+     "wireframe_id": 33,
+     "kind": "body",
+     "group": null,
+     "wing": 1,
+     "threshold": null,
+     "name": "Стек и разлом · Прочее, крыло 1",
+     "volume": 1215291.4038567764,
+     "area": 291306.9212085559,
+     "triangles": 9740
+    }
+   ],
+   "stats": {
+    "points": 6277,
+    "patches": 97,
+    "max_residual": 2.2808421817899216e-12,
+    "cond_max": 1300470.0,
+    "eta_max": 0.0,
+    "seconds": 1.179,
+    "reused": {
+     "patches": 97,
+     "bricks": 4056
+    },
+    "by_group": [
+     {
+      "group": 1,
+      "wing": null,
+      "points": 1241,
+      "patches": 8,
+      "h_bar": 9.553846153846138,
+      "max_residual": 1.744382416291046e-12,
+      "cond_max": 113567.0,
+      "eta_min": 0.0,
+      "eta_max": 0.0,
+      "support_share": null,
+      "faults": [],
+      "offset": null,
+      "offset_by_fault": null
+     },
+     {
+      "group": 2,
+      "wing": null,
+      "points": 1300,
+      "patches": 36,
+      "h_bar": 4.999999999999989,
+      "max_residual": 5.258016244624741e-13,
+      "cond_max": 232186.0,
+      "eta_min": 0.0,
+      "eta_max": 0.0,
+      "support_share": null,
+      "faults": [],
+      "offset": null,
+      "offset_by_fault": null
+     },
+     {
+      "group": 3,
+      "wing": 0,
+      "points": 998,
+      "patches": 22,
+      "h_bar": 4.999999999999988,
+      "max_residual": 1.3500311979441904e-12,
+      "cond_max": 138244.0,
+      "eta_min": 0.0,
+      "eta_max": 0.0,
+      "support_share": null,
+      "faults": [
+       5
+      ],
+      "offset": {
+       "mean": 6.872674228090389,
+       "max": 61.84468224338155
+      },
+      "offset_by_fault": {
+       "5": {
+        "mean": 6.872674228090389,
+        "max": 61.84468224338155
+       }
+      }
+     },
+     {
+      "group": 3,
+      "wing": 1,
+      "points": 1052,
+      "patches": 22,
+      "h_bar": 4.999999999999987,
+      "max_residual": 1.1723955140041653e-12,
+      "cond_max": 259305.0,
+      "eta_min": 0.0,
+      "eta_max": 0.0,
+      "support_share": null,
+      "faults": [
+       5
+      ],
+      "offset": {
+       "mean": 6.872674228090389,
+       "max": 61.84468224338155
+      },
+      "offset_by_fault": {
+       "5": {
+        "mean": 6.872674228090389,
+        "max": 61.84468224338155
+       }
+      }
+     },
+     {
+      "group": 4,
+      "wing": null,
+      "points": 1351,
+      "patches": 8,
+      "h_bar": 4.9999999999999885,
+      "max_residual": 2.2808421817899216e-12,
+      "cond_max": 1300470.0,
+      "eta_min": 0.0,
+      "eta_max": 0.0,
+      "support_share": null,
+      "faults": [],
+      "offset": null,
+      "offset_by_fault": null
+     },
+     {
+      "group": 5,
+      "wing": null,
+      "points": 273,
+      "patches": 1,
+      "h_bar": 15.0,
+      "max_residual": 4.973799150320701e-14,
+      "cond_max": 21366.3,
+      "eta_min": 0.0,
+      "eta_max": 0.0,
+      "support_share": null,
+      "faults": [],
+      "offset": null,
+      "offset_by_fault": null
+     }
+    ],
+    "balance": 0.0,
+    "stack": {
+     "order": [
+      1,
+      2,
+      3,
+      4
+     ],
+     "relations": {
+      "1": "intrusion",
+      "2": "conformable",
+      "3": "conformable",
+      "4": "conformable"
+     },
+     "dropped": [
+      {
+       "group": 2,
+       "by": 1,
+       "relation": "intrusion",
+       "points": 8,
+       "of": 1308,
+       "undefined": 0
+      },
+      {
+       "group": 3,
+       "by": 1,
+       "relation": "intrusion",
+       "points": 25,
+       "of": 2075,
+       "undefined": 0
+      },
+      {
+       "group": 4,
+       "by": 1,
+       "relation": "intrusion",
+       "points": 29,
+       "of": 1380,
+       "undefined": 0
+      }
+     ],
+     "dropped_total": 62
+    },
+    "faults": {
+     "5": {
+      "radius": null,
+      "points": 273,
+      "wing_volumes": [
+       17640000.0,
+       19404000.0
+      ],
+      "balance": 0.0,
+      "max_residual": 4.973799150320701e-14
+     }
+    }
+   },
+   "reused": {
+    "patches": 97,
+    "bricks": 4056
+   },
+   "journal": [
+    "Разломы: «Разлом»; порядок — разломы, затем группы по стеку отношений.",
+    "Разлом «Разлом»: точек 273, участков 1, η = 0, наибольшая невязка в данных 4,9738e-14, радиус влияния бесконечный.",
+    "Разлом «Разлом»: крыло 0 — 1,764e+07 м³, крыло 1 — 1,9404e+07 м³.",
+    "Группа «INT»: точек 1241, участков 8, η = 0, наибольшая обусловленность 113567, наибольшая невязка в данных 1,74438e-12.",
+    "«INT»: тело 400861 м³, контакт 27579,2 м².",
+    "Группа «ALV»: интрузия группы «INT» — отброшено точек 8 из 1308 (внутри тела группы «INT»).",
+    "Группа «ALV»: точек 1300, участков 36, η = 0, наибольшая обусловленность 232186, наибольшая невязка в данных 5,25802e-13.",
+    "«ALV»: тело 1,22773e+07 м³, контакт 179819 м².",
+    "Группа «SS»: интрузия группы «INT» — отброшено точек 25 из 2075 (внутри тела группы «INT»).",
+    "Группа «SS»: крыло 0: точек 998, участков 22, наибольшая невязка в данных 1,35003e-12.",
+    "«SS, крыло 0»: тело 3,03783e+06 м³, контакт 134557 м².",
+    "Группа «SS»: крыло 1: точек 1052, участков 22, наибольшая невязка в данных 1,1724e-12.",
+    "«SS, крыло 1»: тело 3,20871e+06 м³, контакт 142173 м².",
+    "Группа «SH»: интрузия группы «INT» — отброшено точек 29 из 1380 (внутри тела группы «INT»).",
+    "Группа «SH»: точек 1351, участков 8, η = 0, наибольшая обусловленность 1,30047e+06, наибольшая невязка в данных 2,28084e-12.",
+    "«SH»: тело 1,60877e+07 м³, контакт 146265 м².",
+    "Группа «SS»: смещение крыльев через «Разлом» — среднее 6,87267 м, наибольшее 61,8447 м.",
+    "«Прочее, крыло 0»: объём 816393 м³.",
+    "«Прочее, крыло 1»: объём 1,21529e+06 м³.",
+    "Сумма объёмов доменов и «Прочее» отличается от объёма границы на 0 (доля).",
+    "Обновление: из кеша взято участков 97 из 97, кирпичей 4056."
+   ],
+   "stages": {
+    "Данные": 0.052,
+    "Участки": 0.182,
+    "Изоповерхности": 0.738,
+    "Тела": 0.204,
+    "Проверки": 0.002,
+    "Запись": 0.159,
+    "total": 1.337
+   },
+   "events": [
+    [
+     "implicit.changed",
+     {
+      "kind": "implicit_model",
+      "id": 14
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 19
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 20
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 21
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 22
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 23
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 24
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 25
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 26
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 27
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 28
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 29
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 30
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 31
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 32
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 33
+     }
+    ]
+   ]
+  }
+ },
+ "vein_system_post": {
+  "status": 200,
+  "body": {
+   "id": 34,
+   "version": 2,
+   "group": {
+    "id": 4,
+    "name": "Жилы",
+    "type": "vein_system",
+    "codes": [
+     "VN",
+     "VN2"
+    ],
+    "relation": "conformable",
+    "faults": [],
+    "params": {
+     "veins": [
+      {
+       "code": "VN",
+       "name": "Жила VN",
+       "bound": "hull",
+       "polygon": null,
+       "offset": 0.0,
+       "t_min": 0.0
+      },
+      {
+       "code": "VN2",
+       "name": "Жила VN2",
+       "bound": "hull",
+       "polygon": null,
+       "offset": 0.0,
+       "t_min": 0.0
+      }
+     ]
+    }
+   }
+  }
+ },
+ "vein_system_bad": {
+  "status": 422,
+  "body": {
+   "param": "group.params.veins",
+   "code": "bad_param",
+   "message": "В системе жил нужно не меньше двух жил.",
+   "hint": "Добавьте жилы."
+  }
+ },
+ "vein_system_result": {
+  "status": 200,
+  "body": {
+   "model_id": 34,
+   "version": 2,
+   "state": "ready",
+   "mode": "build",
+   "outputs": [
+    {
+     "wireframe_id": 35,
+     "kind": "surface",
+     "group": 3,
+     "wing": null,
+     "threshold": null,
+     "name": "Система жил · SS · поверхность",
+     "volume": null,
+     "area": 363279.9094200388,
+     "triangles": 9322
+    },
+    {
+     "wireframe_id": 36,
+     "kind": "body",
+     "group": 3,
+     "wing": null,
+     "threshold": null,
+     "name": "Система жил · SS",
+     "volume": 6350070.855812739,
+     "area": 381984.34282156464,
+     "triangles": 9516
+    },
+    {
+     "wireframe_id": 37,
+     "kind": "body",
+     "group": null,
+     "wing": null,
+     "threshold": null,
+     "name": "Система жил · Прочее",
+     "volume": 30693929.14418726,
+     "area": 1050175.476018513,
+     "triangles": 9552
+    },
+    {
+     "wireframe_id": 38,
+     "kind": "body",
+     "group": 4,
+     "wing": null,
+     "threshold": null,
+     "name": "Система жил · Жилы · Жила VN",
+     "volume": 58125.01143328165,
+     "area": 42303.00133609011,
+     "triangles": 988,
+     "code": "VN"
+    },
+    {
+     "wireframe_id": 39,
+     "kind": "body",
+     "group": 4,
+     "wing": null,
+     "threshold": null,
+     "name": "Система жил · Жилы · Жила VN2",
+     "volume": 94005.37408050314,
+     "area": 49707.22484749442,
+     "triangles": 1228,
+     "code": "VN2"
+    },
+    {
+     "wireframe_id": 40,
+     "kind": "body",
+     "group": 4,
+     "wing": null,
+     "threshold": null,
+     "name": "Система жил · Жилы · общее тело",
+     "volume": 152130.38551378486,
+     "area": 91657.10046254899,
+     "triangles": 2200,
+     "common": true
+    },
+    {
+     "line_layer_id": 42,
+     "kind": "line",
+     "group": 4,
+     "wing": null,
+     "threshold": null,
+     "name": "Система жил · пересечение VN × VN2",
+     "lines": 1,
+     "length": 89.8965152026691
+    }
+   ],
+   "stats": {
+    "points": 2087,
+    "patches": 64,
+    "max_residual": 7.425171588693047e-13,
+    "cond_max": 454096.0,
+    "eta_max": 0.0,
+    "seconds": 0.886,
+    "reused": {
+     "patches": 0,
+     "bricks": 0
+    },
+    "by_group": [
+     {
+      "group": 3,
+      "wing": null,
+      "points": 2087,
+      "patches": 64,
+      "h_bar": 4.999999999999988,
+      "max_residual": 7.425171588693047e-13,
+      "cond_max": 454096.0,
+      "eta_min": 0.0,
+      "eta_max": 0.0,
+      "support_share": null,
+      "faults": [],
+      "offset": null,
+      "offset_by_fault": null
+     }
+    ],
+    "balance": 0.0,
+    "stack": {
+     "order": [
+      3
+     ],
+     "relations": {
+      "3": "conformable"
+     },
+     "dropped": [],
+     "dropped_total": 0
+    },
+    "vein_pairs": [
+     {
+      "group": 4,
+      "a": "VN",
+      "b": "VN2",
+      "line_length": 89.89651520266908,
+      "volume_common": 160.71993891872123
+     }
+    ]
+   },
+   "reused": {
+    "patches": 0,
+    "bricks": 0
+   },
+   "journal": [
+    "Группа «SS»: точек 2087, участков 64, η = 0, наибольшая обусловленность 454096, наибольшая невязка в данных 7,42517e-13.",
+    "Группа «SS»: тело 6,35007e+06 м³, контакт 363280 м².",
+    "«Прочее»: объём 3,06939e+07 м³.",
+    "Группа «Жилы»: Система жил: 2; порядок в списке — возраст (первая жила — самая молодая).",
+    "Группа «Жилы»: Жила «Жила VN» (VN): Жила: контактов на висячем боку — 13, на лежачем — 13; узлов сетки — 248.",
+    "Группа «Жилы»: Жила «Жила VN» (VN): Опорная плоскость: падение 53.0°, средняя мощность 2.851 м.",
+    "Группа «Жилы»: Жила «Жила VN2» (VN2): Жила: контактов на висячем боку — 14, на лежачем — 14; узлов сетки — 287.",
+    "Группа «Жилы»: Жила «Жила VN2» (VN2): Опорная плоскость: падение 53.3°, средняя мощность 4.000 м.",
+    "Группа «Жилы»: Жилы «Жила VN» и «Жила VN2»: общая зона 160.72 м³, линии пересечения 89.8965 м; режет молодая «Жила VN».",
+    "Группа «Жилы»: Жила «Жила VN2» (VN2): вырезана молодыми жилами VN; объём 94166.1 → 94005.4 м³.",
+    "Группа «Жилы», «Жила VN»: Обрезка охватом модели: объём 58 125,011 → 58 125,011 м³.",
+    "Группа «Жилы»: «Жила VN», объём 58125 м³.",
+    "Группа «Жилы», «Жила VN2»: Обрезка охватом модели: объём 94 005,374 → 94 005,374 м³.",
+    "Группа «Жилы»: «Жила VN2», объём 94005,4 м³.",
+    "Группа «Жилы», «Общее тело»: Обрезка охватом модели: объём 152 130,386 → 152 130,386 м³.",
+    "Группа «Жилы»: «Общее тело», объём 152130 м³.",
+    "Сумма объёмов доменов и «Прочее» отличается от объёма границы на 0 (доля)."
+   ],
+   "stages": {
+    "Данные": 0.023,
+    "Тела": 0.13,
+    "Участки": 0.083,
+    "Изоповерхности": 0.649,
+    "Проверки": 0.001,
+    "Запись": 0.086,
+    "total": 0.973
+   },
+   "events": [
+    [
+     "implicit.changed",
+     {
+      "kind": "implicit_model",
+      "id": 34
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 35
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 36
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 37
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 38
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 39
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 40
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "line_layer",
+      "id": 42
+     }
+    ]
+   ]
+  }
+ },
+ "model_veins": {
+  "status": 200,
+  "body": {
+   "id": 34,
+   "name": "Система жил",
+   "version": 2,
+   "meta": {
+    "v": 1,
+    "name": "Система жил",
+    "boundary": {
+     "box": [
+      0.0,
+      0.0,
+      120.0,
+      420.0,
+      420.0,
+      330.0
+     ],
+     "wireframe_id": null,
+     "dtm_id": null
+    },
+    "h": 10.0,
+    "levels": 2,
+    "kernel": "linear",
+    "kernel_radius": null,
+    "smoothing": {
+     "mode": "manual",
+     "s": null
+    },
+    "trend_id": null,
+    "anisotropy": null,
+    "pou": {
+     "n_patch": 300,
+     "n_min": 100,
+     "delta": 0.25
+    },
+    "data": {
+     "set_id": 1,
+     "table": "4",
+     "field": "CODE",
+     "d_max": 30.0,
+     "step": 5.0
+    },
+    "groups": [
+     {
+      "id": 3,
+      "name": "SS",
+      "type": "domain",
+      "codes": [
+       "SS"
+      ],
+      "relation": "conformable",
+      "faults": [],
+      "params": {}
+     },
+     {
+      "id": 4,
+      "name": "Жилы",
+      "type": "vein_system",
+      "codes": [
+       "VN",
+       "VN2"
+      ],
+      "relation": "conformable",
+      "faults": [],
+      "params": {
+       "veins": [
+        {
+         "code": "VN",
+         "name": "Жила VN",
+         "bound": "hull",
+         "polygon": null,
+         "offset": 0.0,
+         "t_min": 0.0
+        },
+        {
+         "code": "VN2",
+         "name": "Жила VN2",
+         "bound": "hull",
+         "polygon": null,
+         "offset": 0.0,
+         "t_min": 0.0
+        }
+       ]
+      }
+     }
+    ],
+    "manual": [],
+    "post": {
+     "v_min": 0.0,
+     "simplify": false,
+     "clip": "boundary",
+     "clip_id": null
+    },
+    "h_used": 10.0,
+    "algo": "rbf-1",
+    "created_at": "2026-11-26T01:53:50.663162+00:00",
+    "extent": [
+     0.0,
+     0.0,
+     120.0,
+     420.0,
+     420.0,
+     330.0
+    ],
+    "inputs": [
+     {
+      "kind": "dh_set",
+      "id": 1,
+      "fp": "traj:1:4:4:minimum_curvature",
+      "name": "Скважины"
+     },
+     {
+      "kind": "dh_table",
+      "id": 4,
+      "fp": "66124370df766:1",
+      "name": "Литология жил"
+     }
+    ],
+    "state": "ready",
+    "error": null,
+    "outputs": [
+     {
+      "wireframe_id": 35,
+      "kind": "surface",
+      "group": 3,
+      "wing": null,
+      "name": "Система жил · SS · поверхность"
+     },
+     {
+      "wireframe_id": 36,
+      "kind": "body",
+      "group": 3,
+      "wing": null,
+      "name": "Система жил · SS"
+     },
+     {
+      "wireframe_id": 37,
+      "kind": "body",
+      "group": null,
+      "wing": null,
+      "name": "Система жил · Прочее"
+     },
+     {
+      "wireframe_id": 38,
+      "kind": "body",
+      "group": 4,
+      "wing": null,
+      "name": "Система жил · Жилы · Жила VN",
+      "code": "VN"
+     },
+     {
+      "wireframe_id": 39,
+      "kind": "body",
+      "group": 4,
+      "wing": null,
+      "name": "Система жил · Жилы · Жила VN2",
+      "code": "VN2"
+     },
+     {
+      "wireframe_id": 40,
+      "kind": "body",
+      "group": 4,
+      "wing": null,
+      "name": "Система жил · Жилы · общее тело",
+      "common": true
+     },
+     {
+      "line_layer_id": 42,
+      "kind": "line",
+      "group": 4,
+      "wing": null,
+      "name": "Система жил · пересечение VN × VN2",
+      "pair": [
+       "VN",
+       "VN2"
+      ]
+     }
+    ],
+    "stats": {
+     "points": 2087,
+     "patches": 64,
+     "max_residual": 7.425171588693047e-13,
+     "cond_max": 454096.0,
+     "eta_max": 0.0,
+     "seconds": 0.886,
+     "reused": {
+      "patches": 0,
+      "bricks": 0
+     },
+     "by_group": [
+      {
+       "group": 3,
+       "wing": null,
+       "points": 2087,
+       "patches": 64,
+       "h_bar": 4.999999999999988,
+       "max_residual": 7.425171588693047e-13,
+       "cond_max": 454096.0,
+       "eta_min": 0.0,
+       "eta_max": 0.0,
+       "support_share": null,
+       "faults": [],
+       "offset": null,
+       "offset_by_fault": null
+      }
+     ],
+     "balance": 0.0,
+     "stack": {
+      "order": [
+       3
+      ],
+      "relations": {
+       "3": "conformable"
+      },
+      "dropped": [],
+      "dropped_total": 0
+     },
+     "vein_pairs": [
+      {
+       "group": 4,
+       "a": "VN",
+       "b": "VN2",
+       "line_length": 89.89651520266908,
+       "volume_common": 160.71993891872123
+      }
+     ]
+    },
+    "last_run": {
+     "at": "2026-11-26T01:53:51.798127+00:00",
+     "job": 7,
+     "mode": "build",
+     "seconds": 0.886,
+     "params": "b3446f79f1d36410010cdf57096cb3e26f7288fda625003b4a54d469fde5b492"
+    },
+    "versions": {
+     "numpy": "2.3.5",
+     "scipy": "1.18.1",
+     "numba": "0.68.1",
+     "skimage": "0.26.0",
+     "manifold3d": "3.5.4"
+    }
+   },
+   "state": "ready",
+   "error": null,
+   "stale": false,
+   "stale_reason": null,
+   "source_lost": false,
+   "outputs": [
+    {
+     "wireframe_id": 35,
+     "kind": "surface",
+     "group": 3,
+     "wing": null,
+     "threshold": null,
+     "name": "Система жил · SS · поверхность",
+     "volume": null,
+     "area": 363279.9094200388,
+     "triangles": 9322
+    },
+    {
+     "wireframe_id": 36,
+     "kind": "body",
+     "group": 3,
+     "wing": null,
+     "threshold": null,
+     "name": "Система жил · SS",
+     "volume": 6350070.855812739,
+     "area": 381984.34282156464,
+     "triangles": 9516
+    },
+    {
+     "wireframe_id": 37,
+     "kind": "body",
+     "group": null,
+     "wing": null,
+     "threshold": null,
+     "name": "Система жил · Прочее",
+     "volume": 30693929.14418726,
+     "area": 1050175.476018513,
+     "triangles": 9552
+    },
+    {
+     "wireframe_id": 38,
+     "kind": "body",
+     "group": 4,
+     "wing": null,
+     "threshold": null,
+     "name": "Система жил · Жилы · Жила VN",
+     "volume": 58125.01143328165,
+     "area": 42303.00133609011,
+     "triangles": 988,
+     "code": "VN"
+    },
+    {
+     "wireframe_id": 39,
+     "kind": "body",
+     "group": 4,
+     "wing": null,
+     "threshold": null,
+     "name": "Система жил · Жилы · Жила VN2",
+     "volume": 94005.37408050314,
+     "area": 49707.22484749442,
+     "triangles": 1228,
+     "code": "VN2"
+    },
+    {
+     "wireframe_id": 40,
+     "kind": "body",
+     "group": 4,
+     "wing": null,
+     "threshold": null,
+     "name": "Система жил · Жилы · общее тело",
+     "volume": 152130.38551378486,
+     "area": 91657.10046254899,
+     "triangles": 2200,
+     "common": true
+    },
+    {
+     "line_layer_id": 42,
+     "kind": "line",
+     "group": 4,
+     "wing": null,
+     "threshold": null,
+     "name": "Система жил · пересечение VN × VN2",
+     "lines": 1,
+     "length": 89.8965152026691
+    }
+   ],
+   "created_at": "2026-11-26T01:53:50.663162Z",
+   "updated_at": "2026-11-26T01:53:50.685050Z"
+  }
+ },
+ "outputs_veins": {
+  "status": 200,
+  "body": {
+   "outputs": [
+    {
+     "wireframe_id": 35,
+     "kind": "surface",
+     "group": 3,
+     "wing": null,
+     "threshold": null,
+     "name": "Система жил · SS · поверхность",
+     "volume": null,
+     "area": 363279.9094200388,
+     "triangles": 9322
+    },
+    {
+     "wireframe_id": 36,
+     "kind": "body",
+     "group": 3,
+     "wing": null,
+     "threshold": null,
+     "name": "Система жил · SS",
+     "volume": 6350070.855812739,
+     "area": 381984.34282156464,
+     "triangles": 9516
+    },
+    {
+     "wireframe_id": 37,
+     "kind": "body",
+     "group": null,
+     "wing": null,
+     "threshold": null,
+     "name": "Система жил · Прочее",
+     "volume": 30693929.14418726,
+     "area": 1050175.476018513,
+     "triangles": 9552
+    },
+    {
+     "wireframe_id": 38,
+     "kind": "body",
+     "group": 4,
+     "wing": null,
+     "threshold": null,
+     "name": "Система жил · Жилы · Жила VN",
+     "volume": 58125.01143328165,
+     "area": 42303.00133609011,
+     "triangles": 988,
+     "code": "VN"
+    },
+    {
+     "wireframe_id": 39,
+     "kind": "body",
+     "group": 4,
+     "wing": null,
+     "threshold": null,
+     "name": "Система жил · Жилы · Жила VN2",
+     "volume": 94005.37408050314,
+     "area": 49707.22484749442,
+     "triangles": 1228,
+     "code": "VN2"
+    },
+    {
+     "wireframe_id": 40,
+     "kind": "body",
+     "group": 4,
+     "wing": null,
+     "threshold": null,
+     "name": "Система жил · Жилы · общее тело",
+     "volume": 152130.38551378486,
+     "area": 91657.10046254899,
+     "triangles": 2200,
+     "common": true
+    },
+    {
+     "line_layer_id": 42,
+     "kind": "line",
+     "group": 4,
+     "wing": null,
+     "threshold": null,
+     "name": "Система жил · пересечение VN × VN2",
+     "lines": 1,
+     "length": 89.8965152026691
+    }
+   ]
+  }
+ },
+ "delete_veins": {
+  "status": 200,
+  "body": {
+   "deleted": 34,
+   "wireframes": [
+    35,
+    36,
+    37,
+    38,
+    39,
+    40
+   ],
+   "line_layers": [
+    42
+   ]
+  }
+ },
+ "planned_post": {
+  "status": 200,
+  "body": {
+   "id": 13,
+   "name": "ПС-1",
+   "version": 1,
+   "meta": {
+    "v": 1,
+    "collar": [
+     210.0,
+     210.0,
+     330.0
+    ],
+    "azimuth": 90.0,
+    "dip": -70.0,
+    "length": 100.0,
+    "target": null,
+    "change": {
+     "azimuth": 1.5,
+     "dip": 0.5
+    },
+    "method": "minimum_curvature",
+    "set_id": 1
+   },
+   "trajectory": {
+    "depth": [
+     0.0,
+     1.0,
+     2.0,
+     3.0,
+     4.0,
+     5.0,
+     6.0,
+     7.0,
+     8.0,
+     9.0,
+     10.0,
+     11.0,
+     12.0,
+     13.0,
+     14.0,
+     15.0,
+     16.0,
+     17.0,
+     18.0,
+     19.0,
+     20.0,
+     21.0,
+     22.0,
+     23.0,
+     24.0,
+     25.0,
+     26.0,
+     27.0,
+     28.0,
+     29.0,
+     30.0,
+     31.0,
+     32.0,
+     33.0,
+     34.0,
+     35.0,
+     36.0,
+     37.0,
+     38.0,
+     39.0,
+     40.0,
+     41.0,
+     42.0,
+     43.0,
+     44.0,
+     45.0,
+     46.0,
+     47.0,
+     48.0,
+     49.0,
+     50.0,
+     51.0,
+     52.0,
+     53.0,
+     54.0,
+     55.0,
+     56.0,
+     57.0,
+     58.0,
+     59.0,
+     60.0,
+     61.0,
+     62.0,
+     63.0,
+     64.0,
+     65.0,
+     66.0,
+     67.0,
+     68.0,
+     69.0,
+     70.0,
+     71.0,
+     72.0,
+     73.0,
+     74.0,
+     75.0,
+     76.0,
+     77.0,
+     78.0,
+     79.0,
+     80.0,
+     81.0,
+     82.0,
+     83.0,
+     84.0,
+     85.0,
+     86.0,
+     87.0,
+     88.0,
+     89.0,
+     90.0,
+     91.0,
+     92.0,
+     93.0,
+     94.0,
+     95.0,
+     96.0,
+     97.0,
+     98.0,
+     99.0,
+     100.0
+    ],
+    "x": [
+     210.0,
+     210.34206109239148,
+     210.68420407934502,
+     211.02642895550537,
+     211.36873571551595,
+     211.7111243540189,
+     212.05359486565507,
+     212.3961472450641,
+     212.73878148688425,
+     213.08149758575257,
+     213.4242955363048,
+     213.76717522893202,
+     214.11013655401513,
+     214.45317950617283,
+     214.7963040800226,
+     215.1395102701805,
+     215.48279807126139,
+     215.82616747787887,
+     216.1696184846452,
+     216.51315108617143,
+     216.85676527706724,
+     217.20046094695564,
+     217.5442379854495,
+     217.88809638714145,
+     218.2320361466228,
+     218.57605725848362,
+     218.92015971731269,
+     219.2643435176975,
+     219.60860865422435,
+     219.9529551214781,
+     220.29738291404246,
+     220.6418919207739,
+     220.98648203051874,
+     221.33115323784352,
+     221.67590553731344,
+     222.02073892349242,
+     222.36565339094315,
+     222.71064893422704,
+     223.05572554790416,
+     223.40088322653338,
+     223.74612196467223,
+     224.0914416504123,
+     224.4368421718349,
+     224.78232352348044,
+     225.12788569988794,
+     225.4735286955952,
+     225.8192525051387,
+     226.16505712305369,
+     226.51094254387408,
+     226.85690876213258,
+     227.20295577236055,
+     227.54908346188626,
+     227.8952917180277,
+     228.241580535299,
+     228.58794990821298,
+     228.9343998312812,
+     229.280930299014,
+     229.62754130592035,
+     229.974232846508,
+     230.3210049152834,
+     230.66785750675174,
+     231.01479050747955,
+     231.36180380402305,
+     231.70889739087008,
+     232.05607126250723,
+     232.40332541341982,
+     232.75065983809188,
+     233.09807453100615,
+     233.4455694866441,
+     233.79314469948594,
+     234.14080016401064,
+     234.48853576602454,
+     234.83635139132372,
+     235.18424703436975,
+     235.53222268962287,
+     235.88027835154207,
+     236.22841401458513,
+     236.57662967320843,
+     236.9249253218672,
+     237.2733009550153,
+     237.62175656710536,
+     237.9702920431853,
+     238.31890726829263,
+     238.66760223686254,
+     239.01637694332894,
+     239.36523138212445,
+     239.71416554768047,
+     240.06317943442707,
+     240.41227303679312,
+     240.76144634920612,
+     241.1106993660924,
+     241.46003197174292,
+     241.80944405043832,
+     242.15893559658736,
+     242.50850660459756,
+     242.8581570688752,
+     243.20788698382518,
+     243.55769634385126,
+     243.90758514335582,
+     244.25755337674005,
+     244.60760103840386
+    ],
+    "y": [
+     210.0,
+     209.9999551223821,
+     209.99982048952901,
+     209.99959610144293,
+     209.9992819581273,
+     209.99887805958713,
+     209.99838440582863,
+     209.99780099685958,
+     209.99712783268913,
+     209.99636491332777,
+     209.99551223878748,
+     209.99456959473716,
+     209.9935367668472,
+     209.99241375513375,
+     209.99120055961447,
+     209.98989718030842,
+     209.98850361723598,
+     209.98701987041906,
+     209.98544593988095,
+     209.9837818256463,
+     209.98202752774128,
+     209.98018283219199,
+     209.97824752502603,
+     209.9762216062738,
+     209.97410507596726,
+     209.97189793413963,
+     209.96960018082564,
+     209.96721181606142,
+     209.9647328398846,
+     209.96216325233408,
+     209.95950305345033,
+     209.9567520296194,
+     209.95390996722884,
+     209.95097686632343,
+     209.94795272694947,
+     209.94483754915458,
+     209.94163133298795,
+     209.9383340785001,
+     209.93494578574303,
+     209.93146645477012,
+     209.92789608563632,
+     209.92423446509022,
+     209.9204813798821,
+     209.9166368300712,
+     209.91270081571838,
+     209.90867333688578,
+     209.90455439363708,
+     209.90034398603743,
+     209.89604211415335,
+     209.89164877805283,
+     209.88716397780533,
+     209.88258750052483,
+     209.8779191333269,
+     209.87315887628552,
+     209.8683067294761,
+     209.86336269297556,
+     209.8583267668622,
+     209.85319895121583,
+     209.84797924611775,
+     209.84266765165057,
+     209.83726416789855,
+     209.83176858234367,
+     209.8261806824695,
+     209.82050046836486,
+     209.81472794011992,
+     209.80886309782642,
+     209.80290594157748,
+     209.79685647146778,
+     209.79071468759335,
+     209.7844805900518,
+     209.77815417894212,
+     209.77173524211705,
+     209.7652235674309,
+     209.75861915498734,
+     209.75192200489158,
+     209.74513211725028,
+     209.7382494921715,
+     209.73127412976484,
+     209.7242060301414,
+     209.71704519341372,
+     209.70979161969584,
+     209.7024450972138,
+     209.6950054141954,
+     209.68747257075935,
+     209.6798465670259,
+     209.6721274031168,
+     209.66431507915527,
+     209.65640959526598,
+     209.64841095157516,
+     209.64031914821047,
+     209.63213418530108,
+     209.62385585144912,
+     209.6154839352584,
+     209.60701843686286,
+     209.59845935639802,
+     209.5898066940008,
+     209.58106044980968,
+     209.5722206239646,
+     209.56328721660702,
+     209.5542602278799,
+     209.54513965792765
+    ],
+    "z": [
+     330.0,
+     329.06032228623127,
+     328.1206743963022,
+     327.18105634492036,
+     326.2414681467927,
+     325.301909816626,
+     324.36238136912624,
+     323.4228828189992,
+     322.48341418095004,
+     321.54397546968346,
+     320.6045666999038,
+     319.665187848482,
+     318.72583889231277,
+     317.78651984613515,
+     316.8472307246877,
+     315.90797154270854,
+     314.96874231493535,
+     314.02954305610524,
+     313.090373780955,
+     312.1512345042208,
+     311.21212524063833,
+     310.2730459669412,
+     309.33399665988657,
+     308.394977334245,
+     307.4559880047867,
+     306.51702868628126,
+     305.57809939349784,
+     304.63920014120527,
+     303.70033094417164,
+     302.7614918171648,
+     301.8226827749521,
+     300.88390379412925,
+     299.9451548513158,
+     299.0064359613139,
+     298.0677471389253,
+     297.1290883989513,
+     296.1904597561926,
+     295.2518612254495,
+     294.3132928215218,
+     293.37475455920895,
+     292.4362464533097,
+     291.49776848028205,
+     290.5593206166076,
+     289.62090287712016,
+     288.6825152766531,
+     287.74415783003934,
+     286.80583055211116,
+     285.86753345770063,
+     284.9292665616391,
+     283.99102987875756,
+     283.0528234238864,
+     282.1146471733456,
+     281.1765011034787,
+     280.23838522915116,
+     279.30029956522804,
+     278.3622441265739,
+     277.42421892805277,
+     276.48622398452824,
+     275.5482593108634,
+     274.6103249219209,
+     273.6724208325628,
+     272.7345470189708,
+     271.79670345735013,
+     270.8588901625981,
+     269.9211071496114,
+     268.98335443328625,
+     268.04563202851847,
+     267.10793995020333,
+     266.17027821323563,
+     265.23264683250966,
+     264.2950458229193,
+     263.3574751605076,
+     262.41993482134154,
+     261.48242482035016,
+     260.54494517246184,
+     259.6074958926046,
+     258.670076995706,
+     257.73268849669296,
+     256.7953304104921,
+     255.85800275202948,
+     254.92070553623063,
+     253.983438739,
+     253.04620233626602,
+     252.10899634298943,
+     251.17182077413045,
+     250.23467564464892,
+     249.29756096950408,
+     248.36047676365473,
+     247.42342304205923,
+     246.48639981967537,
+     245.54940711146054,
+     244.61244489318034,
+     243.67551314062436,
+     242.73861186878523,
+     241.80174109265502,
+     240.8649008272253,
+     239.92809108748722,
+     238.9913118884314,
+     238.05456324504792,
+     237.1178451723265,
+     236.18115768525624
+    ]
+   },
+   "target_depth": null
+  }
+ },
+ "planned_target": {
+  "status": 200,
+  "body": {
+   "id": 14,
+   "name": "ПС-2 (через цель)",
+   "version": 1,
+   "meta": {
+    "v": 1,
+    "collar": [
+     60.0,
+     60.0,
+     330.0
+    ],
+    "azimuth": 51.34019174590991,
+    "dip": -43.138437619671066,
+    "length": 87.74964387392122,
+    "target": [
+     110.0,
+     100.0,
+     270.0
+    ],
+    "change": null,
+    "method": "minimum_curvature",
+    "set_id": 1
+   },
+   "trajectory": {
+    "depth": [
+     0.0,
+     1.0,
+     2.0,
+     3.0,
+     4.0,
+     5.0,
+     6.0,
+     7.0,
+     8.0,
+     9.0,
+     10.0,
+     11.0,
+     12.0,
+     13.0,
+     14.0,
+     15.0,
+     16.0,
+     17.0,
+     18.0,
+     19.0,
+     20.0,
+     21.0,
+     22.0,
+     23.0,
+     24.0,
+     25.0,
+     26.0,
+     27.0,
+     28.0,
+     29.0,
+     30.0,
+     31.0,
+     32.0,
+     33.0,
+     34.0,
+     35.0,
+     36.0,
+     37.0,
+     38.0,
+     39.0,
+     40.0,
+     41.0,
+     42.0,
+     43.0,
+     44.0,
+     45.0,
+     46.0,
+     47.0,
+     48.0,
+     49.0,
+     50.0,
+     51.0,
+     52.0,
+     53.0,
+     54.0,
+     55.0,
+     56.0,
+     57.0,
+     58.0,
+     59.0,
+     60.0,
+     61.0,
+     62.0,
+     63.0,
+     64.0,
+     65.0,
+     66.0,
+     67.0,
+     68.0,
+     69.0,
+     70.0,
+     71.0,
+     72.0,
+     73.0,
+     74.0,
+     75.0,
+     76.0,
+     77.0,
+     78.0,
+     79.0,
+     80.0,
+     81.0,
+     82.0,
+     83.0,
+     84.0,
+     85.0,
+     86.0,
+     87.0,
+     87.74964387392122
+    ],
+    "x": [
+     60.0,
+     60.56980288229819,
+     61.13960576459638,
+     61.709408646894566,
+     62.27921152919276,
+     62.84901441149095,
+     63.41881729378914,
+     63.98862017608733,
+     64.55842305838551,
+     65.1282259406837,
+     65.6980288229819,
+     66.26783170528009,
+     66.83763458757828,
+     67.40743746987647,
+     67.97724035217466,
+     68.54704323447285,
+     69.11684611677103,
+     69.68664899906922,
+     70.25645188136741,
+     70.8262547636656,
+     71.3960576459638,
+     71.96586052826198,
+     72.53566341056018,
+     73.10546629285837,
+     73.67526917515656,
+     74.24507205745475,
+     74.81487493975294,
+     75.38467782205112,
+     75.95448070434931,
+     76.5242835866475,
+     77.09408646894569,
+     77.66388935124388,
+     78.23369223354207,
+     78.80349511584026,
+     79.37329799813845,
+     79.94310088043665,
+     80.51290376273482,
+     81.08270664503303,
+     81.6525095273312,
+     82.2223124096294,
+     82.79211529192759,
+     83.36191817422578,
+     83.93172105652397,
+     84.50152393882216,
+     85.07132682112035,
+     85.64112970341854,
+     86.21093258571673,
+     86.78073546801491,
+     87.35053835031312,
+     87.92034123261129,
+     88.49014411490948,
+     89.05994699720767,
+     89.62974987950587,
+     90.19955276180406,
+     90.76935564410225,
+     91.33915852640044,
+     91.90896140869863,
+     92.47876429099682,
+     93.048567173295,
+     93.6183700555932,
+     94.18817293789138,
+     94.75797582018959,
+     95.32777870248776,
+     95.89758158478595,
+     96.46738446708414,
+     97.03718734938234,
+     97.60699023168053,
+     98.1767931139787,
+     98.74659599627691,
+     99.31639887857509,
+     99.88620176087329,
+     100.45600464317147,
+     101.02580752546966,
+     101.59561040776785,
+     102.16541329006604,
+     102.73521617236423,
+     103.30501905466242,
+     103.87482193696061,
+     104.44462481925879,
+     105.014427701557,
+     105.58423058385517,
+     106.15403346615338,
+     106.72383634845156,
+     107.29363923074975,
+     107.86344211304794,
+     108.43324499534613,
+     109.00304787764432,
+     109.57285075994251,
+     110.0
+    ],
+    "y": [
+     60.0,
+     60.45584230583855,
+     60.9116846116771,
+     61.367526917515654,
+     61.823369223354206,
+     62.27921152919276,
+     62.73505383503131,
+     63.19089614086986,
+     63.64673844670841,
+     64.10258075254697,
+     64.55842305838551,
+     65.01426536422407,
+     65.47010767006262,
+     65.92594997590118,
+     66.38179228173972,
+     66.83763458757828,
+     67.29347689341682,
+     67.74931919925538,
+     68.20516150509393,
+     68.66100381093248,
+     69.11684611677103,
+     69.57268842260959,
+     70.02853072844815,
+     70.48437303428669,
+     70.94021534012523,
+     71.3960576459638,
+     71.85189995180235,
+     72.3077422576409,
+     72.76358456347944,
+     73.219426869318,
+     73.67526917515656,
+     74.1311114809951,
+     74.58695378683365,
+     75.0427960926722,
+     75.49863839851076,
+     75.95448070434931,
+     76.41032301018785,
+     76.86616531602641,
+     77.32200762186497,
+     77.77784992770351,
+     78.23369223354206,
+     78.68953453938062,
+     79.14537684521918,
+     79.60121915105772,
+     80.05706145689628,
+     80.51290376273482,
+     80.96874606857338,
+     81.42458837441194,
+     81.88043068025048,
+     82.33627298608903,
+     82.79211529192759,
+     83.24795759776613,
+     83.70379990360469,
+     84.15964220944323,
+     84.61548451528179,
+     85.07132682112035,
+     85.5271691269589,
+     85.98301143279744,
+     86.438853738636,
+     86.89469604447456,
+     87.35053835031312,
+     87.80638065615165,
+     88.2622229619902,
+     88.71806526782876,
+     89.17390757366731,
+     89.62974987950587,
+     90.08559218534441,
+     90.54143449118297,
+     90.99727679702153,
+     91.45311910286006,
+     91.90896140869862,
+     92.36480371453717,
+     92.82064602037572,
+     93.27648832621428,
+     93.73233063205282,
+     94.18817293789138,
+     94.64401524372994,
+     95.09985754956847,
+     95.55569985540703,
+     96.01154216124559,
+     96.46738446708413,
+     96.9232267729227,
+     97.37906907876123,
+     97.83491138459979,
+     98.29075369043835,
+     98.7465959962769,
+     99.20243830211544,
+     99.658280607954,
+     100.0
+    ],
+    "z": [
+     330.0,
+     329.3162365412422,
+     328.63247308248435,
+     327.94870962372653,
+     327.2649461649687,
+     326.5811827062109,
+     325.89741924745306,
+     325.21365578869523,
+     324.52989232993735,
+     323.84612887117953,
+     323.1623654124217,
+     322.4786019536639,
+     321.79483849490606,
+     321.11107503614824,
+     320.4273115773904,
+     319.7435481186326,
+     319.05978465987477,
+     318.37602120111694,
+     317.6922577423591,
+     317.0084942836013,
+     316.32473082484347,
+     315.64096736608565,
+     314.95720390732777,
+     314.27344044856994,
+     313.5896769898121,
+     312.9059135310543,
+     312.2221500722965,
+     311.53838661353865,
+     310.8546231547808,
+     310.170859696023,
+     309.4870962372652,
+     308.80333277850735,
+     308.11956931974953,
+     307.4358058609917,
+     306.7520424022339,
+     306.06827894347606,
+     305.38451548471824,
+     304.70075202596036,
+     304.01698856720253,
+     303.3332251084447,
+     302.6494616496869,
+     301.96569819092906,
+     301.28193473217124,
+     300.5981712734134,
+     299.9144078146556,
+     299.23064435589777,
+     298.54688089713994,
+     297.8631174383821,
+     297.1793539796243,
+     296.4955905208665,
+     295.8118270621086,
+     295.12806360335077,
+     294.44430014459294,
+     293.7605366858351,
+     293.0767732270773,
+     292.3930097683195,
+     291.70924630956165,
+     291.0254828508038,
+     290.341719392046,
+     289.6579559332882,
+     288.97419247453035,
+     288.29042901577253,
+     287.6066655570147,
+     286.9229020982569,
+     286.23913863949906,
+     285.5553751807412,
+     284.87161172198336,
+     284.18784826322553,
+     283.5040848044677,
+     282.8203213457099,
+     282.13655788695206,
+     281.45279442819424,
+     280.7690309694364,
+     280.0852675106786,
+     279.40150405192077,
+     278.71774059316294,
+     278.0339771344051,
+     277.3502136756473,
+     276.6664502168894,
+     275.98268675813165,
+     275.29892329937377,
+     274.61515984061595,
+     273.9313963818581,
+     273.2476329231003,
+     272.5638694643425,
+     271.88010600558465,
+     271.1963425468268,
+     270.512579088069,
+     270.0
+    ]
+   },
+   "target_depth": 87.74964387392122
+  }
+ },
+ "planned_list": {
+  "status": 200,
+  "body": {
+   "planned_holes": [
+    {
+     "id": 13,
+     "name": "ПС-1",
+     "version": 1,
+     "meta": {
+      "v": 1,
+      "collar": [
+       210.0,
+       210.0,
+       330.0
+      ],
+      "azimuth": 90.0,
+      "dip": -70.0,
+      "length": 100.0,
+      "target": null,
+      "change": {
+       "azimuth": 1.5,
+       "dip": 0.5
+      },
+      "method": "minimum_curvature",
+      "set_id": 1
+     }
+    },
+    {
+     "id": 14,
+     "name": "ПС-2 (через цель)",
+     "version": 1,
+     "meta": {
+      "v": 1,
+      "collar": [
+       60.0,
+       60.0,
+       330.0
+      ],
+      "azimuth": 51.34019174590991,
+      "dip": -43.138437619671066,
+      "length": 87.74964387392122,
+      "target": [
+       110.0,
+       100.0,
+       270.0
+      ],
+      "change": null,
+      "method": "minimum_curvature",
+      "set_id": 1
+     }
+    }
+   ]
+  }
+ },
+ "planned_put": {
+  "status": 200,
+  "body": {
+   "id": 13,
+   "name": "ПС-1 (длиннее)",
+   "version": 2,
+   "meta": {
+    "v": 1,
+    "collar": [
+     210.0,
+     210.0,
+     330.0
+    ],
+    "azimuth": 90.0,
+    "dip": -70.0,
+    "length": 120.0,
+    "target": null,
+    "change": {
+     "azimuth": 1.5,
+     "dip": 0.5
+    },
+    "method": "minimum_curvature",
+    "set_id": 1
+   },
+   "trajectory": {
+    "depth": [
+     0.0,
+     1.0,
+     2.0,
+     3.0,
+     4.0,
+     5.0,
+     6.0,
+     7.0,
+     8.0,
+     9.0,
+     10.0,
+     11.0,
+     12.0,
+     13.0,
+     14.0,
+     15.0,
+     16.0,
+     17.0,
+     18.0,
+     19.0,
+     20.0,
+     21.0,
+     22.0,
+     23.0,
+     24.0,
+     25.0,
+     26.0,
+     27.0,
+     28.0,
+     29.0,
+     30.0,
+     31.0,
+     32.0,
+     33.0,
+     34.0,
+     35.0,
+     36.0,
+     37.0,
+     38.0,
+     39.0,
+     40.0,
+     41.0,
+     42.0,
+     43.0,
+     44.0,
+     45.0,
+     46.0,
+     47.0,
+     48.0,
+     49.0,
+     50.0,
+     51.0,
+     52.0,
+     53.0,
+     54.0,
+     55.0,
+     56.0,
+     57.0,
+     58.0,
+     59.0,
+     60.0,
+     61.0,
+     62.0,
+     63.0,
+     64.0,
+     65.0,
+     66.0,
+     67.0,
+     68.0,
+     69.0,
+     70.0,
+     71.0,
+     72.0,
+     73.0,
+     74.0,
+     75.0,
+     76.0,
+     77.0,
+     78.0,
+     79.0,
+     80.0,
+     81.0,
+     82.0,
+     83.0,
+     84.0,
+     85.0,
+     86.0,
+     87.0,
+     88.0,
+     89.0,
+     90.0,
+     91.0,
+     92.0,
+     93.0,
+     94.0,
+     95.0,
+     96.0,
+     97.0,
+     98.0,
+     99.0,
+     100.0,
+     101.0,
+     102.0,
+     103.0,
+     104.0,
+     105.0,
+     106.0,
+     107.0,
+     108.0,
+     109.0,
+     110.0,
+     111.0,
+     112.0,
+     113.0,
+     114.0,
+     115.0,
+     116.0,
+     117.0,
+     118.0,
+     119.0,
+     120.0
+    ],
+    "x": [
+     210.0,
+     210.34206109239148,
+     210.68420407934502,
+     211.02642895550537,
+     211.36873571551595,
+     211.7111243540189,
+     212.05359486565507,
+     212.3961472450641,
+     212.73878148688425,
+     213.08149758575257,
+     213.4242955363048,
+     213.76717522893202,
+     214.11013655401513,
+     214.45317950617283,
+     214.7963040800226,
+     215.1395102701805,
+     215.48279807126139,
+     215.82616747787887,
+     216.1696184846452,
+     216.51315108617143,
+     216.85676527706724,
+     217.20046094695564,
+     217.5442379854495,
+     217.88809638714145,
+     218.2320361466228,
+     218.57605725848362,
+     218.92015971731269,
+     219.2643435176975,
+     219.60860865422435,
+     219.9529551214781,
+     220.29738291404246,
+     220.6418919207739,
+     220.98648203051874,
+     221.33115323784352,
+     221.67590553731344,
+     222.02073892349242,
+     222.36565339094315,
+     222.71064893422704,
+     223.05572554790416,
+     223.40088322653338,
+     223.74612196467223,
+     224.0914416504123,
+     224.4368421718349,
+     224.78232352348044,
+     225.12788569988794,
+     225.4735286955952,
+     225.8192525051387,
+     226.16505712305369,
+     226.51094254387408,
+     226.85690876213258,
+     227.20295577236055,
+     227.54908346188626,
+     227.8952917180277,
+     228.241580535299,
+     228.58794990821298,
+     228.9343998312812,
+     229.280930299014,
+     229.62754130592035,
+     229.974232846508,
+     230.3210049152834,
+     230.66785750675174,
+     231.01479050747955,
+     231.36180380402305,
+     231.70889739087008,
+     232.05607126250723,
+     232.40332541341982,
+     232.75065983809188,
+     233.09807453100615,
+     233.4455694866441,
+     233.79314469948594,
+     234.14080016401064,
+     234.48853576602454,
+     234.83635139132372,
+     235.18424703436975,
+     235.53222268962287,
+     235.88027835154207,
+     236.22841401458513,
+     236.57662967320843,
+     236.9249253218672,
+     237.2733009550153,
+     237.62175656710536,
+     237.9702920431853,
+     238.31890726829263,
+     238.66760223686254,
+     239.01637694332894,
+     239.36523138212445,
+     239.71416554768047,
+     240.06317943442707,
+     240.41227303679312,
+     240.76144634920612,
+     241.1106993660924,
+     241.46003197174292,
+     241.80944405043832,
+     242.15893559658736,
+     242.50850660459756,
+     242.8581570688752,
+     243.20788698382518,
+     243.55769634385126,
+     243.90758514335582,
+     244.25755337674005,
+     244.60760103840386,
+     244.95772801188295,
+     245.3079341807027,
+     245.65821953924538,
+     246.00858408189214,
+     246.3590278030227,
+     246.7095506970157,
+     247.06015275824825,
+     247.41083398109643,
+     247.76159435993492,
+     248.11243388913718,
+     248.46335245148538,
+     248.8143499297512,
+     249.1654263182905,
+     249.51658161145787,
+     249.86781580360656,
+     250.21912888908867,
+     250.5705208622549,
+     250.9219917174548,
+     251.2735414490366,
+     251.62517005134723
+    ],
+    "y": [
+     210.0,
+     209.9999551223821,
+     209.99982048952901,
+     209.99959610144293,
+     209.9992819581273,
+     209.99887805958713,
+     209.99838440582863,
+     209.99780099685958,
+     209.99712783268913,
+     209.99636491332777,
+     209.99551223878748,
+     209.99456959473716,
+     209.9935367668472,
+     209.99241375513375,
+     209.99120055961447,
+     209.98989718030842,
+     209.98850361723598,
+     209.98701987041906,
+     209.98544593988095,
+     209.9837818256463,
+     209.98202752774128,
+     209.98018283219199,
+     209.97824752502603,
+     209.9762216062738,
+     209.97410507596726,
+     209.97189793413963,
+     209.96960018082564,
+     209.96721181606142,
+     209.9647328398846,
+     209.96216325233408,
+     209.95950305345033,
+     209.9567520296194,
+     209.95390996722884,
+     209.95097686632343,
+     209.94795272694947,
+     209.94483754915458,
+     209.94163133298795,
+     209.9383340785001,
+     209.93494578574303,
+     209.93146645477012,
+     209.92789608563632,
+     209.92423446509022,
+     209.9204813798821,
+     209.9166368300712,
+     209.91270081571838,
+     209.90867333688578,
+     209.90455439363708,
+     209.90034398603743,
+     209.89604211415335,
+     209.89164877805283,
+     209.88716397780533,
+     209.88258750052483,
+     209.8779191333269,
+     209.87315887628552,
+     209.8683067294761,
+     209.86336269297556,
+     209.8583267668622,
+     209.85319895121583,
+     209.84797924611775,
+     209.84266765165057,
+     209.83726416789855,
+     209.83176858234367,
+     209.8261806824695,
+     209.82050046836486,
+     209.81472794011992,
+     209.80886309782642,
+     209.80290594157748,
+     209.79685647146778,
+     209.79071468759335,
+     209.7844805900518,
+     209.77815417894212,
+     209.77173524211705,
+     209.7652235674309,
+     209.75861915498734,
+     209.75192200489158,
+     209.74513211725028,
+     209.7382494921715,
+     209.73127412976484,
+     209.7242060301414,
+     209.71704519341372,
+     209.70979161969584,
+     209.7024450972138,
+     209.6950054141954,
+     209.68747257075935,
+     209.6798465670259,
+     209.6721274031168,
+     209.66431507915527,
+     209.65640959526598,
+     209.64841095157516,
+     209.64031914821047,
+     209.63213418530108,
+     209.62385585144912,
+     209.6154839352584,
+     209.60701843686286,
+     209.59845935639802,
+     209.5898066940008,
+     209.58106044980968,
+     209.5722206239646,
+     209.56328721660702,
+     209.5542602278799,
+     209.54513965792765,
+     209.53592529573112,
+     209.5266169302729,
+     209.51721456170225,
+     209.50771819017004,
+     209.49812781582855,
+     209.4884434388317,
+     209.47866505933476,
+     209.4687926774946,
+     209.45882629346963,
+     209.44876590741967,
+     209.43861130870692,
+     209.42836228669535,
+     209.41801884154972,
+     209.40758097343644,
+     209.39704868252326,
+     209.38642196897962,
+     209.37570083297635,
+     209.3648852746859,
+     209.35397529428212,
+     209.3429708919405
+    ],
+    "z": [
+     330.0,
+     329.06032228623127,
+     328.1206743963022,
+     327.18105634492036,
+     326.2414681467927,
+     325.301909816626,
+     324.36238136912624,
+     323.4228828189992,
+     322.48341418095004,
+     321.54397546968346,
+     320.6045666999038,
+     319.665187848482,
+     318.72583889231277,
+     317.78651984613515,
+     316.8472307246877,
+     315.90797154270854,
+     314.96874231493535,
+     314.02954305610524,
+     313.090373780955,
+     312.1512345042208,
+     311.21212524063833,
+     310.2730459669412,
+     309.33399665988657,
+     308.394977334245,
+     307.4559880047867,
+     306.51702868628126,
+     305.57809939349784,
+     304.63920014120527,
+     303.70033094417164,
+     302.7614918171648,
+     301.8226827749521,
+     300.88390379412925,
+     299.9451548513158,
+     299.0064359613139,
+     298.0677471389253,
+     297.1290883989513,
+     296.1904597561926,
+     295.2518612254495,
+     294.3132928215218,
+     293.37475455920895,
+     292.4362464533097,
+     291.49776848028205,
+     290.5593206166076,
+     289.62090287712016,
+     288.6825152766531,
+     287.74415783003934,
+     286.80583055211116,
+     285.86753345770063,
+     284.9292665616391,
+     283.99102987875756,
+     283.0528234238864,
+     282.1146471733456,
+     281.1765011034787,
+     280.23838522915116,
+     279.30029956522804,
+     278.3622441265739,
+     277.42421892805277,
+     276.48622398452824,
+     275.5482593108634,
+     274.6103249219209,
+     273.6724208325628,
+     272.7345470189708,
+     271.79670345735013,
+     270.8588901625981,
+     269.9211071496114,
+     268.98335443328625,
+     268.04563202851847,
+     267.10793995020333,
+     266.17027821323563,
+     265.23264683250966,
+     264.2950458229193,
+     263.3574751605076,
+     262.41993482134154,
+     261.48242482035016,
+     260.54494517246184,
+     259.6074958926046,
+     258.670076995706,
+     257.73268849669296,
+     256.7953304104921,
+     255.85800275202948,
+     254.92070553623063,
+     253.983438739,
+     253.04620233626602,
+     252.10899634298943,
+     251.17182077413045,
+     250.23467564464892,
+     249.29756096950408,
+     248.36047676365473,
+     247.42342304205923,
+     246.48639981967537,
+     245.54940711146054,
+     244.61244489318034,
+     243.67551314062436,
+     242.73861186878523,
+     241.80174109265502,
+     240.8649008272253,
+     239.92809108748722,
+     238.9913118884314,
+     238.05456324504792,
+     237.1178451723265,
+     236.18115768525624,
+     235.24450075946382,
+     234.30787437059985,
+     233.37127853368878,
+     232.4347132637546,
+     231.49817857582073,
+     230.56167448491016,
+     229.62520100604536,
+     228.68875815424832,
+     227.75234594454056,
+     226.81596439194306,
+     225.8796134719433,
+     224.94329316005272,
+     224.00700347132778,
+     223.07074442082424,
+     222.1345160235975,
+     221.19831829470243,
+     220.2621512491934,
+     219.3260149021243,
+     218.3899092685485,
+     217.45383436351892
+    ]
+   },
+   "target_depth": null
+  }
+ },
+ "planned_conflict": {
+  "status": 409,
+  "body": {
+   "version": 2,
+   "code": "version_conflict",
+   "message": "Проектная скважина изменена в другом окне.",
+   "hint": "Перечитайте скважину или сохраните свою под новым именем."
+  }
+ },
+ "planned_bad": {
+  "status": 422,
+  "body": {
+   "param": "azimuth",
+   "code": "bad_param",
+   "message": "Азимут: нужно число [0; 360).",
+   "hint": "Исправьте значение в окне."
+  }
+ },
+ "planned_target_far": {
+  "status": 422,
+  "body": {
+   "param": "length",
+   "need": 300.0,
+   "code": "target_beyond_length",
+   "message": "Длина 100 м не достаёт до цели (300.000 м).",
+   "hint": "Увеличьте длину не менее чем до 300 м."
+  }
+ },
+ "planned_evaluate": {
+  "status": 200,
+  "body": {
+   "id": 13,
+   "intervals": [
+    {
+     "from": 0.0,
+     "to": 60.906589678329176,
+     "code": null
+    },
+    {
+     "from": 60.906589678329176,
+     "to": 103.83676643383393,
+     "code": "SS"
+    },
+    {
+     "from": 103.83676643383393,
+     "to": 120.0,
+     "code": null
+    }
+   ],
+   "codes": [
+    {
+     "code": "INT",
+     "length": 0.0
+    },
+    {
+     "code": "SS",
+     "length": 42.93017675550475
+    }
+   ],
+   "nearest": [
+    {
+     "hole": "H057",
+     "hole_id": 57,
+     "distance": 14.88580575614888,
+     "depth": 78.0960609206789
+    },
+    {
+     "hole": "H047",
+     "hole_id": 47,
+     "distance": 18.27419783396882,
+     "depth": 82.6030320261123
+    },
+    {
+     "hole": "H058",
+     "hole_id": 58,
+     "distance": 29.336169325491237,
+     "depth": 90.48794770540444
+    },
+    {
+     "hole": "H048",
+     "hole_id": 48,
+     "distance": 48.90451982300913,
+     "depth": 91.28443238816503
+    },
+    {
+     "hole": "H067",
+     "hole_id": 67,
+     "distance": 54.285042596595815,
+     "depth": 86.5326678437141
+    }
+   ],
+   "target": {
+    "point": [
+     251.62517005134723,
+     209.3429708919405,
+     217.45383436351892
+    ],
+    "depth": 120.0
+   },
+   "length": 120.0,
+   "inside": 42.93017675550475,
+   "journal": [
+    "Модель «Литология» устарела (изменены траектории): тела взяты как они есть.",
+    "Каркасов, внутри которых стволов нет (или они целиком закрыты телами выше по списку), — 1: «Литология · INT»."
+   ],
+   "set_id": 1
+  }
+ },
+ "planned_evaluate_set": {
+  "status": 200,
+  "body": {
+   "id": 14,
+   "intervals": null,
+   "codes": null,
+   "nearest": [
+    {
+     "hole": "H023",
+     "hole_id": 23,
+     "distance": 16.82743721329988,
+     "depth": 28.498802726297995
+    },
+    {
+     "hole": "H014",
+     "hole_id": 14,
+     "distance": 31.220324901931154,
+     "depth": 40.07702100977389
+    },
+    {
+     "hole": "H024",
+     "hole_id": 24,
+     "distance": 36.63976121500676,
+     "depth": 20.840950028904317
+    },
+    {
+     "hole": "H033",
+     "hole_id": 33,
+     "distance": 44.06843609841852,
+     "depth": 30.74828515282774
+    },
+    {
+     "hole": "H013",
+     "hole_id": 13,
+     "distance": 44.61851801184812,
+     "depth": 13.973487411036182
+    }
+   ],
+   "target": {
+    "point": [
+     110.0,
+     100.0,
+     270.0
+    ],
+    "depth": 87.74964387392122
+   },
+   "set_id": 1
+  }
+ },
+ "planned_evaluate_bad": {
+  "status": 422,
+  "body": {
+   "param": "model_id",
+   "code": "bad_param",
+   "message": "Нечего проверять: не выбраны модель, каркасы или набор скважин.",
+   "hint": "Выберите модель или каркасы для прогноза либо набор для ближайших скважин."
+  }
+ },
+ "planned_compare": {
+  "status": 200,
+  "body": {
+   "id": 13,
+   "set_id": 1,
+   "rows": [
+    {
+     "depth": 0.0,
+     "dx": -193.27,
+     "dy": -193.98,
+     "dz": -29.04000000000002,
+     "d": 275.3631327901395
+    },
+    {
+     "depth": 1.0,
+     "dx": -193.4321947599755,
+     "dy": -193.87230734313383,
+     "dz": -29.078105522989915,
+     "d": 275.4051955664921
+    },
+    {
+     "depth": 2.0,
+     "dx": -193.59447141451304,
+     "dy": -193.7645249310325,
+     "dz": -29.11624086981942,
+     "d": 275.4473923753913
+    },
+    {
+     "depth": 3.0,
+     "dx": -193.75682995825738,
+     "dy": -193.65665276369813,
+     "dz": -29.154406055196205,
+     "d": 275.48972341549126
+    },
+    {
+     "depth": 4.0,
+     "dx": -193.91927038585197,
+     "dy": -193.54869084113426,
+     "dz": -29.192601093827193,
+     "d": 275.5321888852942
+    },
+    {
+     "depth": 5.0,
+     "dx": -194.08179269193892,
+     "dy": -193.44063916334582,
+     "dz": -29.23082600041903,
+     "d": 275.5747889831493
+    },
+    {
+     "depth": 6.0,
+     "dx": -194.2443968711591,
+     "dy": -193.33249773033904,
+     "dz": -29.2690807896779,
+     "d": 275.61752390725195
+    },
+    {
+     "depth": 7.0,
+     "dx": -194.40708291815213,
+     "dy": -193.22426654212174,
+     "dz": -29.307365476309485,
+     "d": 275.6603938556429
+    },
+    {
+     "depth": 8.0,
+     "dx": -194.5698508275563,
+     "dy": -193.11594559870304,
+     "dz": -29.34568007501889,
+     "d": 275.70339902620736
+    },
+    {
+     "depth": 9.0,
+     "dx": -194.73270059400863,
+     "dy": -193.0075349000934,
+     "dz": -29.38402460051094,
+     "d": 275.7465396166741
+    },
+    {
+     "depth": 10.0,
+     "dx": -194.89563221214487,
+     "dy": -192.89903444630485,
+     "dz": -29.42239906748989,
+     "d": 275.78981582461483
+    },
+    {
+     "depth": 11.0,
+     "dx": -195.05864557235608,
+     "dy": -192.79044402300627,
+     "dz": -29.460803452826667,
+     "d": 275.8332276198718
+    },
+    {
+     "depth": 12.0,
+     "dx": -195.2217405650232,
+     "dy": -192.68176341586803,
+     "dz": -29.499237733416066,
+     "d": 275.8767749723386
+    },
+    {
+     "depth": 13.0,
+     "dx": -195.3849171847649,
+     "dy": -192.57299262490633,
+     "dz": -29.537701923997076,
+     "d": 275.9204580794265
+    },
+    {
+     "depth": 14.0,
+     "dx": -195.54817542619867,
+     "dy": -192.4641316501388,
+     "dz": -29.576196039308172,
+     "d": 275.96427713838784
+    },
+    {
+     "depth": 15.0,
+     "dx": -195.7115152839406,
+     "dy": -192.35518049158446,
+     "dz": -29.61472009408766,
+     "d": 276.0082323463148
+    },
+    {
+     "depth": 16.0,
+     "dx": -195.8749367526055,
+     "dy": -192.24613914926377,
+     "dz": -29.6532741030731,
+     "d": 276.052323900139
+    },
+    {
+     "depth": 17.0,
+     "dx": -196.03843982680698,
+     "dy": -192.1370076231986,
+     "dz": -29.691858081001556,
+     "d": 276.09655199663035
+    },
+    {
+     "depth": 18.0,
+     "dx": -196.20202450115733,
+     "dy": -192.0277859134122,
+     "dz": -29.73047204260996,
+     "d": 276.14091683239633
+    },
+    {
+     "depth": 19.0,
+     "dx": -196.36569077026755,
+     "dy": -191.9184740199293,
+     "dz": -29.769116002634348,
+     "d": 276.18541860388086
+    },
+    {
+     "depth": 20.0,
+     "dx": -196.52943862874736,
+     "dy": -191.80907194277603,
+     "dz": -29.807789975810465,
+     "d": 276.230057507364
+    },
+    {
+     "depth": 21.0,
+     "dx": -196.69326796621976,
+     "dy": -191.69957946797845,
+     "dz": -29.84649393887196,
+     "d": 276.27483351162124
+    },
+    {
+     "depth": 22.0,
+     "dx": -196.85717867229766,
+     "dy": -191.58999638156425,
+     "dz": -29.885227868575896,
+     "d": 276.31974658547557
+    },
+    {
+     "depth": 23.0,
+     "dx": -197.0211707415736,
+     "dy": -191.48032268356377,
+     "dz": -29.923991779692983,
+     "d": 276.36479692503013
+    },
+    {
+     "depth": 24.0,
+     "dx": -197.18524416863895,
+     "dy": -191.37055837400894,
+     "dz": -29.9627856869933,
+     "d": 276.40998472622226
+    },
+    {
+     "depth": 25.0,
+     "dx": -197.34939894808377,
+     "dy": -191.26070345293306,
+     "dz": -30.001609605246415,
+     "d": 276.4553101848224
+    },
+    {
+     "depth": 26.0,
+     "dx": -197.51363507449685,
+     "dy": -191.1507579203708,
+     "dz": -30.040463549221613,
+     "d": 276.5007734964331
+    },
+    {
+     "depth": 27.0,
+     "dx": -197.67795254246568,
+     "dy": -191.0407217763583,
+     "dz": -30.079347533687667,
+     "d": 276.5463748564888
+    },
+    {
+     "depth": 28.0,
+     "dx": -197.84235134657652,
+     "dy": -190.93059502093323,
+     "dz": -30.11826157341261,
+     "d": 276.5921144602542
+    },
+    {
+     "depth": 29.0,
+     "dx": -198.00683148141428,
+     "dy": -190.82037765413446,
+     "dz": -30.15720568316442,
+     "d": 276.63799250282375
+    },
+    {
+     "depth": 30.0,
+     "dx": -198.17139294156266,
+     "dy": -190.71006967600243,
+     "dz": -30.196179877710335,
+     "d": 276.6840091791211
+    },
+    {
+     "depth": 31.0,
+     "dx": -198.3360356158781,
+     "dy": -190.59967087292324,
+     "dz": -30.235184133646044,
+     "d": 276.73016445679536
+    },
+    {
+     "depth": 32.0,
+     "dx": -198.50075939320695,
+     "dy": -190.48918103128443,
+     "dz": -30.274218427591222,
+     "d": 276.77645830353924
+    },
+    {
+     "depth": 33.0,
+     "dx": -198.66556426811573,
+     "dy": -190.37860015113074,
+     "dz": -30.313282774347954,
+     "d": 276.8228909140834
+    },
+    {
+     "depth": 34.0,
+     "dx": -198.83045023516965,
+     "dy": -190.26792823250852,
+     "dz": -30.352377188717924,
+     "d": 276.86946248298585
+    },
+    {
+     "depth": 35.0,
+     "dx": -198.99541728893263,
+     "dy": -190.1571652754654,
+     "dz": -30.391501685502533,
+     "d": 276.91617320463064
+    },
+    {
+     "depth": 36.0,
+     "dx": -199.16046542396737,
+     "dy": -190.04631128005047,
+     "dz": -30.430656279502443,
+     "d": 276.9630232732275
+    },
+    {
+     "depth": 37.0,
+     "dx": -199.32559463483528,
+     "dy": -189.93536624631437,
+     "dz": -30.46984098551792,
+     "d": 277.01001288281077
+    },
+    {
+     "depth": 38.0,
+     "dx": -199.4908049160964,
+     "dy": -189.82433017430904,
+     "dz": -30.509055818348884,
+     "d": 277.0571422272385
+    },
+    {
+     "depth": 39.0,
+     "dx": -199.65609626230963,
+     "dy": -189.71320306408785,
+     "dz": -30.548300792794578,
+     "d": 277.1044115001916
+    },
+    {
+     "depth": 40.0,
+     "dx": -199.82146866803248,
+     "dy": -189.6019849157058,
+     "dz": -30.587575923653958,
+     "d": 277.15182089517344
+    },
+    {
+     "depth": 41.0,
+     "dx": -199.98692202135655,
+     "dy": -189.49067551591145,
+     "dz": -30.626881187384924,
+     "d": 277.19937037864787
+    },
+    {
+     "depth": 42.0,
+     "dx": -200.15245621036317,
+     "dy": -189.37927465145503,
+     "dz": -30.666216560469024,
+     "d": 277.2470599171183
+    },
+    {
+     "depth": 43.0,
+     "dx": -200.3180712295927,
+     "dy": -189.2677823223959,
+     "dz": -30.70558205774023,
+     "d": 277.2948897038794
+    },
+    {
+     "depth": 44.0,
+     "dx": -200.4837670735842,
+     "dy": -189.15619852879482,
+     "dz": -30.744977694031775,
+     "d": 277.34285993204605
+    },
+    {
+     "depth": 45.0,
+     "dx": -200.6495437368755,
+     "dy": -189.04452327071397,
+     "dz": -30.784403484176607,
+     "d": 277.39097079455274
+    },
+    {
+     "depth": 46.0,
+     "dx": -200.815401214003,
+     "dy": -188.932756548217,
+     "dz": -30.823859443007052,
+     "d": 277.43922248415254
+    },
+    {
+     "depth": 47.0,
+     "dx": -200.98133949950198,
+     "dy": -188.82089836136907,
+     "dz": -30.863345585355148,
+     "d": 277.4876151934165
+    },
+    {
+     "depth": 48.0,
+     "dx": -201.14735858790638,
+     "dy": -188.7089487102367,
+     "dz": -30.902861926052225,
+     "d": 277.5361491147328
+    },
+    {
+     "depth": 49.0,
+     "dx": -201.31345847374888,
+     "dy": -188.59690759488794,
+     "dz": -30.94240847992927,
+     "d": 277.5848244403057
+    },
+    {
+     "depth": 50.0,
+     "dx": -201.47963915156086,
+     "dy": -188.4847750153922,
+     "dz": -30.98198526181676,
+     "d": 277.63364136215483
+    },
+    {
+     "depth": 51.0,
+     "dx": -201.64590050867056,
+     "dy": -188.37255075886344,
+     "dz": -31.021592248034523,
+     "d": 277.6825998455009
+    },
+    {
+     "depth": 52.0,
+     "dx": -201.81224243239603,
+     "dy": -188.26023461241724,
+     "dz": -31.06122941492623,
+     "d": 277.7316998556003
+    },
+    {
+     "depth": 53.0,
+     "dx": -201.97866491725134,
+     "dy": -188.14782657612758,
+     "dz": -31.10089677735732,
+     "d": 277.7809415842485
+    },
+    {
+     "depth": 54.0,
+     "dx": -202.14516795774932,
+     "dy": -188.03532665006992,
+     "dz": -31.1405943501928,
+     "d": 277.8303252230549
+    },
+    {
+     "depth": 55.0,
+     "dx": -202.31175154840156,
+     "dy": -187.9227348343211,
+     "dz": -31.18032214829725,
+     "d": 277.87985096344124
+    },
+    {
+     "depth": 56.0,
+     "dx": -202.47841568371834,
+     "dy": -187.8100511289595,
+     "dz": -31.220080186534744,
+     "d": 277.9295189966418
+    },
+    {
+     "depth": 57.0,
+     "dx": -202.6451603582087,
+     "dy": -187.69727553406483,
+     "dz": -31.259868479768812,
+     "d": 277.9793295137018
+    },
+    {
+     "depth": 58.0,
+     "dx": -202.81198556638034,
+     "dy": -187.5844080497185,
+     "dz": -31.29968704286256,
+     "d": 278.0292827054771
+    },
+    {
+     "depth": 59.0,
+     "dx": -202.97889130273975,
+     "dy": -187.47144867600306,
+     "dz": -31.33953589067869,
+     "d": 278.07937876263287
+    },
+    {
+     "depth": 60.0,
+     "dx": -203.14587756179213,
+     "dy": -187.35839741300276,
+     "dz": -31.379415038079202,
+     "d": 278.1296178756433
+    },
+    {
+     "depth": 61.0,
+     "dx": -203.31294423010394,
+     "dy": -187.24525404819963,
+     "dz": -31.419324461245765,
+     "d": 278.1800000084284
+    },
+    {
+     "depth": 62.0,
+     "dx": -203.48009119423145,
+     "dy": -187.1320183690772,
+     "dz": -31.45926413638375,
+     "d": 278.2305251249405
+    },
+    {
+     "depth": 63.0,
+     "dx": -203.64731844866247,
+     "dy": -187.0186903757243,
+     "dz": -31.499234078390288,
+     "d": 278.28119341541424
+    },
+    {
+     "depth": 64.0,
+     "dx": -203.81462598788363,
+     "dy": -186.9052700682311,
+     "dz": -31.539234302162185,
+     "d": 278.33200506989124
+    },
+    {
+     "depth": 65.0,
+     "dx": -203.98201380638022,
+     "dy": -186.79175744668933,
+     "dz": -31.57926482259566,
+     "d": 278.3829602782195
+    },
+    {
+     "depth": 66.0,
+     "dx": -204.14948189863628,
+     "dy": -186.67815251119214,
+     "dz": -31.619325654586476,
+     "d": 278.43405923005236
+    },
+    {
+     "depth": 67.0,
+     "dx": -204.31703025913458,
+     "dy": -186.56445526183415,
+     "dz": -31.659416813029964,
+     "d": 278.4853021148481
+    },
+    {
+     "depth": 68.0,
+     "dx": -204.48465888235654,
+     "dy": -186.45066569871148,
+     "dz": -31.69953831282089,
+     "d": 278.5366891218684
+    },
+    {
+     "depth": 69.0,
+     "dx": -204.65236776278238,
+     "dy": -186.33678382192164,
+     "dz": -31.739690168853485,
+     "d": 278.58822044017853
+    },
+    {
+     "depth": 70.0,
+     "dx": -204.82015689489108,
+     "dy": -186.2228096315637,
+     "dz": -31.779872396021744,
+     "d": 278.6398962586457
+    },
+    {
+     "depth": 71.0,
+     "dx": -204.98802616448899,
+     "dy": -186.10874291549038,
+     "dz": -31.82008497036864,
+     "d": 278.6917165398333
+    },
+    {
+     "depth": 72.0,
+     "dx": -205.15597545737216,
+     "dy": -185.99458346155598,
+     "dz": -31.86032786796119,
+     "d": 278.7436812463335
+    },
+    {
+     "depth": 73.0,
+     "dx": -205.3240047680022,
+     "dy": -185.88033126986414,
+     "dz": -31.900601103728434,
+     "d": 278.79579056675914
+    },
+    {
+     "depth": 74.0,
+     "dx": -205.49211409083932,
+     "dy": -185.76598634052013,
+     "dz": -31.940904692598707,
+     "d": 278.84804468952353
+    },
+    {
+     "depth": 75.0,
+     "dx": -205.66030342034253,
+     "dy": -185.65154867363054,
+     "dz": -31.981238649500085,
+     "d": 278.90044380283985
+    },
+    {
+     "depth": 76.0,
+     "dx": -205.8285727509696,
+     "dy": -185.5370182693035,
+     "dz": -32.021602989360076,
+     "d": 278.95298809472047
+    },
+    {
+     "depth": 77.0,
+     "dx": -205.99692207717692,
+     "dy": -185.4223951276486,
+     "dz": -32.06199772710565,
+     "d": 279.0056777529756
+    },
+    {
+     "depth": 78.0,
+     "dx": -206.16535139341968,
+     "dy": -185.30767924877688,
+     "dz": -32.1024228776634,
+     "d": 279.0585129652133
+    },
+    {
+     "depth": 79.0,
+     "dx": -206.33386069415178,
+     "dy": -185.19287063280095,
+     "dz": -32.14287845595939,
+     "d": 279.111493918838
+    },
+    {
+     "depth": 80.0,
+     "dx": -206.50244997382586,
+     "dy": -185.0779692798348,
+     "dz": -32.18336447691914,
+     "d": 279.1646208010502
+    },
+    {
+     "depth": 81.0,
+     "dx": -206.6711191174898,
+     "dy": -184.9629749781045,
+     "dz": -32.223880916447115,
+     "d": 279.2178935730014
+    },
+    {
+     "depth": 82.0,
+     "dx": -206.83986801018114,
+     "dy": -184.84788751583784,
+     "dz": -32.264427750471754,
+     "d": 279.27131219586875
+    },
+    {
+     "depth": 83.0,
+     "dx": -207.00869664633507,
+     "dy": -184.73270689315353,
+     "dz": -32.30500499395376,
+     "d": 279.3248768565835
+    },
+    {
+     "depth": 84.0,
+     "dx": -207.17760502038547,
+     "dy": -184.61743311017182,
+     "dz": -32.34561266185338,
+     "d": 279.3785877418709
+    },
+    {
+     "depth": 85.0,
+     "dx": -207.346593126765,
+     "dy": -184.50206616701445,
+     "dz": -32.38625076913047,
+     "d": 279.43244503825
+    },
+    {
+     "depth": 86.0,
+     "dx": -207.515660959905,
+     "dy": -184.38660606380466,
+     "dz": -32.42691933074423,
+     "d": 279.4864489320324
+    },
+    {
+     "depth": 87.0,
+     "dx": -207.6848085142356,
+     "dy": -184.27105280066712,
+     "dz": -32.46761836165348,
+     "d": 279.54059960932136
+    },
+    {
+     "depth": 88.0,
+     "dx": -207.85403578418567,
+     "dy": -184.155406377728,
+     "dz": -32.5083478768166,
+     "d": 279.5948972560118
+    },
+    {
+     "depth": 89.0,
+     "dx": -208.0233427641827,
+     "dy": -184.03966679511507,
+     "dz": -32.54910789119134,
+     "d": 279.6493420577886
+    },
+    {
+     "depth": 90.0,
+     "dx": -208.19272944865298,
+     "dy": -183.92383405295743,
+     "dz": -32.58989841973511,
+     "d": 279.7039342001261
+    },
+    {
+     "depth": 91.0,
+     "dx": -208.36219572188747,
+     "dy": -183.8079079398572,
+     "dz": -32.63071943821353,
+     "d": 279.75867364271045
+    },
+    {
+     "depth": 92.0,
+     "dx": -208.5317414681669,
+     "dy": -183.6918882444182,
+     "dz": -32.67157092241615,
+     "d": 279.8135603452497
+    },
+    {
+     "depth": 93.0,
+     "dx": -208.70136668189994,
+     "dy": -183.57577496677442,
+     "dz": -32.712452887335616,
+     "d": 279.86859449293485
+    },
+    {
+     "depth": 94.0,
+     "dx": -208.87107135749415,
+     "dy": -183.4595681070613,
+     "dz": -32.753365347964035,
+     "d": 279.92377627074495
+    },
+    {
+     "depth": 95.0,
+     "dx": -209.04085548935578,
+     "dy": -183.34326766541582,
+     "dz": -32.794308319292895,
+     "d": 279.9791058634463
+    },
+    {
+     "depth": 96.0,
+     "dx": -209.21071907188977,
+     "dy": -183.22687364197645,
+     "dz": -32.835281816313426,
+     "d": 280.03458345559164
+    },
+    {
+     "depth": 97.0,
+     "dx": -209.3806620994999,
+     "dy": -183.11038603688309,
+     "dz": -32.87628585401623,
+     "d": 280.09020923151934
+    },
+    {
+     "depth": 98.0,
+     "dx": -209.55068456658842,
+     "dy": -182.99380485027726,
+     "dz": -32.91732044739132,
+     "d": 280.1459833753528
+    },
+    {
+     "depth": 99.0,
+     "dx": -209.72078646755665,
+     "dy": -182.87713008230185,
+     "dz": -32.958385611428525,
+     "d": 280.20190607099954
+    },
+    {
+     "depth": 100.0,
+     "dx": -209.8909677968045,
+     "dy": -182.76036173310135,
+     "dz": -32.999481361116864,
+     "d": 280.25797750215065
+    },
+    {
+     "depth": 101.0,
+     "dx": -210.06122843786758,
+     "dy": -182.64349959165656,
+     "dz": -33.04060767208304,
+     "d": 280.3141976269735
+    },
+    {
+     "depth": 102.0,
+     "dx": -210.23156827427132,
+     "dy": -182.5265434469501,
+     "dz": -33.081764519977696,
+     "d": 280.37056640365483
+    },
+    {
+     "depth": 103.0,
+     "dx": -210.40198730039802,
+     "dy": -182.40949329913116,
+     "dz": -33.122951919825226,
+     "d": 280.42708401558804
+    },
+    {
+     "depth": 104.0,
+     "dx": -210.57248551062878,
+     "dy": -182.2923491483507,
+     "dz": -33.16416988664963,
+     "d": 280.48375064594865
+    },
+    {
+     "depth": 105.0,
+     "dx": -210.74306289934339,
+     "dy": -182.17511099476093,
+     "dz": -33.2054184354744,
+     "d": 280.54056647769323
+    },
+    {
+     "depth": 106.0,
+     "dx": -210.91371946092033,
+     "dy": -182.05777883851582,
+     "dz": -33.24669758132242,
+     "d": 280.59753169355866
+    },
+    {
+     "depth": 107.0,
+     "dx": -211.08445518973693,
+     "dy": -181.94035267977063,
+     "dz": -33.28800733921622,
+     "d": 280.65464647606154
+    },
+    {
+     "depth": 108.0,
+     "dx": -211.2552700801691,
+     "dy": -181.82283251868222,
+     "dz": -33.32934772417781,
+     "d": 280.71191100749735
+    },
+    {
+     "depth": 109.0,
+     "dx": -211.4261641265916,
+     "dy": -181.70521835540896,
+     "dz": -33.37071875122868,
+     "d": 280.76932546993964
+    },
+    {
+     "depth": 110.0,
+     "dx": -211.59713732337786,
+     "dy": -181.58751019011075,
+     "dz": -33.41212043538974,
+     "d": 280.82689004523945
+    },
+    {
+     "depth": 111.0,
+     "dx": -211.76818955331007,
+     "dy": -181.46970781214975,
+     "dz": -33.453552752148596,
+     "d": 280.8846046899945
+    },
+    {
+     "depth": 112.0,
+     "dx": -211.9393206991599,
+     "dy": -181.3518110108899,
+     "dz": -33.495015677016625,
+     "d": 280.9424693608185
+    },
+    {
+     "depth": 113.0,
+     "dx": -212.1105307552832,
+     "dy": -181.233819786496,
+     "dz": -33.53650922505028,
+     "d": 281.0004842392517
+    },
+    {
+     "depth": 114.0,
+     "dx": -212.2818197160346,
+     "dy": -181.11573413913447,
+     "dz": -33.57803341130537,
+     "d": 281.0586495066099
+    },
+    {
+     "depth": 115.0,
+     "dx": -212.4531875757673,
+     "dy": -180.99755406897302,
+     "dz": -33.61958825083724,
+     "d": 281.1169653439842
+    },
+    {
+     "depth": 116.0,
+     "dx": -212.6246343288334,
+     "dy": -180.87927957618112,
+     "dz": -33.661173758700755,
+     "d": 281.17543193224026
+    },
+    {
+     "depth": 117.0,
+     "dx": -212.79615996958364,
+     "dy": -180.7609106609296,
+     "dz": -33.70278994995036,
+     "d": 281.23404945201725
+    },
+    {
+     "depth": 118.0,
+     "dx": -212.96776449236754,
+     "dy": -180.64244732339085,
+     "dz": -33.74443683963983,
+     "d": 281.29281808372747
+    },
+    {
+     "depth": 119.0,
+     "dx": -213.13944789153334,
+     "dy": -180.52388956373883,
+     "dz": -33.78611444282265,
+     "d": 281.35173800755547
+    },
+    {
+     "depth": 120.0,
+     "dx": -213.311210161428,
+     "dy": -180.40523738214893,
+     "dz": -33.82782277455169,
+     "d": 281.4108094034571
+    }
+   ],
+   "max": 281.4108094034571,
+   "max_depth": 120.0,
+   "length": {
+    "planned": 120.0,
+    "actual": 126.3,
+    "compared": 120.0
+   },
+   "hole": "H001",
+   "hole_id": 1
+  }
+ },
+ "planned_compare_bad": {
+  "status": 404,
+  "body": {
+   "code": "hole_not_found",
+   "message": "Скважина не найдена в наборе.",
+   "hint": "Выберите скважину из списка набора."
+  }
+ },
+ "planned_export_csv": {
+  "status": 200,
+  "body": {
+   "format": "csv",
+   "files": [
+    "collar.csv",
+    "survey.csv"
+   ],
+   "points": 13,
+   "size": 679
+  }
+ },
+ "planned_export_dxf": {
+  "status": 200,
+  "body": {
+   "format": "dxf",
+   "files": [
+    "ПС-1.dxf"
+   ],
+   "points": 121,
+   "size": 41718
+  }
+ },
+ "planned_export_exists": {
+  "status": 409,
+  "body": {
+   "files": [
+    "collar.csv",
+    "survey.csv"
+   ],
+   "code": "files_exist",
+   "message": "В папке уже есть файлы, которые выгрузка заменит: «collar.csv», «survey.csv».",
+   "hint": "Подтвердите замену или выберите другую папку."
+  }
+ },
+ "planned_delete": {
+  "status": 200,
+  "body": {
+   "deleted": 14
+  }
+ },
+ "planned_read_only": {
   "status": 423,
   "body": {
    "code": "project_read_only",
@@ -2676,146 +7677,6 @@
      0.866025
     ]
    }
-  }
- },
- "relations_b": {
-  "status": 200,
-  "body": {
-   "id": 7,
-   "version": 5
-  }
- },
- "fault_post_b": {
-  "status": 200,
-  "body": {
-   "id": 7,
-   "version": 6,
-   "group": {
-    "id": 6,
-    "name": "Разлом 2",
-    "type": "fault",
-    "codes": [
-     "F2"
-    ],
-    "relation": "conformable",
-    "faults": [],
-    "params": {
-     "radius": null
-    }
-   }
-  }
- },
- "vein_system_result_b": {
-  "status": 200,
-  "body": {
-   "model_id": 7,
-   "version": 7,
-   "state": "ready",
-   "outputs": [
-    {
-     "line_layer_id": 501,
-     "kind": "line",
-     "group": 5,
-     "wing": null,
-     "threshold": null,
-     "name": "Жилы · пересечение V2 × V1"
-    }
-   ],
-   "stats": {
-    "vein_pairs": [
-     {
-      "a": "V2",
-      "b": "V1",
-      "line_length": 182.4,
-      "volume_common": 731.2
-     }
-    ]
-   }
-  }
- },
- "planned_hole_b": {
-  "status": 200,
-  "body": {
-   "id": 15,
-   "name": "ПС-1",
-   "version": 1,
-   "meta": {
-    "v": 1,
-    "collar": [
-     100.0,
-     200.0,
-     50.0
-    ],
-    "azimuth": 90.0,
-    "dip": -60.0,
-    "length": 250.0,
-    "change": null,
-    "target": [
-     300.0,
-     200.0,
-     -150.0
-    ],
-    "method": "minimum_curvature",
-    "set_id": 3
-   },
-   "trajectory": {
-    "depth": [
-     0.0,
-     1.0
-    ],
-    "x": [
-     100.0,
-     100.5
-    ],
-    "y": [
-     200.0,
-     200.0
-    ],
-    "z": [
-     50.0,
-     49.134
-    ]
-   }
-  }
- },
- "planned_evaluate_b": {
-  "status": 200,
-  "body": {
-   "intervals": [
-    {
-     "from": 0.0,
-     "to": 120.5,
-     "code": "Песчаник"
-    },
-    {
-     "from": 120.5,
-     "to": 131.0,
-     "code": "Дайка"
-    }
-   ],
-   "nearest": [
-    {
-     "hole": "B-7",
-     "hole_id": 207,
-     "distance": 38.2,
-     "depth": 212.0
-    }
-   ]
-  }
- },
- "planned_compare_b": {
-  "status": 200,
-  "body": {
-   "rows": [
-    {
-     "depth": 0.0,
-     "dx": 0.0,
-     "dy": 0.0,
-     "dz": 0.0,
-     "d": 0.0
-    }
-   ],
-   "max": 0.0
   }
  }
 }

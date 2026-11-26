@@ -654,6 +654,13 @@
       "limits": {"compile_s": 30.0, "empty_s": 30.0, "left_own": 0, "process_mb": 950},
       "note": "local: total 42.6-46.3 s, compile_s 12.65-12.76, empty_s 12.0-12.9, load_s 0.98, left_own 0, process 370 MB"
     },
+    "implicit_stack": {
+      "params": {"holes": 144, "h": 8.0, "share": 0.05, "threads": 2},
+      "budget_s": 85.0,
+      "budget_mb": 1450,
+      "limits": {"balance": 1e-09, "share_s": 0.9},
+      "note": "Э19б 19.36: сцена «эрозия + налегание + разлом + интрузия». Замер (3 повтора): run 30,8-32,3 с (полное 11,8-12,6, «Обновить» 7,5-7,7, полное на новых данных 11,4-12,5), доля 0,61-0,65 (цель ТЗ 0,25 не достигнута: кирпичи крыльев и поверхность разлома не кешируются), 13,2 тыс. точек, 562-572 МБ"
+    },
     "estimate_idw": {
       "params": {"rows": 600000, "samples": 20000, "threads": 2},
       "budget_s": 5.4,
@@ -1431,6 +1438,13 @@
       "budget_mb": 300,
       "limits": {"compile_s": 30.0, "empty_s": 30.0, "left_own": 0, "left_s": 5.0, "process_mb": 950},
       "note": "target 30 s; local compile_s 5.05 after the steps before it, empty_s 11.5, left_s 0.67, left_own 0, prior_s 60 s"
+    },
+    "implicit_stack": {
+      "params": {"holes": 961, "threads": 4},
+      "budget_s": 650.0,
+      "budget_mb": 3000,
+      "limits": {"balance": 1e-09, "share_s": 0.95},
+      "note": "Э19б 19.36: замер: run 252,7 с (полное 91,5, «Обновить» 72,0, полное на новых данных 89,1), доля 0,81, 75,9 тыс. точек, 1,38 ГБ, 1206 мкс на точку (2,07× implicit_domains; ориентир ≤ 2×)"
     },
     "estimate_idw": {
       "params": {"rows": 20000000, "samples": 100000, "threads": 4},

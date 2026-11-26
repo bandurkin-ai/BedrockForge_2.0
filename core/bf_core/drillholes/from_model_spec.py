@@ -130,7 +130,12 @@ def _model_bodies(conn: sa.Connection, spec: Spec, model_id: int, codes_raw: Any
     groups = [g for g in meta.get("groups") or [] if isinstance(g, Mapping)]
     order = {g.get("id"): i for i, g in enumerate(groups)}
     names = {g.get("id"): str(g.get("name") or "") for g in groups}
-    bodies = [o for o in got["outputs"] if o.get("kind") == "body" and o.get("group") in order]
+    # the bodies of a fault are the space of its wings and the common body of a vein system is the union of the
+    # veins: neither is rock of its own, the coding takes the veins and the wings of the domains (19.36)
+    bodies = [
+        o for o in got["outputs"]
+        if o.get("kind") == "body" and o.get("group") in order and not o.get("region") and not o.get("common")
+    ]  # fmt: skip
     if not bodies:
         raise bad("no_bodies", f"В модели «{got['name']}» нет тел для кодирования.",
                   "Постройте модель и задайте группы с телами (кроме «Прочее»).", "model_id")  # fmt: skip
@@ -149,6 +154,8 @@ def _model_bodies(conn: sa.Connection, spec: Spec, model_id: int, codes_raw: Any
         gid = int(o["group"])
         if gid in renamed:
             code = renamed[gid]
+        elif o.get("code"):  # a vein of a system: its own code (the lithology code), not the name of the system
+            code = str(o["code"])
         else:
             code = names[gid]
             if o.get("threshold") is not None:

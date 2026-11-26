@@ -15,6 +15,7 @@ import { bindIntercepts } from "../modules/intercepts/bind";
 import { bindVariography } from "../modules/variography/bind";
 import { bindEstimation } from "../modules/estimation/bind";
 import { bindImplicit } from "../modules/implicit/bind";
+import { bindPlanned } from "../modules/drillholes/plannedBind";
 import { bindLineage } from "../modules/lineage/bind";
 import { bindSimulation } from "../modules/simulation/bind";
 import { bindDtm } from "../modules/dtm/bind";
@@ -201,6 +202,7 @@ export function createApp(opts: { persist?: boolean } = {}): App {
   bindVariography(app);
   bindEstimation(app);
   bindImplicit(app);
+  bindPlanned(app);
   bindSimulation(app);
   bindLineage(app);
   return app;

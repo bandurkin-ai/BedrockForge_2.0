@@ -167,8 +167,9 @@ def lookup(conn: sa.Connection, req: Request, model_id: int) -> Plan:
         body_code.append(labels.index(code))
     ids = list(own.wireframe_ids)
     rest = [o for o in got["outputs"] if o.get("kind") == "body" and o.get("group") is None]
-    if rest:  # «Прочее»: what is left of the boundary, the last of the priority
-        ids.append(int(min(rest, key=lambda o: int(o["wireframe_id"]))["wireframe_id"]))
+    # «Прочее»: what is left of the boundary (a model with faults has one a wing), the last of the priority
+    for wid in sorted(int(o["wireframe_id"]) for o in rest):
+        ids.append(wid)
         body_code.append(len(labels))
     plan = Plan({"id": model_id, "name": str(got["name"]), "stale_reason": own.model["stale_reason"] if own.model
                  else None}, {"id": int(t.id), "name": str(t.name), "field": name}, ids, body_code,
