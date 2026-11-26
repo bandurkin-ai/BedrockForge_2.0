@@ -7,8 +7,8 @@ ADR 0026 решения 12–15, 18; контракт docs/progress/e19-api.md �
     res.journal   the lines of the journal (Russian); res.stats — the time by stage, the balance of the volumes
 
 The pipeline of a group is «mask of the data → solution → body → subtraction» (решение 15):
-  1. `mask(group, points, younger)` keeps the data points the group may use (Э19: all of them — the place of the
-     stack of Э19б, решения 15 / 19);
+  1. `mask(group, points, solved, journal)` keeps the data points the group may use (here all of them; the stack of
+     Э19б, решения 15 / 19, puts its own `mask_fn` and the order of the solution: `stack.build_stack`);
   2. `bodies_parts.fit_group`: the patches, η, `solve.solve_patches`, the field `evaluate.PatchField`;
   3. `geo.iso.isosurface` of f = 0 in the box of the boundary (+H beyond the patches and the model), `iso_post.
      postprocess` (V_min, pyfqmr, the checks of 8.9.3 п. 7: closed, manifold, no self-intersections, outward);
@@ -56,6 +56,9 @@ if TYPE_CHECKING:
 F8 = NDArray[np.float64]
 FieldFn = Callable[[F8], F8]
 Tick = Callable[[float, str], None]
+#: the mask of the data of a group (Э19б, `stack`): (group, its points, the groups solved before it, the journal) ->
+#: bool[n], True — the point takes part in the solution
+MaskFn = Callable[["Group", "Points", Sequence["Solved"], list[str]], NDArray[np.bool_]]
 
 NEAR = 1.5  # 8.9.3 п. 2: for a domain the cells with min |f| < 1,5·H join the band
 MIN_LEVELS = 1  # `iso_bricks.Grid`: 1–5 (the spec allows 0 — taken as 1, noted in the journal)
@@ -97,9 +100,9 @@ class BodiesResult:
     stats: dict[str, Any] = field(default_factory=dict)
 
 
-def mask(group: Group, points: Points, younger: Sequence[Solved]) -> NDArray[np.bool_]:
-    """Which data points of `group` take part in its solution. Э19: all (the relation of every group is
-    «Согласно»); Э19б (решение 19): `erode` / `onlap` / `intrusion` drop the points inside the bodies of `younger`."""
+def mask(group: Group, points: Points, solved: Sequence[Solved], journal: list[str] | None = None) -> NDArray[np.bool_]:
+    """Which data points of `group` take part in its solution. Here all (the relation of every group is «Согласно»);
+    Э19б (решение 19): `stack.StackPlan.mask` drops the points by the value of the field of the groups in `solved`."""
     return np.ones(points.n, dtype=bool)
 
 
@@ -232,6 +235,8 @@ def build_bodies(
     brick_cache: Callable[[Group], BrickCache | None] | None = None,
     threads: int = 1,
     tick: Tick | None = None,
+    order: Sequence[int] | None = None,
+    mask_fn: MaskFn | None = None,
 ) -> BodiesResult:
     """The surfaces and bodies of the domains of `spec` (see the module text). `points` — the data of all groups
     (`data.load`); `boundary` — the closed solid of the model (a box: `bodies_parts.box_solid`; a wireframe; a wireframe
@@ -239,7 +244,11 @@ def build_bodies(
     anisotropy A (19.9, None — identity), `matrices_of` — A_j of the patches of a structural trend (`fit_group`);
     `eta_of` — η of the automatic smoothing (19.10); `solver` — the solver of the patches (`solve.solve_patches` by
     default; 19.12 puts the cache of patches there); `brick_cache(group)` — the store of the nodes of the bricks of a
-    group. The result is the same bits for any `threads` and any order of the holes that gave the points."""
+    group. The result is the same bits for any `threads` and any order of the holes that gave the points.
+
+    The stack of Э19б (`stack.build_stack`): `order` — the ids of the domains in the order of the solution and of the
+    subtraction (the winner first; None — the order of `spec.groups`, the youngest first), `mask_fn` — the mask of the
+    data (None — all points). The outputs and `fits` stay in the order of `spec.groups` whatever `order` is."""
     from bf_core.geo import solids
 
     lo, hi, bv, bt = _boundary(boundary)
@@ -275,13 +284,26 @@ def build_bodies(
     n = len(groups)
     span = 0.96 / n
     solved: list[Solved] = []
-    for k, group in enumerate(groups):
-        if group.id is None:
-            raise ApiError(422, "bad_param", f"У группы «{group.name}» нет номера.", "Сохраните модель и повторите.",
+    ids = [g.id for g in groups]
+    for g in groups:
+        if g.id is None:
+            raise ApiError(422, "bad_param", f"У группы «{g.name}» нет номера.", "Сохраните модель и повторите.",
                            {"param": "groups"})  # fmt: skip
+    if order is not None:
+        if sorted(order) != sorted(i for i in ids if i is not None):
+            raise ApiError(422, "bad_param", "Порядок расчёта должен содержать каждый домен модели один раз.",
+                           "Это ошибка вызова: повторите построение.", {"param": "order"})  # fmt: skip
+        by_id = {g.id: g for g in groups}
+        sequence = [by_id[i] for i in order]
+    else:
+        sequence = groups
+    for k, group in enumerate(sequence):
+        assert group.id is not None
         a = k * span
         data = points.of_group(group.id)
-        keep = mask(group, data, solved)
+        started = time.perf_counter()
+        keep = (mask_fn or mask)(group, data, solved, journal)
+        timing["mask"] = timing.get("mask", 0.0) + time.perf_counter() - started
         if not bool(keep.all()):
             data = data.take(keep)
         fit = fit_group(spec, group, data, extent=(lo, hi), matrix=matrix, matrices_of=matrices_of, eta_of=eta_of,
@@ -310,6 +332,10 @@ def build_bodies(
         _emit(result, group, tile, fit, journal)
         if tick is not None:
             tick(a + span, f"Тела: «{group.name}» готово")
+    if order is not None:  # the outputs and the fits go by the age of the groups, not by the order of the solution
+        rank = {i: r for r, i in enumerate(ids)}
+        result.outputs.sort(key=lambda o: rank[o.group] if o.group is not None else len(rank))
+        result.fits = {i: result.fits[i] for i in ids if i in result.fits}
     started = time.perf_counter()
     try:
         rest = tiling.rest()
@@ -346,4 +372,4 @@ def _emit(result: BodiesResult, group: Group, tile: Tile, fit: Fit, journal: lis
     journal.append(f"Группа «{group.name}»: тело {_n(tile.volume)} м³, контакт {_n(tile.sheet_area)} м².")
 
 
-__all__ = ["BodiesResult", "Output", "Solved", "build_bodies", "mask"]
+__all__ = ["BodiesResult", "MaskFn", "Output", "Solved", "build_bodies", "mask"]
