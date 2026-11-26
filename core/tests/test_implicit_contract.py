@@ -19,6 +19,7 @@ import json
 import math
 import os
 import re
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +39,11 @@ NOTE = ("ЧАСТЬ КЛЮЧЕЙ — ответы настоящего ядра 
         "trend_*, build_iso_error и ключи *_b пишут подшаги 19.8, "
         "19.32+; defaults, bad_param, refusals пишет spec.py (BF_REGEN_IMPLICIT=1 uv run pytest -q "
         "tests/test_implicit_spec.py). Интерфейс принимается только на настоящих ответах.")  # fmt: skip
+#: the planned holes (19.39: the windows read these; the route is `/planned_holes`, e19-api.md §10)
+PLANNED = ("planned_post", "planned_target", "planned_list", "planned_put", "planned_conflict", "planned_bad",
+           "planned_target_far", "planned_evaluate", "planned_evaluate_set", "planned_evaluate_bad", "planned_compare",
+           "planned_compare_bad", "planned_export_csv", "planned_export_dxf", "planned_export_exists",
+           "planned_delete", "planned_read_only")  # fmt: skip
 #: the keys this test writes, in the order of the file (the samples of the others follow)
 KEYS = ("defaults", "bad_param", "refusals", "models", "model_post", "name_taken", "model_not_found",
         "model_put", "model_put_conflict", "group_post", "group_put", "group_delete", "group_not_found", "preview",
@@ -46,7 +52,7 @@ KEYS = ("defaults", "bad_param", "refusals", "models", "model_post", "name_taken
         "support", "support_one", "support_f4", "support_mesh", "support_bad", "compare_holes", "compare_bad",
         "from_model_submit", "from_model_result", "from_model_exists", "from_model_bad", "build_failed", "model_error",
         "delete_conflict",
-        "delete", "read_only")  # fmt: skip
+        "delete", "read_only", *PLANNED)  # fmt: skip
 MINE = tuple(k for k in KEYS if k not in ("defaults", "bad_param", "refusals"))
 SKIP = ("versions", "seconds", "stages", "fp", "sha", "token", "params", "created_at", "updated_at", "at", "job")
 LOOSE = (
@@ -62,7 +68,8 @@ LOOSE = (
     "over",
     "highlight",
     "f_data",
-)  # a machine may round these otherwise
+    "size",
+)  # a machine may round these otherwise (the size of a DXF: the handles of its entities)
 
 
 def answer(r: Any) -> dict[str, Any]:
@@ -131,6 +138,7 @@ def build(c: Any) -> dict[str, Any]:  # noqa: PLR0915 - one scene, told in order
     shown = c.get(f"{IMP}/models/{mid}").json()["outputs"][1]["wireframe_id"]
     out["to_wireframe"] = answer(c.post(f"{IMP}/models/{mid}/to_wireframe", json={"wireframe_id": shown}))
     checks(c, mid, out)
+    planned(c, mid, out)
     # a job that fails: the state `error` and what the window shows
     ghost = {"name": "Призрак", "type": "domain", "codes": ["НЕТ"]}
     bad_id = c.post(f"{IMP}/models", json=body(w, groups=[W.domain("INT"), ghost], name="Не построится")).json()["id"]
@@ -196,6 +204,50 @@ def checks(c: Any, mid: int, out: dict[str, Any]) -> None:
         c.post(url, json={"set_id": w.set_id, "model_id": mid, "name": "Модель на скважины"})
     )
     out["from_model_bad"] = answer(c.post(url, json={"set_id": w.set_id, "name": "Пусто"}))
+
+
+def planned(c: Any, mid: int, out: dict[str, Any]) -> None:  # noqa: PLR0915 - one scene, told in order
+    """The planned holes (Д-34 ч. 2): the rows, the target mode, the forecast by the bodies of the model `mid`, the
+    nearest holes of the set, «План / факт», the files; the routes are `/planned_holes`."""
+    w = c.w
+    url = f"{API}/planned_holes"
+    new = {"name": "ПС-1", "collar": [210.0, 210.0, 330.0], "azimuth": 90.0, "dip": -70.0, "length": 100.0,
+           "change": {"azimuth": 1.5, "dip": 0.5}, "set_id": w.set_id}  # fmt: skip
+    first = c.post(url, json=new)
+    out["planned_post"] = answer(first)
+    pid = first.json()["id"]
+    aim = c.post(url, json={"name": "ПС-2 (через цель)", "collar": [60.0, 60.0, 330.0], "target": [110.0, 100.0, 270.0],
+                            "set_id": w.set_id})  # fmt: skip
+    out["planned_target"] = answer(aim)
+    out["planned_target_far"] = answer(c.post(url, json={"collar": [0.0, 0.0, 0.0], "target": [300.0, 0.0, 0.0],
+                                                         "length": 100.0}))  # fmt: skip
+    out["planned_list"] = answer(c.get(url))
+    put = c.put(f"{url}/{pid}", json={"expected_version": 1, "length": 120.0, "name": "ПС-1 (длиннее)"})
+    out["planned_put"] = answer(put)
+    out["planned_conflict"] = answer(c.put(f"{url}/{pid}", json={"expected_version": 1, "length": 10.0}))
+    out["planned_bad"] = answer(c.post(url, json={**new, "name": "Плохая", "azimuth": 360.0}))
+    out["planned_evaluate"] = answer(c.post(f"{url}/{pid}/evaluate", json={"model_id": mid, "set_id": w.set_id}))
+    out["planned_evaluate_set"] = answer(c.post(f"{url}/{aim.json()['id']}/evaluate", json={"set_id": w.set_id}))
+    loose = c.post(url, json={"name": "Без набора", "collar": [210.0, 210.0, 330.0], "azimuth": 0.0, "dip": -90.0,
+                              "length": 50.0})  # fmt: skip
+    out["planned_evaluate_bad"] = answer(c.post(f"{url}/{loose.json()['id']}/evaluate", json={}))  # nothing to ask
+    c.delete(f"{url}/{loose.json()['id']}")
+    names = c.get(f"/api/v1/viz/sets/{w.set_id}/hole-names").json()["names"]
+    out["planned_compare"] = answer(c.post(f"{url}/{pid}/compare", json={"set_id": w.set_id, "hole": names[0]}))
+    out["planned_compare_bad"] = answer(c.post(f"{url}/{pid}/compare", json={"set_id": w.set_id, "hole": "нет такой"}))
+    with tempfile.TemporaryDirectory() as tmp:
+        r = c.post(f"{url}/{pid}/export", json={"format": "csv", "path": tmp})
+        out["planned_export_csv"] = {"status": r.status_code, "body": {**r.json(), "files": sorted(Path(f).name for f in
+                                     r.json()["files"])}}  # fmt: skip
+        out["planned_export_exists"] = answer(c.post(f"{url}/{pid}/export", json={"format": "csv", "path": tmp}))
+        r = c.post(f"{url}/{pid}/export", json={"format": "dxf", "path": str(Path(tmp) / "ПС-1.dxf")})
+        out["planned_export_dxf"] = {"status": r.status_code, "body": {**r.json(), "files": [Path(f).name for f in
+                                     r.json()["files"]]}}  # fmt: skip
+    out["planned_delete"] = answer(c.delete(f"{url}/{aim.json()['id']}"))
+    back = read_only(c)
+    out["planned_read_only"] = answer(c.post(url, json={**new, "name": "Только просмотр"}))
+    back()
+    c.delete(f"{url}/{pid}")
 
 
 def norm(x: Any, key: str = "") -> Any:
