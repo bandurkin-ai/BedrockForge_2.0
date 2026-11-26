@@ -95,7 +95,7 @@ describe("the parameters of the window are the request the core takes", () => {
     expect(DEFAULT_LIMITS).toEqual({ elements: 20, cutoffs: 200, group_keys: 3, benches: 1000, curve: 500 });
     expect(DEFAULTS.limits).toMatchObject({ elements: 20, cutoffs: 200, group_keys: 3, curve: 500 });
     expect(DEFAULTS.ranges.curve).toMatchObject({ lo: 2, hi: 500, integer: true });
-    expect(DEFAULTS.ranges["bench.h"]).toMatchObject({ lo: 0, hi: 1000, lo_open: true });
+    expect(DEFAULTS.ranges["bench.h"]).toMatchObject({ lo: 1e-6, hi: 1000, lo_open: false });
   });
 
   it("the request leaves out what is the default of the core: no elements, no density, no filter, no groups", () => {
