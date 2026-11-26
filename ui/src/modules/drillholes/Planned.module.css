@@ -1,0 +1,35 @@
+/* The window «Проектная скважина» (Э19б, 19.39): tokens of the theme only (docs/brand), Montserrat for the headings. */
+.window { display: flex; flex-direction: column; height: 100%; min-height: 0; font-size: 13px; }
+.head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; flex: none; padding: 8px 12px 0; min-width: 0; }
+.head h3 { margin: 0; font-family: var(--font-brand); font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.head span { color: var(--text-dim); }
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); flex: none; margin: 6px 12px 0; }
+.tabs button { padding: 3px 12px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--text-dim); cursor: pointer; font: inherit; font-family: var(--font-brand); font-weight: 600; }
+.tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--highlight); }
+.page { flex: 1; min-height: 0; overflow: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
+.page fieldset { margin: 0; }
+.xyz { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.xyz label { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.xyz label > span { color: var(--text-dim); }
+.modes { display: flex; gap: 12px; flex-wrap: wrap; }
+.modes label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 8px; }
+.solved { margin: 0; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.banner { margin: 0 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; flex: none; }
+.footer { display: flex; gap: 8px; align-items: center; flex: none; padding: 8px 12px 10px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.grow { flex: 1; min-width: 0; color: var(--text-dim); overflow-wrap: anywhere; }
+.empty { margin: 12px 8px; text-align: center; color: var(--text-faint); }
+.sources { display: flex; gap: 12px; flex-wrap: wrap; }
+.sources label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.meshes { max-height: 160px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 6px; display: flex; flex-direction: column; gap: 2px; }
+.meshes label { display: flex; align-items: center; gap: 6px; }
+.num { text-align: right; }
+.codeNone { color: var(--text-faint); }
+.chart { overflow-x: auto; }
+.chart svg { display: block; max-width: 100%; height: auto; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px 12px; margin: 0; }
+.fact { display: flex; flex-direction: column; min-width: 0; }
+.fact dt { color: var(--text-dim); }
+.fact dd { margin: 0; font-family: var(--font-brand); font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.tree { display: flex; flex-direction: column; }
+@media (max-width: 720px) { .xyz { grid-template-columns: minmax(0, 1fr); } .pair { grid-template-columns: minmax(0, 1fr); } }
