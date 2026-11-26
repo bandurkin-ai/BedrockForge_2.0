@@ -5,15 +5,10 @@
  * the volume of each closed wireframe of the restrictor against its signed volume, and the warnings of the core. A gap is «нет значения», never 0. No state.
  */
 import type { Control, ReportResult, Warning } from "./answers";
-import { fmt, fmtCount, warningText } from "./format";
+import { fmt, fmtCount, relText, warningText } from "./format";
 import css from "./Panel.module.css";
 
-/** The relative difference as the norm is told: 0 — «0», else a power («3,2e-13»). */
-export function relText(rel: number | null): string {
-  if (rel === null) return "нет значения";
-  if (rel === 0) return "0";
-  return rel.toExponential(2).replace(".", ",");
-}
+export { relText };
 
 export const shareText = (share: number | null): string => (share === null ? "нет значения" : `${fmt(share * 100)} %`);
 

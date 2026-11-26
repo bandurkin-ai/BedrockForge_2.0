@@ -5,10 +5,10 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { restrictOf, BLOCK_STYLES_KEY, styleIn } from "../../src/modules/blocks/display";
+import { restrictOf, BLOCK_STYLES_KEY, readStyle, styleIn, styleOp, tempRuleOf } from "../../src/modules/blocks/display";
 import { checkDraft, slabTitle, type Rule } from "../../src/modules/blocks/filters/constructor";
 import { projectStore } from "../../src/modules/projects/state";
-import { viewStore } from "../../src/modules/scene/bind";
+import { updateView, viewStore } from "../../src/modules/scene/bind";
 import { readDrill, readReportResult } from "../../src/modules/resources/answers";
 import { cellOfForm, cellOfRow, emitCellClick, type CellRef } from "../../src/modules/resources/cells";
 import { bodyOfCell, cellTitle, clearFilter, columnsOf, csvName, DRILL_WINDOW, drillStore, inspectRow, loadPage, pagesOf, readDrillPage, refuseCell, resetDrill, saveCsv, showCell, targetOfCell, windowOfDrill, PAGE_SIZE, type DrillTarget } from "../../src/modules/resources/drill";
@@ -17,7 +17,7 @@ import { drillText } from "../../src/modules/resources/format";
 import { AppContext } from "../../src/shell/AppContext";
 import type { App } from "../../src/shell/app";
 import { closeWindow, windowStore } from "../../src/shell/windows";
-import { answer, ID, installCore, json, newApp, teardown, waitFor, type Core } from "./harness";
+import { answer, ID, installCore, json, newApp, teardown, tick, waitFor, type Core } from "./harness";
 
 let app: App;
 let core: Core;
@@ -205,11 +205,31 @@ describe("the temporary filter of the 3D", () => {
     projectStore.set({ current: { uid: "p1", name: "П" } as never, version: 3 });
   });
 
-  it("the style written by the view keeps the rule across a read (the view of the project)", async () => {
+  it("the rule is temporary: it is in memory, never in `block_styles` of the project — a read of the stored entry has none, the project closed drops it from the 3D", async () => {
     const a = await showCell(target());
-    const raw = (viewStore.get()[BLOCK_STYLES_KEY] as Record<string, unknown>)[String(ID.model)];
-    expect(styleIn({ [BLOCK_STYLES_KEY]: { [ID.model]: raw } }, ID.model).quick.rule).toEqual(a!.rules);
-    expect(styleIn({ [BLOCK_STYLES_KEY]: { [ID.model]: { quick: { items: [], join: "and", invert: false } } } }, ID.model).quick).toEqual({ items: [], join: "and", invert: false });
+    const raw = (viewStore.get()[BLOCK_STYLES_KEY] as Record<string, unknown>)[String(ID.model)] as { quick: Record<string, unknown>; visible: boolean };
+    expect(raw.visible).toBe(true);
+    expect(raw.quick).toEqual({ items: [], join: "and", invert: false }); // nothing of the cell in the stored entry
+    expect(JSON.stringify(viewStore.get())).not.toContain(JSON.stringify(a!.rules));
+    expect(readStyle(raw).quick.rule).toBeUndefined(); // a project opened again: no filter that has no way to be dropped
+    expect(style().quick.rule).toEqual(a!.rules); // the 3D of this session has it
+    projectStore.set({ current: { uid: "p2", name: "Другой" } as never, version: 2 });
+    expect(style().quick.rule).toBeUndefined();
+    expect(tempRuleOf(ID.model)).toBeNull();
+    projectStore.set({ current: { uid: "p1", name: "П" } as never, version: 3 });
+  });
+
+  it("«Сбросить» puts back the visibility too: a model that was hidden is hidden again; a shown one stays shown", async () => {
+    expect(style().visible).toBe(false);
+    await showCell(target());
+    expect(style().visible).toBe(true);
+    clearFilter();
+    expect(style()).toMatchObject({ visible: false });
+    expect(style().quick.rule).toBeUndefined();
+    updateView(BLOCK_STYLES_KEY, styleOp(ID.model, { visible: true }));
+    await showCell(target());
+    clearFilter();
+    expect(style().visible).toBe(true);
   });
 });
 
@@ -264,6 +284,24 @@ describe("the window: the numbers, the warnings, the table, the pages", () => {
     expect(drillStore.get()).toMatchObject({ page: 3 });
     expect(drillStore.get().rows.data?.rows).toHaveLength(500);
     expect(html()).toContain("Страница 3 из 3, блоков 2");
+  });
+
+  it("the pages come back in any order: the answer of an older page does not cover the newer one", async () => {
+    const waits: ((r: Response) => void)[] = [];
+    rowsAnswer = () => new Promise<Response>((res) => waits.push(res)) as never;
+    const first = showCell(target());
+    await waitFor(() => waits.length === 1);
+    const two = loadPage(2);
+    await waitFor(() => waits.length === 2);
+    const page = (n: number) => json(pageBody({ page: n, total: 2500, rows: manyRows(2500, n) }));
+    waits[1](page(2)); // the newer request answers first ...
+    await two;
+    expect(drillStore.get().rows.data?.page).toBe(2);
+    waits[0](page(1)); // ... the older one comes late and is dropped
+    await first;
+    await tick();
+    expect(drillStore.get()).toMatchObject({ page: 2, rows: { load: "ready" } });
+    expect(drillStore.get().rows.data?.page).toBe(2);
   });
 
   it("an out-of-date report: the warning «набор блоков может отличаться» with the reason; the numbers stay", async () => {
@@ -406,6 +444,15 @@ describe("the click on a cell of the report and the command", () => {
     expect(sentDrill().at(-1)?.body).toEqual({ group: ["Измеренные"], cutoff: 1 });
     expect(windowOfDrill()).not.toBeNull();
     expect(style().quick.rule).toBeDefined();
+  });
+
+  it("the binding of the app takes the click and the listeners of the transition off with it (`bindResources` answers one function)", async () => {
+    const r = result();
+    const cell = cellOfRow(r, r.rows.find((x) => x.g[0] === "Измеренные" && x.cutoff === 1)!, "tonnes");
+    unbind();
+    expect(emitCellClick(cell)).toBe(false);
+    expect(sentDrill()).toHaveLength(0);
+    unbind = () => undefined;
   });
 
   it("a click on a cell of the form with sections or on the preview opens the window with the reason, nothing goes to the core", async () => {

@@ -13,7 +13,7 @@ import { setCoreTarget } from "../src/shell/api";
 import { createApp, type App } from "../src/shell/app";
 import { windowStore } from "../src/shell/windows";
 import type { BlockModelInfo } from "../src/modules/blocks/api";
-import { BLOCK_STYLES_KEY, blocksShowStore, colourIssue, resetShow, setPicked, setShowInfo, showText, styleIn, type StylePatch, styleOp } from "../src/modules/blocks/display";
+import { BLOCK_STYLES_KEY, blocksShowStore, colourIssue, resetShow, setPicked, setShowInfo, setTempRule, showText, styleIn, type StylePatch, styleOp } from "../src/modules/blocks/display";
 import { filtersStore } from "../src/modules/blocks/filters/state";
 import { blocksStore } from "../src/modules/blocks/state";
 import { projectStore } from "../src/modules/projects/state";
@@ -303,6 +303,25 @@ describe("«Фильтр»", () => {
     expect(style(IDS.turned).filter_id).toBe(SAVED.body.id);
     expect(style(IDS.turned).quick).toEqual({ items: [], join: "and", invert: false });
     expect(r.text).toBe(`Фильтр «${NAME}» сохранён и выбран для модели; быстрый ограничитель очищен.`);
+  });
+
+  it("the temporary rule of a cell (Д-36) is not saved to the library: only the restrictor of the person is", async () => {
+    const cell = { op: "and", items: [{ cond: { field: "ROCK", op: "=", value: "руда" } }] } as never;
+    setTempRule(IDS.turned, cell);
+    try {
+      // a restrictor of the cell only: nothing of the person's to save
+      patch(IDS.turned, { quick: { items: [] } });
+      expect(style(IDS.turned).quick.rule).toEqual(cell);
+      expect((await saveQuickAsFilter(app, IDS.turned, NAME)).text).toBe("Быстрый ограничитель пуст: добавьте условие на вкладке «Быстрый ограничитель».");
+      expect(disabled(html(createElement(FilterPanel, { id: IDS.turned })), "filter-save-quick")).toBe(true);
+      // the person's conditions and the rule of the cell: the rules sent are the person's own
+      patch(IDS.turned, { quick: { items: [{ field: "OK", op: ">", value: 0.5 }, { field: "AU", op: ">=", value: 1.5 }], join: "and", invert: false } });
+      const r = await saveQuickAsFilter(app, IDS.turned, NAME);
+      expect(r.ok).toBe(true);
+      expect(sent.find((s) => s.method === "POST" && s.path === "/filters")!.body).toEqual({ name: NAME, rules: WIN.quick.rules });
+    } finally {
+      setTempRule(IDS.turned, null);
+    }
   });
 
   it("an inverted restrictor is a НЕ over the tree; a model that has a filter keeps it (the new one is only in the library)", async () => {

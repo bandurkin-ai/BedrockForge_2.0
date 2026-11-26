@@ -145,12 +145,14 @@ export async function runCompare(a: Args, source: CommandSource): Promise<string
   }
 }
 
-export function bindOtherCommands(app: App): void {
+/** Binds the commands; answers the function that unbinds the listeners of the transition (the click on a cell, the project, the window). */
+export function bindOtherCommands(app: App): () => void {
   const r = app.registry;
   r.bind("resources.curve", noted(app, (a) => runCurve(app, a)), needProject);
   r.bind("resources.export", noted(app, (a) => runExport(app, a)), needProject);
   r.bind("resources.delete", noted(app, (a, s) => runDelete(app, a, s)), needWritable(app));
   r.bind("resources.drill", noted(app, (a) => runDrill(app, a)), needProject);
-  bindDrill(app, nameOf);
+  const offDrill = bindDrill(app, nameOf);
   r.bind("resources.compare", noted(app, (a, s) => runCompare(a, s)), needProject);
+  return offDrill;
 }

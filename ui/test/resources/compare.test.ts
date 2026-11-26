@@ -12,6 +12,7 @@ import { readCompare, type CompareAnswer } from "../../src/modules/resources/ans
 import { CompareChart } from "../../src/modules/resources/CompareChart";
 import { dateText, elementOf, fmtDelta, headLines, noCurveText, notes, onlyCount, seriesOf, tableRows } from "../../src/modules/resources/compareModel";
 import { COMPARE_WINDOW, compareStore, resetCompare } from "../../src/modules/resources/compareState";
+import { CompareTable } from "../../src/modules/resources/CompareParts";
 import { CompareWindow } from "../../src/modules/resources/CompareWindow";
 import { openCompareWindow, windowOfCompare } from "../../src/modules/resources/compareBind";
 import { compareBody, otherCurve, realCurve, selfCompare } from "./compareSample";
@@ -67,6 +68,21 @@ describe("the table: the cells of the real answer", () => {
     expect(fmtDelta(null)).toBe("—");
     expect(fmtDelta(0)).toBe("0");
     expect(fmtDelta(2.5)).toBe("+2,5");
+  });
+});
+
+describe("the table of a big pair of reports", () => {
+  it("is drawn by pages of 500 (the pager of the panel «Ресурсы»); a small one has no pager", () => {
+    const one = real();
+    const big: CompareAnswer = { ...one, rows: Array.from({ length: 1200 }, (_v, i) => one.rows[i % one.rows.length]) };
+    const h = renderToStaticMarkup(createElement(CompareTable, { answer: big, element: "AU", onlyDiff: false }));
+    expect(count(h, /data-testid="cmp-row"/g)).toBe(500); // not 1200 rows of 9 cells at once
+    expect(h).toContain('data-total="1200"');
+    expect(h).toContain("Страница 1 из 3 (по 500; строк 1200)");
+    expect(h).toMatch(/disabled="" aria-label="Предыдущая страница"/);
+    const small = renderToStaticMarkup(createElement(CompareTable, { answer: one, element: "AU", onlyDiff: false }));
+    expect(small).not.toContain("cmp-pager");
+    expect(count(small, /data-testid="cmp-row"/g)).toBe(12);
   });
 });
 

@@ -4,6 +4,7 @@
  * numbers are the core's; a gap is «нет значения», never 0. Pure.
  */
 import type { ReportListRow, ReportResult } from "./answers";
+import { dateText } from "./compareModel";
 import { fmt, fmtCount, fmtCutoff, firstTotal, rowTitle } from "./format";
 
 export interface Fact {
@@ -51,7 +52,7 @@ export function reportFacts(r: ReportResult, row?: ReportListRow): Fact[] {
     }
   }
   const created = r.created_at ?? row?.created_at ?? "";
-  if (created) facts.push({ key: "created", label: "Создан", value: created.replace("T", " ").slice(0, 16) });
+  if (created) facts.push({ key: "created", label: "Создан", value: dateText(created) || created });
   if (r.files.length) facts.push({ key: "files", label: "Файлы", value: r.files.map((f) => `${f.format.toUpperCase()}: ${f.path}`).join("\n") });
   return facts;
 }

@@ -74,7 +74,7 @@ export function slicedStyles(keys: Record<string, unknown>): Map<number, BlockSt
   if (!map || typeof map !== "object" || Array.isArray(map)) return out;
   for (const [k, v] of Object.entries(map)) {
     if (!/^\d+$/.test(k)) continue;
-    const style = readStyle(v);
+    const style = readStyle(v, Number(k));
     if (style.slice.on) out.set(Number(k), style);
   }
   return out;

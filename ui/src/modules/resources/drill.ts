@@ -13,7 +13,7 @@ import type { App } from "../../shell/app";
 import { viewport } from "../../shell/objectRun";
 import { Store } from "../../shell/store";
 import { focusWindow, openWindow, updateWindow, windowStore } from "../../shell/windows";
-import { BLOCK_STYLES_KEY, revealOnShow, styleIn, styleOp } from "../blocks/display";
+import { BLOCK_STYLES_KEY, revealOnShow, setTempRule, styleIn, styleOp } from "../blocks/display";
 import type { Rule } from "../blocks/filters/constructor";
 import { blockById } from "../blocks/state";
 import { projectStore } from "../projects/state";
@@ -155,11 +155,14 @@ const INITIAL: DrillState = { target: null, load: "idle", answer: null, error: n
 export const drillStore = new Store<DrillState>(INITIAL);
 
 let seq = 0;
+/** The count of the requests of the pages: the answer of an older page does not cover the newer one. */
+let pageSeq = 0;
 /** What the style of the model was before the filter: put back by `clearFilter`. */
-let restore: { modelId: number; rule: Rule | null } | null = null;
+let restore: { modelId: number; rule: Rule | null; visible: boolean } | null = null;
 
 export function resetDrill(): void {
   seq++;
+  clearFilter();
   restore = null;
   drillStore.set({ ...INITIAL });
 }
@@ -187,11 +190,12 @@ export function applyFilter(modelId: number | null, rules: Record<string, unknow
   const before = styleIn(viewStore.get(), modelId);
   try {
     if (!before.visible) revealOnShow.add(modelId);
-    updateView(BLOCK_STYLES_KEY, styleOp(modelId, { visible: true, quick: { rule: rules as unknown as Rule } }));
+    setTempRule(modelId, rules as unknown as Rule);
+    updateView(BLOCK_STYLES_KEY, styleOp(modelId, { visible: true }));
   } catch (e) {
     return [`Фильтр в 3D не применён: ${e instanceof Error ? e.message : String(e)}.`];
   }
-  if (!restore) restore = { modelId, rule: before.quick.rule ?? null };
+  if (!restore) restore = { modelId, rule: before.quick.rule ?? null, visible: before.visible };
   drillStore.set({ applied: true });
   return [];
 }
@@ -202,8 +206,11 @@ export function clearFilter(): void {
   restore = null;
   if (drillStore.get().applied) drillStore.set({ applied: false });
   if (!r) return;
+  // the rule is in memory only (never in the project); the entry of the view is touched only if it is there (another project may have no such model)
+  setTempRule(r.modelId, r.rule);
   try {
-    updateView(BLOCK_STYLES_KEY, styleOp(r.modelId, { quick: { rule: r.rule } }));
+    const map = viewStore.get()[BLOCK_STYLES_KEY];
+    if (map && typeof map === "object" && String(r.modelId) in map) updateView(BLOCK_STYLES_KEY, styleOp(r.modelId, r.visible ? {} : { visible: false }));
   } catch {
     /* the project is gone: the view with it */
   }
@@ -249,13 +256,14 @@ export async function loadPage(page: number): Promise<void> {
   const t = drillStore.get().target;
   if (!t) return;
   const my = seq;
+  const mine = ++pageSeq;
   drillStore.set({ page, rows: { load: "loading", data: drillStore.get().rows.data, error: null }, csvNote: null, inspectNote: null });
   try {
     const data = await drillRows(t.reportId, t.body, page);
-    if (my !== seq) return;
+    if (my !== seq || mine !== pageSeq) return;
     drillStore.set({ rows: { load: "ready", data, error: null } });
   } catch (e) {
-    if (my === seq) drillStore.set({ rows: { load: "failed", data: null, error: refusalOf(e) } });
+    if (my === seq && mine === pageSeq) drillStore.set({ rows: { load: "failed", data: null, error: refusalOf(e) } });
   }
 }
 

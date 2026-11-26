@@ -131,6 +131,22 @@ describe("«Таблица»: all the rows of the core", () => {
     expect(one).toContain("Строк: 4 из 8");
   });
 
+  it("«без борта» is in the list of the cut-offs (the core lists only the numeric ones): a form on it can be left back, and a list of [без борта, 1] is not disabled", () => {
+    const form = SAVED.form!;
+    const noCut = { ...SAVED, form: { ...form, cutoff: null, cutoffs: [1] } };
+    expect(cutoffOptions(noCut)).toEqual([null, 1]);
+    const out = view(noCut, { tab: "form" });
+    const sel = out.match(/<select[^>]*data-testid="res-form-cutoff"[^>]*>(.*?)<\/select>/)!;
+    expect(sel[0]).not.toContain("disabled");
+    expect(sel[1]).toContain(">без борта<");
+    expect(sel[1]).toContain("≥ 1");
+    expect(sel[1]).toMatch(/<option value="0" selected="">без борта/); // the form is on «без борта»: the first one is the chosen one
+    // the rows of kind `all` make the same list for a table without a form
+    const rowAll = { ...SAVED.rows[0], kind: "all" as const, cutoff: null };
+    expect(cutoffOptions({ ...SAVED, form: null, rows: [rowAll, ...SAVED.rows] })).toEqual([null, 1, 2]);
+    expect(cutoffOptions(SAVED)).toEqual([1]); // a form on a number: no «без борта» in the list
+  });
+
   it("a preview is cut into pages of 500 on the screen; a saved report's rows are the page of the core", () => {
     const many = Array.from({ length: 1200 }, () => SAVED.rows[1]);
     const first = view({ ...PREVIEW, rows: many, rows_total: 1200 }, { mode: "run", tab: "table" });

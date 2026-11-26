@@ -22,6 +22,7 @@ export async function runOpen(app: App, a: Args): Promise<string> {
   // the saved result of the window with a template or a cut-off of another choice is the saved report: the core makes the form again
   const id = typeof a.report_id === "number" ? reportIdOf(app, a) : result?.saved && result.report_id !== null && asked ? result.report_id : null;
   if (id === null) {
+    if (asked && result && !result.saved) throw refusal("preview_not_saved", "Предпросмотр не записан в проект: шаблон и борт формы выбираются только у записанного отчёта.", "Сохраните отчёт в окне «Отчёт по ресурсам» и повторите команду.");
     if (result) {
       showRun();
       showTab(app);

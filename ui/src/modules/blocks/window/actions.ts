@@ -9,7 +9,7 @@
 import type { App } from "../../../shell/app";
 import { errorText } from "../../../shell/props";
 import { updateView, viewStore } from "../../scene/bind";
-import { BLOCK_STYLES_KEY, quickIssue, restrictOf, styleIn, styleOp, type BlockStyle, type StylePatch } from "../display";
+import { BLOCK_STYLES_KEY, quickIssue, restrictOf, styleIn, styleOp, withoutRule, type BlockStyle, type StylePatch } from "../display";
 import { lastSaved } from "../filters/bind";
 
 /** Writes a patch into the style of the model; the text of a failure (no project open, …) or null. */
@@ -45,9 +45,10 @@ export interface SavedQuick {
  */
 export async function saveQuickAsFilter(app: App, id: number, name: string): Promise<SavedQuick> {
   const style = currentStyle(id);
-  const rule = restrictOf(style.quick);
+  const own = withoutRule(style.quick);
+  const rule = restrictOf(own);
   if (!rule) return { ok: false, text: "Быстрый ограничитель пуст: добавьте условие на вкладке «Быстрый ограничитель».", filterId: null };
-  const issue = quickIssue(style.quick);
+  const issue = quickIssue(own);
   if (issue) return { ok: false, text: issue, filterId: null };
   const clean = name.trim();
   if (!clean) return { ok: false, text: "У фильтра нет имени. Введите имя, например «Руда выше борта».", filterId: null };
