@@ -11,6 +11,7 @@ import { INTERCEPT_BUTTONS, INTERCEPT_GROUP_TITLE } from "../modules/intercepts/
 import { VARIO_BUTTONS, VARIO_GROUP_TITLE, VARIO_TAB_TITLE } from "../modules/variography/commands";
 import { LINEAGE_BUTTONS, LINEAGE_GROUP_TITLE } from "../modules/lineage/commands";
 import { IMPLICIT_BUTTONS, IMPLICIT_GROUP_TITLE } from "../modules/implicit/commands";
+import { PLANNED_BUTTONS, PLANNED_GROUP_TITLE } from "../modules/drillholes/plannedCommands";
 import { CHECK_BUTTONS, CHECK_GROUP_TITLE, ESTIMATE_BUTTONS, ESTIMATE_GROUP_TITLE, SIM_BUTTONS, SIM_GROUP_TITLE } from "../modules/estimation/commands";
 import { TREND_BUTTONS } from "../modules/trends/commands";
 import { FILTER_BUTTONS, FILTER_GROUP_TITLE } from "../modules/blocks/filters/commands";
@@ -113,6 +114,7 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState, series: Partial
             { command: "logs.open", label: "Журналы", icon: "logFile", small: true },
           ],
         },
+        { title: PLANNED_GROUP_TITLE, items: PLANNED_BUTTONS.map((b): RibbonItem => ({ ...b })) },
         {
           title: "Выделение",
           items: [
