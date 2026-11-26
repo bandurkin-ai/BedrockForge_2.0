@@ -56,6 +56,7 @@ import { commandContext, INITIAL_STATE, Store, type AppState } from "./store";
 import { toggleAbout } from "./aboutInfo";
 import { focusWindow, openWindow, updateWindow, windowStore } from "./windows";
 import { BOTTOM_TITLES, setPanel, type BottomTab, type PanelId } from "./workspace";
+import { bindAssistant } from "../modules/assistant/bind";
 
 export interface App {
   registry: CommandRegistry;
@@ -211,5 +212,11 @@ export function createApp(opts: { persist?: boolean } = {}): App {
   bindPlanned(app);
   bindSimulation(app);
   bindLineage(app);
+  bindAssistant(app, {
+    openWindow: (id, props) => {
+      // The history of dialogs (23.16) is a part of the chat panel; only the connection has a window of its own.
+      if (id === "assistant.connect") openWindow("claude-connection", "Claude: подключение", "normal", props, ...viewport());
+    },
+  });
   return app;
 }

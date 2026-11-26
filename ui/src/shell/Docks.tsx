@@ -13,7 +13,7 @@ import { PropertiesPanel } from "./PropertiesPanel";
 import { useStore } from "./useStore";
 import { BOTTOM_TITLES, type BottomTab } from "./workspace";
 import css from "./Shell.module.css";
-import { ChatPanel } from "../modules/assistant/ChatPanel";
+import { AssistantChat } from "../modules/assistant/ConfirmCard";
 
 export function BottomDock() {
   const app = useApp();
@@ -57,7 +57,7 @@ export function RightDock() {
         {tab === "properties" ? (
           <PropertiesPanel />
         ) : (
-          <ChatPanel />
+          <AssistantChat />
         )}
       </div>
     </aside>

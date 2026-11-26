@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createApp } from "../src/shell/app";
-import { dialogStore } from "../src/shell/dialogs";
+import { answerConfirm, confirmStore } from "../src/modules/assistant/confirm";
 import { windowStore } from "../src/shell/windows";
 
 describe("shell commands of Э1", () => {
@@ -32,9 +32,9 @@ describe("shell commands of Э1", () => {
     app.registry.bind("project.delete", () => "Удалён", () => null); // available: the test is about the confirmation
     const pending = app.registry.execute("project.delete", {}, "claude");
     await Promise.resolve();
-    const req = dialogStore.get().queue.at(-1)!;
-    expect(req.kind).toBe("confirm");
-    (req.resolve as (ok: boolean) => void)(false);
+    const card = confirmStore.get().queue.at(-1)!; // 23.15: the question of Claude is a card in the chat, not a dialog
+    expect(card.commandId).toBe("project.delete");
+    answerConfirm(card.id, false);
     expect((await pending).result).toBe("Пользователь отклонил действие");
   });
 
