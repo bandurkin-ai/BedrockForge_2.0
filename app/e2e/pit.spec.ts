@@ -457,10 +457,7 @@ test("4. «Поверхности» (the DTMs of the shells: nested, in the tree
   expect(took).toBeLessThan(LIMIT(60_000));
 });
 
-// DEFECT for 21.21 (ADR 0028 решение 22 «0 — вне, в т. ч. воздух» against ADR 0027 решение 8 and `pit.show`: «PIT <= n»): the blocks outside every shell have PIT = 0, so `PIT <= n`
-// passes them too — «3D» of a shell shows the whole model but the deeper shells, and the shortcut «Карьер» of the report of the resources counts them. Expected to fail until
-// the semantics is decided (`PIT >= 1` added to the shortcut and to `pit.show`, or «вне» written as an empty value); then `test.fail` is taken off.
-test("defect: `PIT <= n` of «3D» passes exactly the blocks of the shell n", async () => {
-  test.fail(true, "21.21: PIT = 0 (outside every shell) passes `PIT <= n`; see the header of the test");
+// Fixed in 21.21: PIT = 0 is «outside every shell» (ADR 0028 decision 22), so the shortcut «Карьер» and `pit.show` take `PIT >= 1` and `PIT <= n`.
+test("«3D» of the shell n (`PIT >= 1` and `PIT <= n`) passes exactly the blocks of the shell n", async () => {
   expect(defect.shown).toBe(defect.shellBlocks);
 });

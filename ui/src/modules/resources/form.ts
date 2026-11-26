@@ -197,7 +197,8 @@ export function restrictOfForm(f: ResourceForm): { ok: true; rule: Rule | null }
     if (f.pit.mode === "field") {
       const n = parseDecimal(f.pit.n);
       if (n === null || !(n > 0)) return { ok: false, issue: issue("pit", "Номер карьера — число больше нуля.", "Введите номер очереди (поле PIT), например 3: считаются блоки PIT ≤ 3.") };
-      items.push({ expr: `PIT <= ${String(n)}` });
+      // PIT = 0 is «outside every shell» (ADR 0028 decision 22): the shortcut takes the blocks of the shells 1…n only
+      items.push({ op: "and", items: [{ expr: "PIT >= 1" }, { expr: `PIT <= ${String(n)}` }] });
     } else {
       if (f.pit.wireframeId === null) return { ok: false, issue: issue("pit", "Не выбран каркас карьера.", "Выберите замкнутый каркас из списка.") };
       items.push({ wireframe: { id: f.pit.wireframeId, side: "inside", by: f.pit.by, m: 4 } });

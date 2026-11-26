@@ -270,9 +270,7 @@ test("7. Ctrl+K finds the commands of the pit; a restart of the app — the scen
   expect(took).toBeLessThan(LIMIT(60_000));
 });
 
-// DEFECT for 21.21 (see the header and `pit.spec.ts`): the shortcut «Карьер» `PIT <= n` of the report of the resources counts the blocks outside every shell (PIT = 0) too — its tonnes
-// are more than the table of pit-by-pit has for the shell n. Expected to fail until the semantics is decided; then `test.fail` is taken off.
-test("defect: the shortcut «Карьер» `PIT <= n` of the report gives the tonnes of the shell n", async () => {
-  test.fail(true, "21.21: PIT = 0 (outside every shell) passes `PIT <= n`; see the header of the test");
+// Fixed in 21.21: PIT = 0 is «outside every shell» (ADR 0028 decision 22), so the shortcut «Карьер» and `pit.show` take `PIT >= 1` and `PIT <= n`.
+test("the shortcut «Карьер» of the report (`PIT >= 1` and `PIT <= n`) gives the tonnes of the shell n", async () => {
   near(defect.label, defect.pit, 1e-9);
 });

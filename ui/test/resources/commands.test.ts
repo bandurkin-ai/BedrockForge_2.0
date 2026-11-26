@@ -120,7 +120,7 @@ describe("`resources.report`", () => {
     await app.registry.execute("resources.report", a.args, "user");
     expect(currentForm().pit.on).toBe(true);
     expect(currentForm().below.on).toBe(true);
-    expect(posts()[0].body.params).toMatchObject({ restrict: { op: "and", items: [{ expr: "PIT <= 2" }, { surface: { id: ID.dtm, side: "below", by: "frac" } }] } });
+    expect(posts()[0].body.params).toMatchObject({ restrict: { op: "and", items: [{ op: "and", items: [{ expr: "PIT >= 1" }, { expr: "PIT <= 2" }] }, { surface: { id: ID.dtm, side: "below", by: "frac" } }] } });
   });
 
   it("a call of the assistant shows in the window: the form is the arguments", async () => {

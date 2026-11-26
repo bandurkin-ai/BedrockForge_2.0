@@ -75,7 +75,7 @@ export async function runShow(app: App, a: Args): Promise<string> {
   if (!model.fields.some((f) => f.name === field)) throw refusal("block_field_not_found", `В модели «${model.name}» нет поля ${field}.`, "Поле пишет расчёт сценария: запустите его заново (команда «Запустить») или «Перестроить».");
   const before = styleIn(viewStore.get(), model.id);
   if (!before.visible) revealOnShow.add(model.id);
-  updateView(BLOCK_STYLES_KEY, styleOp(model.id, { visible: true, quick: { items: [{ field, op: "<=", value: shell }], join: "and", invert: false } }));
+  updateView(BLOCK_STYLES_KEY, styleOp(model.id, { visible: true, quick: { items: [{ field, op: ">=", value: 1 }, { field, op: "<=", value: shell }], join: "and", invert: false } }));
   return `В 3D показаны блоки модели «${model.name}» с ${field} ≤ ${shell}${n ? ` (оболочка ${shell} из ${n})` : ""}. Быстрый ограничитель модели заменён этим условием; снять — команда «Быстрый ограничитель» с clear.`;
 }
 

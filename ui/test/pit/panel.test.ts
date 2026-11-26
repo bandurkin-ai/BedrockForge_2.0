@@ -439,11 +439,11 @@ describe("the commands `pit.report` and `pit.show`", () => {
     expect(r.result).toContain("В 3D показаны блоки модели «Рудное тело» с PIT ≤ 2 (оболочка 2 из 3)");
     const style = styleIn(viewStore.get(), ID.model);
     expect(style.visible).toBe(true);
-    expect(style.quick).toMatchObject({ items: [{ field: "PIT", op: "<=", value: 2 }], join: "and", invert: false });
+    expect(style.quick).toMatchObject({ items: [{ field: "PIT", op: ">=", value: 1 }, { field: "PIT", op: "<=", value: 2 }], join: "and", invert: false });
     const raw = (viewStore.get()[BLOCK_STYLES_KEY] as Record<string, { quick: { items: unknown[] } }>)[String(ID.model)];
-    expect(raw.quick.items).toEqual([{ field: "PIT", op: "<=", value: 2 }]); // kept in the view of the project: «blocks.quick clear» drops it
+    expect(raw.quick.items).toEqual([{ field: "PIT", op: ">=", value: 1 }, { field: "PIT", op: "<=", value: 2 }]); // kept in the view of the project: «blocks.quick clear» drops it
     await run("pit.show", { scenario_id: ID.scenario, shell: 3 });
-    expect(styleIn(viewStore.get(), ID.model).quick.items).toEqual([{ field: "PIT", op: "<=", value: 3 }]); // replaced, not added
+    expect(styleIn(viewStore.get(), ID.model).quick.items).toEqual([{ field: "PIT", op: ">=", value: 1 }, { field: "PIT", op: "<=", value: 3 }]); // replaced, not added
   });
 
   it("`pit.show`: the field of the prefix of the scenario, a shell that is not there, a wrong number, a model without the field — told in Russian before anything is drawn", async () => {
