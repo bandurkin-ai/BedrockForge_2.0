@@ -9,7 +9,7 @@ import css from "../../shell/PropsParts.module.css";
 import { useSel } from "./ReportParts";
 import { previewForm, SAMPLE_ELEMENTS } from "./templatePreview";
 import { MAX_LABELS, MAX_SUBTOTALS, METAL_UNITS, METRIC_TITLES, moveItem, removeLabel, renameLabel, ROLES, TONNES_UNITS, toggleMember, VOLUME_UNITS, type Draft, type Metric, type Place, type TemplateBody } from "./templates";
-import mod from "./Templates.module.css";
+import mod from "./TemplatesWindow.module.css";
 import { putDraft, setDraft, templatesStore } from "./templatesState";
 
 export interface PartProps {

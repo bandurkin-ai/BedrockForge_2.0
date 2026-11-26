@@ -11,7 +11,7 @@ import { cellText, cellTitle, clearFilter, DRILL_TITLE, DRILL_WINDOW, drillStore
 import { BlocksTable } from "./DrillParts";
 import { fmtCount, warningText } from "./format";
 import { useSel } from "./ReportParts";
-import mod from "./Drill.module.css";
+import mod from "./DrillWindow.module.css";
 
 export function DrillWindow() {
   const app = useApp();

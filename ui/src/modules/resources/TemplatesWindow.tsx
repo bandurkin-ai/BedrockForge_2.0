@@ -14,7 +14,7 @@ import { resourcesStore } from "./state";
 import { ColumnsPart, DecimalsPart, Issue, KeysPart, LabelsPart, NamePart, PreviewPart, SubtotalsPart, TotalPart, UnitsPart } from "./TemplateParts";
 import { chooseTemplate, copyTemplate, newTemplate, removeTemplate, saveTemplate, startEditor } from "./templatesActions";
 import { templatesStore } from "./templatesState";
-import mod from "./Templates.module.css";
+import mod from "./TemplatesWindow.module.css";
 
 export function TemplatesWindow({ winId }: { winId: string }) {
   const app = useApp();

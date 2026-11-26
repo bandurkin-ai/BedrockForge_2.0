@@ -5,7 +5,7 @@
  */
 import { useState } from "react";
 import { cellText, columnsOf, type DrillRow } from "./drill";
-import css from "./Drill.module.css";
+import css from "./DrillWindow.module.css";
 
 const sizeText = (r: DrillRow): string => (r.dx === null && r.dy === null && r.dz === null ? "—" : [r.dx, r.dy, r.dz].map(cellText).join(" × "));
 const centreText = (r: DrillRow): string => (r.x === null && r.y === null && r.z === null ? "—" : [r.x, r.y, r.z].map(cellText).join("; "));
