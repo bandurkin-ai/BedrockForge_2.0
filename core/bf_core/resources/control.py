@@ -44,7 +44,6 @@ from bf_core.geostat.estimate.spec_parts import STATUS_LABELS
 from bf_core.storage.blobs import BlobStore
 
 from . import compute as cp
-from . import kernels as rk
 from .result import Plan
 
 TOLERANCE = 1e-12
@@ -89,12 +88,11 @@ def sum_groups(sums: cp.Sums, plan: Plan) -> dict[str, Any]:
 
     if sums.core.n_groups() == 0:
         return {"checked": False, "tonnes": None, "volume": None, "metal": {n: None for n in plan.names}, "ok": True}
-    gs, gc, gn = sums.group_view()
     tot = {"tonnes": _Worst(), "volume": _Worst()}
     metal = {n: _Worst() for n in plan.names}
     for r in row_ranges(plan):
-        q, _n = rk.range_sums(*sums.total_view(), r.lo, r.hi)
-        qg, _ng = rk.range_sums(gs, gc, gn, r.glo, r.ghi)
+        q, _n = sums.range_of(False, r.lo, r.hi)  # taken once for every user of the sums (`Sums.range_of`)
+        qg, _ng = sums.range_of(True, r.glo, r.ghi)
         tot["volume"].add(float(q[0, 0]), math.fsum(qg[:, 0]))
         tot["tonnes"].add(float(q[0, 1]), math.fsum(qg[:, 1]))
         for i, name in enumerate(plan.names):
@@ -110,7 +108,7 @@ def sum_groups(sums: cp.Sums, plan: Plan) -> dict[str, Any]:
 def no_grade(sums: cp.Sums, plan: Plan) -> dict[str, dict[str, Any]]:
     """Per element the blocks and the tonnes with no grade (every counted block, the «без борта» table)."""
     e = len(sums.core.edges)
-    q, n = rk.range_sums(*sums.total_view(), 0, e + 2)
+    q, n = sums.range_of(False, 0, e + 2)
     return {name: {"blocks": int(n[0, 1 + i]), "tonnes": float(q[0, 4 + 3 * i])} for i, name in enumerate(plan.names)}
 
 

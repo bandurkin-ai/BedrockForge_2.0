@@ -18,8 +18,9 @@ report (e20-api §2), parsed here again (a stored canonical form parses to itsel
 The stages (the text of a message starts with it): «Чтение» (the model, the rules) → «Расчёт» (the pass, the control)
 → «Запись» (only when it saves). A cancel (`JobCancelled` from `tick`, at any stage, in the pass too) leaves nothing: a
 new report is not there, a rebuilt one is as it was (`store.settle`). An error — `JobError` {code, message, hint} in
-Russian. A model that changed while the job was calculating — 409 `model_changed` (the rows of the graph would name
-what was not read).
+Russian. A model — or a field, a filter, a wireframe of the rules — that changed while the job was calculating:
+409 `model_changed` (the rows of the graph would name what was not read; the fingerprints of the inputs are taken
+before the pass and compared in the transaction of the write, `store.input_prints`).
 
 The answer is that of e20-api §3 (`view.report_json`) plus `events`: `[["resources.changed", {kind, id}]]` after a
 write. `rows_total` is every row; `rows` — the preview (20 000) or the first page of a saved report (500). The
@@ -205,6 +206,12 @@ def _run(engine: sa.Engine, folder: Path, p: dict[str, Any], tick: Tick, report_
         tree = calc_job.rules_tree(conn, spec.filter_id, spec.restrict)
         restrictor = restrict.prepare(model, tree, conn=conn, store=store)
         template = None if spec.template_id is None else templates.get(conn, spec.template_id)
+        statuses = ct.status_fields(model, plan)
+        canon = spec.canonical()
+        prints = None  # what the report is made of, as the graph sees it now; the write compares (`store._record`)
+        if save:
+            prints = st.input_prints(conn, model.id, _read_fields(model, plan, statuses), canon.get("filter_id"),
+                                     canon.get("restrict"))  # fmt: skip
         seconds["read"] = round(time.perf_counter() - t0, 4)
         tick(0.04, f"{S_CALC}: проход по блокам")
         t1 = time.perf_counter()
@@ -215,7 +222,6 @@ def _run(engine: sa.Engine, folder: Path, p: dict[str, Any], tick: Tick, report_
         control = ct.build(model, plan, sums, restrictor=restrictor, rules=tree, conn=conn, store=store, chunk=chunk,
                            tick=_scaled(tick, 0.84, 0.08, f"{S_CALC}: контроль"),
                            cancel=lambda: tick(None, None))  # fmt: skip
-        statuses = ct.status_fields(model, plan)
         seconds["control"] = round(time.perf_counter() - t2, 4)
     tick(0.92, f"{S_CALC}: строки отчёта")
     res = rr.build(sums, plan, max_rows=view.FIRST_PAGE if save else view.PREVIEW_ROWS)
@@ -240,9 +246,9 @@ def _run(engine: sa.Engine, folder: Path, p: dict[str, Any], tick: Tick, report_
     table = _table(sums, plan)
     curve_table = None if res.curve is None else sd.curve_table(res.curve, list(plan.names))
     staged = st.stage(store, table, curve_table, {**ctl, "excluded": excluded})
-    built = st.Built(spec.canonical(), {"id": model.id, "name": model.name, "version": model.version,
-                                        "grid": mjson["grid"]}, _read_fields(model, plan, statuses), res.totals,
-                     staged, _versions(), warnings)  # fmt: skip
+    built = st.Built(canon, {"id": model.id, "name": model.name, "version": model.version, "grid": mjson["grid"]},
+                     _read_fields(model, plan, statuses), res.totals, staged, _versions(), warnings,
+                     prints)  # fmt: skip
     try:
         tick(0.97, f"{S_WRITE}: запись в проект")
         t3 = time.perf_counter()

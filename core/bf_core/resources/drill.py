@@ -45,7 +45,7 @@ from . import compute as cp
 from . import kernels as rk
 from . import result as rr
 from . import store as st
-from .csv_out import cell_text
+from .csv_out import cell_text, safe
 from .spec import EMPTY_LABEL, Drill, DrillRows, ReportSpec, parse_params
 
 BENCH_KEY = "Уступ"  # the name of the bench among the keys of a row
@@ -321,7 +321,7 @@ def _csv(rows: Sequence[Mapping[str, Any]], keys: Sequence[str], elements: Seque
     """The page as a text: «;», the decimal comma, CRLF (as the CSV of the export), the shortest text of a number."""
     buf = io.StringIO()
     w = csv.writer(buf, delimiter=";", lineterminator="\r\n")
-    w.writerow([*HEAD, *keys, *elements])
+    w.writerow([safe(str(h)) for h in (*HEAD, *keys, *elements)])  # the names of the fields are the user's
     for r in rows:
         w.writerow([cell_text(r[c]) for c in ("i", "j", "k", "x", "y", "z", "dx", "dy", "dz", "f", "volume", "tonnes")]
                    + [cell_text(r["keys"].get(k)) for k in keys]

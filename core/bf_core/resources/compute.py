@@ -147,6 +147,36 @@ class Sums:
     excluded: dict[str, int] = field(default_factory=dict)
     no_density_acc: np.ndarray = field(default_factory=lambda: np.zeros(2))
     warnings: list[str] = field(default_factory=list)
+    _memo: dict[Any, Any] = field(default_factory=dict, repr=False, compare=False)
+
+    def drop_memo(self) -> None:
+        self._memo.clear()
+
+    def suffix(self, group: bool) -> tuple[np.ndarray, np.ndarray]:
+        """`kernels.suffix_sums` of the VALUE bins (all but the last: «нет g_б») of the total (`group` False) or of the
+        groups: floats [G, B, Q] and counts [G, B, K], `[:, j]` = Σ of the bins j … B−1, taken once. The tables of the
+        cut-offs, the balance and the curve are slices of it, the same bits as `range_sums(j, B)` of each."""
+        got = self._memo.get(("suffix", group))
+        if got is None:
+            s, c, n = self.group_view() if group else self.total_view()
+            top = s.shape[1] - 1
+            got = rk.suffix_sums(s[:, :top], c[:, :top], n[:, :top])
+            self._memo["suffix", group] = got
+        return got  # type: ignore[no-any-return]
+
+    def range_of(self, group: bool, lo: int, hi: int) -> tuple[np.ndarray, np.ndarray]:
+        """`kernels.range_sums(*view, lo, hi)` of the total or of the groups, bit for bit, without doing the work again:
+        a table that ends at the value bins (a cut-off, the balance) is a slice of `suffix`, any other range is taken
+        once (the «без борта» table, the off-balance table). The arrays are the cache's: do not change them."""
+        s, c, n = self.group_view() if group else self.total_view()
+        if hi == s.shape[1] - 1:
+            suf, cnt = self.suffix(group)
+            return suf[:, lo, :], cnt[:, lo, :]
+        got = self._memo.get((group, lo, hi))
+        if got is None:
+            got = rk.range_sums(s, c, n, lo, hi)
+            self._memo[group, lo, hi] = got
+        return got  # type: ignore[no-any-return]
 
     @property
     def no_density_volume(self) -> float:
@@ -223,11 +253,14 @@ def run(
     into given accumulators (the same `core`)."""
     core.check()
     out = sums if sums is not None else new_sums(core)
+    out.drop_memo()  # the tables are taken from the sums again
     bench_i = core.bench_key()
     bench = None if bench_i is None else core.keys[bench_i].bench
     nbg = len(core.group_edges) + 2
     ngr = len(core.grades)
-    cap = min(chunk, max(model.rows, 1))
+    # A portion is never bigger than `chunk` (`Model.iter`); the rows of the meta may be fewer than the file holds,
+    # so the buffers are of `chunk` (numba does not check the bounds).
+    cap = max(int(chunk), 1)
     bin_t, bin_g = np.empty(cap, dtype=np.int32), np.empty(cap, dtype=np.int32)
     veff, tonnes = np.empty(cap), np.empty(cap)
     gbuf = np.empty((ngr, cap))
@@ -241,6 +274,9 @@ def run(
     for ch, f in r.iter(model, extra=core.reads(), chunk=chunk):
         tick(0.05 + 0.9 * (ch.start + ch.n) / max(model.rows, 1), None)
         cols, n = ch.cols, ch.n
+        if n > cap:
+            raise ApiError(409, "block_model_broken", "Файлы блочной модели длиннее, чем записано в её описании.",
+                           "Импортируйте модель заново.")  # fmt: skip
         plain = _plain(model, ch)
         frac = cols[core.frac] if core.frac else None
         if plain:  # one volume for every row (the same bits as `row_volumes` of each row)

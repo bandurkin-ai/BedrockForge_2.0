@@ -9,8 +9,10 @@ docs/progress/e20-api.md §5, §8–§10). Relative to `/resources` (`router.py`
     Event `resources.changed {kind: "template", id, deleted?}`.
   * `POST /reports/{id}/export` {format: xlsx | csv, path, template?, cutoff?, overwrite?} → {source, id} of the job
     `resources.export` (quick; 20.5). Checked before it: 422 `bad_param`, 404 `resource_report_not_found`. It writes
-    outside the project, so it works in a project «только просмотр». While the job is not in the build — 501
-    `not_implemented`. The job is given {report_id, format, path, template, cutoff, overwrite}.
+    outside the project, so it is not refused by `require_current(writable=True)` — but nothing is written INTO a
+    project «только просмотр» (the job is given `record: false`), and a project really opened so is not attached to
+    the scheduler: 423 `project_read_only` there (20.18б). While the job is not in the build — 501 `not_implemented`.
+    The job is given {report_id, format, path, template, cutoff, overwrite, record}.
   * `POST /reports/{id}/drill` {group, cutoff, kind?} → {rules, cell, stale, stale_reason, model_id, warnings} and
     `POST /reports/{id}/drill/rows` {…, page, size, csv?} → the same + {page, size, total, rows, csv} (Д-36, 20.9;
     `drill.py`; synchronous, they work in a project «только просмотр»): 404 `resource_report_not_found`,
@@ -28,6 +30,8 @@ from fastapi import APIRouter, Query, Request
 from bf_core.api.errors import ApiError
 from bf_core.db import dialect
 from bf_core.geostat.estimate.routes_common import Payload, Sched, Svc, body_of
+
+from .routes import submit
 
 router = APIRouter()
 EVENT = "resources.changed"
@@ -114,7 +118,8 @@ def export_report(svc: Svc, s: Sched, report_id: int, body: Payload) -> dict[str
     with dialect.read_tx(cur.engine) as conn:
         params = export_job.request(conn, cur.folder, report_id, body_of(body))  # 404 / 409 / 422 before the job
     name = _exists(svc, report_id)
-    key, job_id = s.submit(EXPORT_KIND, params, title=f"Выгрузка отчёта «{name}»")
+    params["record"] = not cur.read_only  # a project «только просмотр»: the file is made, the report does not list it
+    key, job_id = submit(s, EXPORT_KIND, params, f"Выгрузка отчёта «{name}»")
     return {"source": key, "id": job_id}
 
 

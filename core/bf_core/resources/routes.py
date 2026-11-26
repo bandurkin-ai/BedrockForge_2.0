@@ -5,9 +5,10 @@ docs/progress/e20-api.md §2, §3, §5). The paths are relative to `/resources` 
   * `POST /reports` {params, name?, save} → {source, id} of the job `resources.report` (quick). `save` false (the
     default) — a preview, nothing is written; it works in a project «только просмотр». Refused before the job: 422
     `bad_request`, `bad_param {param}`, `report_too_big`, `group_numeric`, `filter_field_missing`; 404
-    `block_model_not_found`, `block_field_not_found`, `filter_not_found`, `template_not_found`; 409 `no_project`;
-    423 `project_read_only` (`save` true). What only the data tells comes from the job (`model_changed`,
-    `too_many_reports`).
+    `block_model_not_found`, `block_field_not_found`, `filter_not_found`, `template_not_found`, `too_many_reports`
+    (`save` true); 409 `no_project`; 423 `project_read_only` (`save` true; and any run in a project really opened
+    «только просмотр»: its scheduler has no project, so the preview cannot run there — «Откройте проект для записи»).
+    What only the data tells comes from the job (`model_changed`).
   * `GET /reports` → {reports [{id, name, state, version, model {id, name}, totals, graph {stale, stale_reason,
     source_lost, pinned}, files, created_at, …}]}.
   * `GET /reports/{id}?template=&cutoff=&page=&size=` → the answer of §3 of a stored report: the page of the rows
@@ -66,8 +67,11 @@ def check_request(conn: Any, store: Any, req: Any) -> str:
     from bf_core.blocks.model import Model
 
     from . import result as rr
+    from . import store as st
     from . import templates
 
+    if req.save:
+        st.check_room(conn)  # 422 `too_many_reports` before the pass, not after it
     model = Model.open(conn, store, req.params.model_id)  # 404 `block_model_not_found`
     spec = req.params.resolved(model.fields, rr.z_range_of(model))  # 404 / 422 of the fields, `report_too_big`
     rr.core_from_spec(model, spec)  # 422 `bad_param`, `report_too_big`
@@ -80,6 +84,21 @@ def check_request(conn: Any, store: Any, req: Any) -> str:
     if spec.template_id is not None:
         templates.get(conn, spec.template_id)  # 404 `template_not_found`
     return model.name
+
+
+def submit(s: Any, kind: str, params: dict[str, Any], title: str) -> tuple[str, int]:
+    """`Scheduler.submit`; a project opened «только просмотр» is not attached to the scheduler (the job rows are in the
+    project): 423 `project_read_only` in Russian, not a 500."""
+    from .spec import refuse
+
+    try:
+        return s.submit(kind, params, title=title)  # type: ignore[no-any-return]
+    except LookupError:
+        raise refuse(
+            "project_read_only",
+            "Проект открыт только для чтения: задание в нём не запускается.",
+            "Откройте проект для записи: закройте его в другом окне BedrockForge и откройте заново.",
+        ) from None
 
 
 @router.post("/reports")
@@ -95,7 +114,7 @@ def post_report(svc: Svc, s: Sched, body: Payload) -> dict[str, Any]:
         name = check_request(conn, BlobStore(project.folder), req)
     registered(KIND, TITLE)
     params = {"params": raw["params"], "name": req.name, "save": req.save}
-    key, job_id = s.submit(KIND, params, title=f"{TITLE} · {name}")
+    key, job_id = submit(s, KIND, params, f"{TITLE} · {name}")
     return {"source": key, "id": job_id}
 
 

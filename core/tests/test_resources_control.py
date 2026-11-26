@@ -94,17 +94,21 @@ def test_sum_of_the_groups_is_the_total_and_the_check_finds_a_break(rc) -> None:
     # a break above the norm: the tonnes of one group off by 1e-9 → found, the warning is Russian with a hint
     broken = sums.sg.copy()
     sums.sg[np.argmax(sums.sg[:, 1]), 1] *= 1.0 + 1e-9
+    sums.drop_memo()  # the tables of the sums are cached: a test that tampers with the accumulators says so
     bad = ct.sum_groups(sums, plan)
     assert not bad["ok"] and 1e-10 < bad["tonnes"]["rel"] < 1e-8
     sums.sg[:] = broken
+    sums.drop_memo()
     # a lost group (its numbers gone): found; a drift under the norm (1e-14): not a break
     lost = int(np.argmax(sums.sg[:, 3]))
     saved = sums.sg[lost].copy(), sums.cg[lost].copy()
     sums.sg[lost] = 0.0
     sums.cg[lost] = 0.0
+    sums.drop_memo()
     assert not ct.sum_groups(sums, plan)["ok"]
     sums.sg[lost], sums.cg[lost] = saved
     sums.sg[np.argmax(sums.sg[:, 1]), 1] *= 1.0 + 1e-14
+    sums.drop_memo()
     assert ct.sum_groups(sums, plan)["ok"]
 
 

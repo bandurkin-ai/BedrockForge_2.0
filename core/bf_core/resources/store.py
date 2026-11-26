@@ -201,6 +201,21 @@ def input_nodes(conn: sa.Connection, model_id: int, fields: Sequence[str], filte
     return [n for n in nodes if lineage.fingerprint(conn, n) is not None]
 
 
+def input_prints(conn: sa.Connection, model_id: int, fields: Sequence[str], filter_id: int | None = None,
+                 restrict: Mapping[str, Any] | None = None) -> dict[Any, str]:  # fmt: skip
+    """The fingerprint of every input node (`input_nodes`) as it is now: what a job takes before it reads the data and
+    `create` / `replace` compare in the transaction of the write (the model, a field, a filter or a surface changed
+    meanwhile — 409 `model_changed`: the rows of the graph would name what the pass did not read)."""
+    from bf_core import lineage
+
+    return {n: str(lineage.fingerprint(conn, n)) for n in input_nodes(conn, model_id, fields, filter_id, restrict)}
+
+
+def inputs_changed() -> ApiError:
+    return ApiError(409, "model_changed", "Данные, из которых строится отчёт, изменились, пока он считался.",
+                    "Повторите расчёт отчёта.")  # fmt: skip
+
+
 def _inputs_meta(refs: Sequence[Any], model_id: int, names: Mapping[str, str]) -> dict[str, Any]:
     """`meta.inputs`, `meta.fields` and the fingerprint of the model from what the graph recorded."""
     inputs: list[dict[str, Any]] = []
@@ -230,6 +245,7 @@ class Built:
     staged: Staged
     versions: Mapping[str, str] | None = None
     warnings: Sequence[Mapping[str, Any]] = field(default_factory=tuple)
+    prints: Mapping[Any, str] | None = None  # `input_prints` before the pass; None — not checked
 
 
 def _params_hash(params: Mapping[str, Any]) -> str:
@@ -252,7 +268,10 @@ def _record(conn: sa.Connection, report_id: int, b: Built) -> dict[str, Any]:
 
     p = b.params
     model_id = int(b.model["id"])
-    nodes = input_nodes(conn, model_id, b.fields, p.get("filter_id"), p.get("restrict"))
+    flt, rules = p.get("filter_id"), p.get("restrict")
+    if b.prints is not None and input_prints(conn, model_id, b.fields, flt, rules) != b.prints:
+        raise inputs_changed()
+    nodes = input_nodes(conn, model_id, b.fields, flt, rules)
     refs = lineage.record(conn, lineage.Node(NODE, report_id), nodes)  # in the transaction of the write (ADR 0025 §4)
     return _inputs_meta(refs, model_id, {str(f).casefold(): str(f) for f in b.fields})
 
@@ -268,13 +287,19 @@ def _apply(conn: sa.Connection, report_id: int, meta: dict[str, Any], rec: Mappi
 # --- write ----------------------------------------------------------------------------------------------------------
 
 
-def create(conn: sa.Connection, store: BlobStore, name: Any, built: Built, author: str | None = None) -> dict[str, Any]:
-    """The report object with its files and the rows of the graph, in the transaction the caller opened (the last stage
-    of the job). → {id, version, name}. 422 `too_many_reports`."""
+def check_room(conn: sa.Connection) -> None:
+    """422 `too_many_reports` when the project holds `MAX_REPORTS` already (the route asks before the pass, `create`
+    again in the transaction of the write)."""
     count = conn.execute(sa.select(sa.func.count()).select_from(objects).where(objects.c.kind == KIND)).scalar_one()
     if int(count) >= MAX_REPORTS:
         raise ApiError(422, "too_many_reports", f"В проекте уже {MAX_REPORTS} отчётов по ресурсам.",
                        "Удалите ненужные отчёты.")  # fmt: skip
+
+
+def create(conn: sa.Connection, store: BlobStore, name: Any, built: Built, author: str | None = None) -> dict[str, Any]:
+    """The report object with its files and the rows of the graph, in the transaction the caller opened (the last stage
+    of the job). → {id, version, name}. 422 `too_many_reports`."""
+    check_room(conn)
     final = free_name(conn, name)
     now = dialect.utcnow()
     meta = {**_meta(built, None, now.isoformat()), "uid": uuid.uuid4().hex}
@@ -431,8 +456,9 @@ def info(conn: sa.Connection, report_id: int, store: BlobStore | None = None) ->
 
 def list_reports(conn: sa.Connection) -> list[dict[str, Any]]:
     """Every report by name: the list entries with the state in the graph (one batch)."""
-    rows = conn.execute(sa.select(objects).where(objects.c.kind == KIND).order_by(objects.c.name_key,
-                                                                                  objects.c.id)).all()
+    rows = conn.execute(
+        sa.select(objects).where(objects.c.kind == KIND).order_by(objects.c.name_key, objects.c.id)
+    ).all()
     graph = graph_of(conn, [int(r.id) for r in rows])
     owned: dict[int, dict[str, tuple[str, int]]] = {int(r.id): {} for r in rows}
     q = (sa.select(blob_owners.c.owner_id, blob_owners.c.role, blob_owners.c.sha256, blobs.c.size)

@@ -288,3 +288,25 @@ def test_the_plan_finds_the_status_fields_of_an_estimate_only(world) -> None:
     assert plan.unit == "g/t" and plan.warnings == ()
     plain = cmp.plan_of(m, parse_field_compare(world.mid, {"field_a": "AU", "field_b": "ID_EST"}))
     assert (plain.status_a, plain.status_b) == (None, None)
+
+
+def test_the_job_gets_only_the_checked_fields_of_the_body(world, monkeypatch) -> None:
+    """Any other key of the body (a client's own) does not go to the parameters of the job (review 20.18б, № 11)."""
+    from bf_core.jobs.scheduler import Scheduler
+
+    seen: list[dict[str, Any]] = []
+    submit = Scheduler.submit
+
+    def spy(self: Scheduler, kind: str, params: dict[str, Any], **kw: Any) -> tuple[str, int]:
+        seen.append(dict(params))
+        return submit(self, kind, params, **kw)
+
+    monkeypatch.setattr(Scheduler, "submit", spy)
+    body = {"field_a": "OK_EST", "field_b": "ID_EST", "domain": "DOM", "extra": "x", "model_id": 999,
+            "rows": 1, "source": "instance", "report_id": 5}  # fmt: skip
+    started = world.post(f"{API}/blocks/{world.mid}/compare", json=body)
+    assert started.status_code == 200, started.text
+    assert finish(world, started.json(), timeout=120)["status"] == "done"
+    assert len(seen) == 1
+    assert set(seen[0]) <= {"field_a", "field_b", "domain", "out", "model_id", "expected_version", "rows"}, seen[0]
+    assert seen[0]["model_id"] == world.mid and seen[0]["rows"] == 8 and seen[0]["field_a"] == "OK_EST"
