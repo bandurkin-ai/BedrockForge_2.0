@@ -18,7 +18,7 @@ State (arrays of n + 1 nodes, the node n is the sink t; the same arrays between 
   `fl[u]`  — uint8 columns ORI (the arc to the parent: 1 — the original arc u → parent, 0 — parent → u, 2 — the sink
              arc u → t) and TSAT (the sink arc of u is saturated and u is out of the tree of t).
 A tree arc has a positive flow and a positive residual capacity in the direction of the push; it is cut when a push
-saturates it. Roots with a positive excess and d < n are ACTIVE; they sit in buckets by label (`head[d]`).
+saturates it. Roots with a positive excess and d ≤ n are ACTIVE; they sit in buckets by label (`head[d]`).
 
 One step (`run`, the lowest label d first): scan the nodes of the NEUTRAL subtree of the root (nodes joined to it by
 tree paths of the label d) for an admissible arc (u, q): d(q) = d − 1. Found: invert the tree path root → u, hang u
@@ -123,9 +123,10 @@ def _link(a32, p, v):  # type: ignore[no-untyped-def]
 
 @njit(cache=True, nogil=True)
 def _activate(n, v, a32, head, ctrl):  # type: ignore[no-untyped-def]
-    """A root v with a positive excess enters the bucket of its label (a label ≥ n is dead)."""
+    """A root v with a positive excess enters the bucket of its label (a label > n is dead: the network of n nodes and
+    the sink holds a path of at most n arcs to t, so a label can reach n — a chain through every node)."""
     d = a32[v, LAB]
-    if d < n:
+    if d <= n:
         a32[v, BNX] = head[d]
         head[d] = v
         if d < ctrl[C_LOW]:
@@ -308,7 +309,7 @@ def run(budget, n, mode, a32, a64, fl, value, cnt, head, stack, vis, ctrl, gr): 
     stop = work + budget
     while True:
         gap = ctrl[C_GAP]
-        lim = gap if gap < n - 1 else n - 1
+        lim = gap if gap < n else n
         low = ctrl[C_LOW]
         while low <= lim and head[low] < 0:
             low += 1

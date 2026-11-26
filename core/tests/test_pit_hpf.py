@@ -285,3 +285,57 @@ def test_degenerate_inputs():
     huge = G.build_graph((2, 1, 1), np.array([2**61, 2**61], np.int64), np.zeros(2, dtype=bool), None, [T9])
     with pytest.raises(ValueError):
         H.solve(huge)  # Σ|v′| ≥ 2⁶²: the excess could overflow
+
+
+# --- the labels reach n: a chain through every node (review 21.21б, finding 2) -------------------------------------
+
+
+def csr_of(n, tails, heads):
+    o = np.argsort(tails, kind="stable")
+    indptr = np.zeros(n + 1, np.int64)
+    np.add.at(indptr, np.asarray(tails)[o] + 1, 1)
+    return np.cumsum(indptr), np.asarray(heads, dtype=np.int32)[o]
+
+
+def test_chain_through_every_node_reaches_label_n():
+    """v = [3, −1], the arc 0 → 1: the sink is at the distance n = 2 from the node 0 (the label of a node of a network
+    of n nodes and the sink can be n); the bound n − 1 left the excess in the tree and the certificate failed."""
+    value = np.array([3, -1], dtype=np.int64)
+    indptr, indices = csr_of(2, [0], [1])
+    for portion in (None, 1):
+        assert H.solve_arcs(value, indptr, indices, portion=portion).tolist() == [True, True]
+    g = G.build_graph((1, 1, 2), value, np.zeros(2, bool), None, [np.array([[0, 0, 1]], np.int32)])
+    assert H.solve(g).tolist() == [True, True] and np.array_equal(H.solve(g), F.solve(g))
+    for n in (3, 5, 8, 17):  # a chain 0 → 1 → … → n − 1: the supply at the head, a cost at every other node
+        value = np.array([n] + [-1] * (n - 1), dtype=np.int64)
+        indptr, indices = csr_of(n, list(range(n - 1)), list(range(1, n)))
+        got = H.solve_arcs(value, indptr, indices)
+        assert got.all() and np.array_equal(got, F.solve_arcs(value, indptr, indices))
+        gz = G.build_graph((1, 1, n), value, np.zeros(n, bool), None, [np.array([[0, 0, 1]], np.int32)])
+        assert H.solve(gz).all()
+        gp = G.build_graph((1, 1, n), np.array([n - 2] + [-1] * (n - 1), np.int64), np.zeros(n, bool), None,
+                           [np.array([[0, 0, 1]], np.int32)])  # fmt: skip
+        assert np.array_equal(H.solve(gp), F.solve(gp)) and not H.solve(gp).any()  # the cost n − 1 is more
+
+
+def test_random_small_graphs_with_cycles_and_repeats_equal_ortools():
+    """3000 random graphs of 1…11 nodes (arcs at random, a part of them is a chain through every node; cycles and
+    repeated arcs) — HPF in one portion and in portions of one operation equals OR-Tools, set for set."""
+    rng = np.random.default_rng(2113)
+    for _ in range(3000):
+        n = int(rng.integers(1, 12))
+        value = rng.integers(-6, 7, n).astype(np.int64)
+        if rng.random() < 0.3:
+            order = rng.permutation(n)
+            extra = int(rng.integers(0, n + 1))
+            tails = np.append(order[:-1], rng.integers(0, n, extra))
+            heads = np.append(order[1:], rng.integers(0, n, extra))
+        else:
+            m = int(rng.integers(0, 3 * n + 1))
+            tails, heads = rng.integers(0, n, m), rng.integers(0, n, m)
+        if rng.random() < 0.5:  # repeated arcs
+            tails, heads = np.append(tails, tails[:3]), np.append(heads, heads[:3])
+        indptr, indices = csr_of(n, tails, heads)
+        ref = F.solve_arcs(value, indptr, indices)
+        for portion in (None, 1):
+            assert np.array_equal(H.solve_arcs(value, indptr, indices, portion=portion), ref), (n, value.tolist())

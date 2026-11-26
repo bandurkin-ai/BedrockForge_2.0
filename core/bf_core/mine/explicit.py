@@ -12,7 +12,9 @@ where the description leaves room; what it assumes is listed here (and is the th
   required: the first line that is not a `KEY: value` starts the table. A line has exactly two tokens. `value` is the
   gain of the block (positive — a profit, negative — a cost; the objective is the SUM of the values of the extracted
   blocks); it may be an integer or a decimal (up to 9 digits after the point: the values are scaled to int64 by
-  `10^d`, the smallest `d` that makes every value whole, so the objective is exact: `Σ v′ / 10^d`).
+  `10^d`, the smallest `d` that makes every value whole, so the objective is exact: `Σ v′ / 10^d`). The text is read
+  as a DECIMAL STRING (`decimal`), never through a float: 15+ significant digits stay exact, a 10th digit after the
+  point is an error and not a rounding.
 * `<name>.prec` — one line `id n p₁ … pₙ` per block: the block `id` may be extracted only after all of `p₁ … pₙ`
   (its PREDECESSORS: the arcs u → pⱼ of the closure problem, as in `graph.predecessors`); `n = 0` — no predecessors.
   A block with no line has none. An optional last line `EOF`; `KEY: value` lines are ignored.
@@ -30,6 +32,7 @@ from __future__ import annotations
 import itertools
 from collections.abc import Callable
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Literal
 
@@ -120,24 +123,53 @@ def _header_line(line: str) -> tuple[str, str] | None:
     return key.upper(), val.strip()
 
 
-def _scaled(path: Path, tokens: list[str], first_line: int) -> tuple[NDArray[np.int64], int]:
-    """(int64 values, the scale 10^d): the smallest d ≤ 9 with every value whole."""
+def _mantissa(token: str) -> tuple[int, int] | None:
+    """(m, e) with the value of `token` = m·10^e EXACTLY (m has no trailing zeros; zero is (0, 0)); None — not a finite
+    number, or one with more than 19 digits before the point (it cannot fit the int64 of the solver anyway)."""
     try:
-        f = np.array(tokens, dtype=np.float64)
-    except ValueError:
-        raise _format(path, "значение блока не число", first_line) from None
-    if not bool(np.all(np.isfinite(f))):
-        raise _format(path, "значение блока не конечное число", first_line)
-    for d in range(MAX_DECIMALS + 1):
-        s = f * 10.0**d
-        if float(np.max(np.abs(s), initial=0.0)) >= 2.0**53:
-            break
-        if bool(np.all(np.abs(s - np.rint(s)) < 1e-6)):
-            v = np.rint(s).astype(np.int64)
-            if int(np.abs(v).sum()) >= MAX_ABS_SUM:
-                raise _format(path, "сумма модулей значений не помещается в 64 бита")
-            return v, 10**d
-    raise _format(path, f"значения блоков не приводятся к целым с точностью до {MAX_DECIMALS} знаков")
+        d = Decimal(token)
+    except InvalidOperation:
+        return None
+    if not d.is_finite():
+        return None
+    sign, digits, exp = d.as_tuple()
+    assert isinstance(exp, int)  # finite
+    m = int("".join(map(str, digits))) if digits else 0
+    if m == 0:
+        return 0, 0
+    while m % 10 == 0:
+        m //= 10
+        exp += 1
+    if len(str(m)) + max(exp, 0) > 19:
+        return None
+    return (-m if sign else m), exp
+
+
+def _scaled(path: Path, tokens: list[str], first_line: int) -> tuple[NDArray[np.int64], int]:
+    """(int64 values, the scale 10^d): the smallest d ≤ 9 with every value whole. The tokens are read as DECIMAL
+    strings, never through a float: a value of 15 or more significant digits stays exact, and a digit beyond the 9th
+    after the point is an error, not a rounding (no absolute tolerance)."""
+    try:
+        whole = np.array(tokens, dtype=np.int64)  # the usual case: integers — exact and fast
+    except (ValueError, OverflowError):
+        whole = None
+    if whole is not None:
+        if int(np.abs(whole).astype(object).sum()) >= MAX_ABS_SUM:
+            raise _format(path, "сумма модулей значений не помещается в 64 бита")
+        return whole, 1
+    parts: list[tuple[int, int]] = []
+    for t in tokens:
+        mantissa = _mantissa(t)
+        if mantissa is None:
+            raise _format(path, "значение блока не число или не помещается в 64 бита", first_line)
+        parts.append(mantissa)
+    d = max((-e for _, e in parts if e < 0), default=0)
+    if d > MAX_DECIMALS:
+        raise _format(path, f"значения блоков не приводятся к целым с точностью до {MAX_DECIMALS} знаков")
+    ints = [m * 10 ** (e + d) for m, e in parts]
+    if sum(abs(x) for x in ints) >= MAX_ABS_SUM:
+        raise _format(path, "сумма модулей значений не помещается в 64 бита")
+    return np.array(ints, dtype=np.int64), 10**d
 
 
 def read_upit(path: str | Path) -> tuple[str, NDArray[np.int64], int, int]:

@@ -3,8 +3,13 @@ decisions 13, 16, 17): one maximum closure per RF, found by bisection of the int
 on the whole graph.
 
     res = shells(graph, table_or_values, rfs, solver="auto", tick=tick, threads=4)
-    res.pit          # int16 [nodes of the graph]: the number 1…N of the SMALLEST shell holding the node, 0 — outside
+    res.pit          # int16 [REAL nodes]: the number 1…N of the SMALLEST shell holding the node, 0 — outside
     res.rf, res.q    # the sorted factors, the quantum of the scenario ($)
+
+BRIDGES (`graph.py`). The graph may hold bridges (nodes of v′ = 0 that carry a chain of the reduced template through an
+«air» cell). `values` give the values of the REAL nodes only (the order of `Table`), the run expands them with 0 at the
+bridges; the solvers and the closure checks see all nodes; everything the caller gets (`pit`, `blocks`, `mask`,
+`objective`) is about the real nodes — bridges are not blocks and never appear in a result.
 
 THE ALGORITHM. The factors go up: RF_0 < … < RF_(N−1). C(RF) is the smallest optimal closure at RF. The value of a block
 never falls when RF grows (v = max(A·RF − D; 0) − C_m), so the smallest optima are NESTED, C(RF_k) ⊆ C(RF_(k+1))
@@ -22,10 +27,13 @@ never falls when RF grows (v = max(A·RF − D; 0) − C_m), so the smallest opt
     The result is the same set as the solution «from scratch» at that RF: C(RF_a) ⊆ C* ⊆ C(RF_b), and
     C* ∖ C(RF_a) is the smallest optimum of the cut problem (a smaller one would give a smaller optimum of the whole).
 
-THE INTEGERS. One quantum q for the whole scenario: q = max of the quanta of RF_min and of RF_max (Σ |v| is convex in
-RF, so no other RF has a larger sum and Σ|v′| ≤ 10¹⁶ + N holds for all of them); v′(RF) = round(v(RF)/q), half to even.
-Rounding with ONE q is monotone in v, so the nesting stays true for the integers; with a q per solution the shells could
-cross by a rounding. The objective error of the scenario is N_nodes·q/2 (`Shells.error`) for every shell.
+THE INTEGERS. One quantum q for the whole scenario: q = max of the quanta of RF_min and of RF_max; v′(RF) =
+round(v(RF)/q), half to even. No other RF needs a larger q: v_b(rf) = max(A·rf − D; 0) − C_m does not fall with rf, so
+for RF_min ≤ rf ≤ RF_max the value lies between the two and |v_b(rf)| ≤ max(|v_b(RF_min)|, |v_b(RF_max)|) ≤
+|v_b(RF_min)| + |v_b(RF_max)|; with Σ|v_b(RF_x)| ≤ 10¹⁶·q_x ≤ 10¹⁶·q that gives Σ|v′(rf)| ≤ 2·10¹⁶ + N < 2⁶² (the
+bound the solvers check, `flow_ref.MAX_ABS_SUM`). Rounding with ONE q is monotone in v, so the nesting stays true for
+the integers; with a q per solution the shells could cross by a rounding. The objective error of the scenario is
+N_blocks·q/2 (`Shells.error`) for every shell.
 
 THE CHECKS. After every solution the set must be closed on its own graph; at the end every shell is checked on the
 WHOLE graph (Т8.11-5: not one mined block without its predecessor): a violation is a 500 `pit_internal` with the shell,
@@ -50,13 +58,20 @@ from numpy.typing import NDArray
 from bf_core.api.errors import ApiError
 from bf_core.mine import hpf
 from bf_core.mine.econ_table import to_int
-from bf_core.mine.graph import PitGraph, closure_violations, cone_mask, parent_index, restrict_graph
+from bf_core.mine.graph import (
+    PitGraph,
+    closure_violations,
+    cone_mask,
+    nesting_violations,
+    parent_index,
+    restrict_graph,
+)
 from bf_core.mine.solve import solve
 
 MAX_SHELLS = 200  # the limit of the contract (ТЗ 8.11.5); the label is int16
 log = logging.getLogger("bf_core.mine.shells")
 
-Values = Callable[[float], NDArray[np.float64]]  # RF → float64 [nodes of the graph]
+Values = Callable[[float], NDArray[np.float64]]  # RF → float64 [real nodes of the graph]
 Tick = Callable[[int, int, str], None]  # (done, total, text)
 
 
@@ -65,10 +80,10 @@ class Shells:
     """The answer of `shells`. All arrays are per shell (`rf` order) or per node of the graph."""
 
     rf: NDArray[np.float64]  # (N,) ascending, no repeats
-    pit: NDArray[np.int16]  # (n,) number 1…N of the smallest shell with the node, 0 — outside of C(RF_max)
+    pit: NDArray[np.int16]  # (n_real,) number 1…N of the smallest shell with the block, 0 — outside of C(RF_max)
     q: float  # the quantum of the scenario, $
-    error: float  # n·q/2 — |Σ value − q·Σ v′| over any set of nodes (`meta.objective_error`)
-    blocks: NDArray[np.int64]  # (N,) nodes in C(RF_k)
+    error: float  # n_real·q/2 — |Σ value − q·Σ v′| over any set of blocks (`meta.objective_error`)
+    blocks: NDArray[np.int64]  # (N,) blocks (real nodes) in C(RF_k)
     objective: NDArray[np.int64]  # (N,) Σ v′(RF_k) over C(RF_k) — the optimum of the solver, in quanta
     solver: str  # the solver that answered: "hpf", "ortools" or "mixed" (a fall-back inside the run)
     stats: dict[str, Any] = field(default_factory=dict)
@@ -78,7 +93,7 @@ class Shells:
         return int(self.rf.shape[0])
 
     def mask(self, k: int) -> NDArray[np.bool_]:
-        """The nodes of C(RF_k), k = 0…N−1: bool per node."""
+        """The blocks of C(RF_k), k = 0…N−1: bool per real node."""
         return (self.pit > 0) & (self.pit <= k + 1)
 
 
@@ -102,9 +117,10 @@ def sorted_rf(rfs: Sequence[float] | NDArray[np.float64]) -> NDArray[np.float64]
 
 
 def pit_on_grid(g: PitGraph, pit: NDArray[np.int16]) -> NDArray[np.int16]:
-    """The labels of the nodes on the grid of parents (nx·ny·nz, order of P); a cell without a node — 0 («воздух»)."""
+    """The labels of the blocks (`Shells.pit`, one per REAL node) on the grid of parents (nx·ny·nz, order of P); a cell
+    without a block («воздух», a bridge) — 0."""
     out = np.zeros(g.dims[0] * g.dims[1] * g.dims[2], dtype=np.int16)
-    out[parent_index(g)] = pit
+    out[parent_index(g, real_only=True)] = pit
     return out
 
 
@@ -177,17 +193,17 @@ class _Run:
         t0 = time.perf_counter()
         v = np.asarray(self.get(float(self.rf[k])), dtype=np.float64)
         self.sec["values"] += time.perf_counter() - t0
-        if v.shape != (self.n,):
-            raise ValueError("values(rf) must return one float64 per node of the graph")
+        if v.shape != (self.graph.n_real,):
+            raise ValueError("values(rf) must return one float64 per real node of the graph")
         return v
 
     def ints(self, k: int) -> NDArray[np.int64]:
-        """v′ of the shell k at the quantum of the scenario."""
+        """v′ of the shell k at the quantum of the scenario, for ALL nodes of the graph (0 at the bridges)."""
         if k == self.total - 1:
             return self.iv_hi
         if k == 0:
             return self.iv_lo
-        return scale(self.raw(k), self.q)
+        return self.graph.expand(scale(self.raw(k), self.q))
 
     def quantum(self) -> None:
         """One q for the scenario; v′ at RF_max and RF_min are kept (they are used all the time)."""
@@ -199,8 +215,8 @@ class _Run:
             v_lo = self.raw(0)
             q = max(q, to_int(v_lo, threads=self.threads).q)
         self.q = q
-        self.iv_hi = i_hi.v if q == i_hi.q else scale(v_hi, q)
-        self.iv_lo = self.iv_hi if v_lo is None else scale(v_lo, q)
+        self.iv_hi = self.graph.expand(i_hi.v if q == i_hi.q else scale(v_hi, q))
+        self.iv_lo = self.iv_hi if v_lo is None else self.graph.expand(scale(v_lo, q))
 
     # one solution --------------------------------------------------------------------------------------------------
 
@@ -279,17 +295,25 @@ class _Run:
     # the final checks ----------------------------------------------------------------------------------------------
 
     def finish(self) -> tuple[NDArray[np.int64], NDArray[np.int64]]:
-        """Every shell on the WHOLE graph: closed (Т8.11-5); the counts and the objective of each (in quanta)."""
+        """Every shell on the WHOLE graph: closed and nested (Т8.11-5) — ONE pass over the arcs for all the shells
+        (`graph.nesting_violations`); the counts and the objective of each (in quanta)."""
         blocks = np.zeros(self.total, dtype=np.int64)
         objective = np.zeros(self.total, dtype=np.int64)
         lab = self.lab
+        real = self.graph.real
+        t0 = time.perf_counter()
+        bad, u, q, lu, lq = nesting_violations(self.graph, lab)
+        self.sec["check"] += time.perf_counter() - t0
+        if bad:
+            raise _internal(
+                f"в оболочке {lu} есть вынутый блок без вынутого предшественника ({bad} дуг)",
+                arcs=bad, node=u, predecessor=q, shell=lu, predecessor_shell=lq,
+                rf=float(self.rf[lu - 1]),
+            )  # fmt: skip
         for k in range(self.total):
-            self.say(self.total)  # (cancellation point; the work is the checks)
+            self.say(self.total)  # (cancellation point; the work is the counts)
             m = (lab > 0) & (lab <= k + 1)
-            t0 = time.perf_counter()
-            _check_closed(self.graph, m, str(k + 1), rf=float(self.rf[k]))
-            self.sec["check"] += time.perf_counter() - t0
-            blocks[k] = int(m.sum())
+            blocks[k] = int(m.sum()) if real is None else int(np.count_nonzero(m & real))
             objective[k] = int(self.ints(k)[m].sum())
             if k and blocks[k] < blocks[k - 1]:
                 raise _internal(f"оболочка {k + 1} меньше предыдущей", shell=k + 1)
@@ -311,10 +335,10 @@ def shells(
     """The nested shells of `graph` for the factors `rfs` (any order; sorted here, repeats merged).
 
     `graph` — the structure (nodes, offset tables; its own `value` is ignored); `values` — an `econ_table.Table` or a
-    function RF → float64 [nodes of the graph] in the order of the nodes; `solver` — "auto" (HPF, OR-Tools as the
-    reserve) / "hpf" / "ortools"; `tick(done, total, text)` — progress and cancellation (it may raise); `threads` — for
-    the values only (the answer does not depend on it); `max_bytes` — the memory limit of HPF; `stats` — gets the
-    counters (also in `Shells.stats`).
+    function RF → float64 [REAL nodes of the graph] in the order of the nodes (the bridges, if any, are 0); `solver`
+    — "auto" (HPF, OR-Tools as the reserve) / "hpf" / "ortools"; `tick(done, total, text)` — progress and cancellation
+    (it may raise); `threads` — for the values only (the answer does not depend on it); `max_bytes` — the memory limit
+    of HPF; `stats` — gets the counters (also in `Shells.stats`).
     422 `pit_empty` — no block with v′ > 0 at RF_max; 422 `pit_too_large` — from HPF; 500 `pit_internal` — a check
     failed."""
     t_all = time.perf_counter()
@@ -323,9 +347,10 @@ def shells(
     r.go()
     blocks, objective = r.finish()
     used = {u for u in r.used if u != "none"}
+    n_real = graph.n_real
     kind = "mixed" if len(used) > 1 else (next(iter(used)) if used else "hpf")
     st: dict[str, Any] = {"solves": r.solves, "seconds": {**r.sec, "total": time.perf_counter() - t_all},
-                          "nodes": graph.n}  # fmt: skip
+                          "nodes": graph.n, "bridges": graph.n - n_real}  # fmt: skip
     if stats is not None:
         stats.update(st)
-    return Shells(rf, r.lab, r.q, graph.n * r.q / 2.0, blocks, objective, kind, st)
+    return Shells(rf, graph.real_pit(r.lab), r.q, n_real * r.q / 2.0, blocks, objective, kind, st)

@@ -88,6 +88,14 @@ def _graph() -> None:
     gr.closure_violations(g, np.zeros(g.n, dtype=np.bool_))
     gr.restrict_graph(g, cone)
     gr.parent_index(g)
+    gr.nesting_violations(g, np.zeros(g.n, dtype=np.int16))
+    nx, ny, nz = DIMS  # the bridges: an «air» pocket under a block (`graph_kernels.mark_bridges`)
+    air = np.zeros(nx * ny * nz, dtype=np.bool_)
+    air[nx * ny + (nx + 1) :] = True  # the levels from the second up are «воздух» but for the first column
+    air[nx * ny * (nz - 1) + 1] = False  # a block high above the pocket
+    b = gr.build_graph(DIMS, np.zeros(air.size, dtype=np.int64), air, None, [np.array(OFFSETS, dtype=np.int32)],
+                       bridges=True)  # fmt: skip
+    b.real_view()
 
 
 def _inputs() -> Any:

@@ -46,11 +46,12 @@ import numpy as np
 from bf_core.api.errors import ApiError
 from bf_core.blocks import geometry
 from bf_core.blocks import schema as bs
-from bf_core.blocks.model import CHUNK, Chunk, Model, empty_of
+from bf_core.blocks.model import CHUNK, Chunk, Model
 from bf_core.blocks.restrict import Restrictor
 from bf_core.composites import strips
 
 from . import econ_kernels as ek
+from .econ_empty import empty_cells
 
 Tick = Callable[[float | None, str | None], None]
 
@@ -440,27 +441,6 @@ def _rows_of(model: Model, inp: Inputs, tb: Tables, ch: Chunk, f: np.ndarray, ga
     return RowChunk(ch.start, ch.p, gap, f, vol, rock, g, _econ(inp, tb, f, vol, dens, rock, z, g, threads))
 
 
-def _empty_cells(model: Model, names: Sequence[str], chunk: int) -> Iterator[tuple[float, Chunk]]:
-    """The cells absent from the file in the order of P: (the share of the grid passed, a portion of whole parents
-    whose fields are empty — NaN of a number, −1 of a category)."""
-    present = model.p()
-    total = max(model.grid.cells, 1)
-    specs = {name: model.field(name) for name in names}
-    for lo in range(0, model.grid.cells, chunk):
-        cand = np.arange(lo, min(lo + chunk, model.grid.cells), dtype=np.uint64)
-        if len(present):
-            pos = np.searchsorted(present, cand)
-            cand = cand[~((pos < len(present)) & (present[np.minimum(pos, len(present) - 1)] == cand))]
-        if not len(cand):
-            continue
-        cols = {}
-        for name, spec in specs.items():
-            col = empty_of(spec, len(cand))
-            col[:] = np.nan if spec["kind"] == bs.NUMBER else -1
-            cols[name] = col
-        yield (lo + chunk) / total, Chunk(-1, cand, None, None, cols)
-
-
 def iter_rows(
     model: Model, inp: Inputs, r: Restrictor, *, control: Control | None = None, chunk: int = CHUNK,
     tick: Tick = _noop, threads: int = 1, span: tuple[float, float] = (0.0, 1.0),
@@ -489,7 +469,7 @@ def iter_rows(
         emit(rc)
         yield rc
     if inp.fill_empty:
-        for share, ch in _empty_cells(model, names, chunk):
+        for share, ch in empty_cells(model, names, chunk, getattr(r, "kmax", None)):
             tick(a0 + (b0 - a0) * (first + (1.0 - first) * share), None)
             f = r.weights(ch)
             rc = _rows_of(model, inp, tb, ch, f, True, threads)

@@ -14,19 +14,34 @@ by growing P; the dense index (int32) covers only the TRIMMED BOX of the nodes (
 −1 — no node: `index[(i − i0) + mx·((j − j0) + my·(k − k0))]`. Limits (ADR 0028 decision 13): cells of the box
 ≤ 2³¹ − 1 and the index ≤ 1 GB (so ≤ 2²⁸ cells), nodes ≤ 10 million — otherwise 422 `pit_too_large`.
 
+BRIDGES (ADR 0028 decision 11, the review 21.21б). The template drops an arc that is a SUM of template arcs (the
+reduction of transitive arcs), so «u needs q» may go through an intermediate cell. If that cell is «air» (a valley of
+the relief between two ridges, a block outside the restriction) the chain would break and a predecessor on the border
+of the cone would be lost. With `bridges=True` such an «air» cell INSIDE the box of the real nodes becomes a BRIDGE: a
+node with v′ = 0 that has an arc to every predecessor, by the table `bridge_table` (the general one, 0: the domain of
+an «air» cell is unknown), that is a real node or a bridge itself (the levels are walked from the top down, so a chain
+of bridges is found). A bridge is not a block: `PitGraph.real` (bool per node; None — all nodes are real, the usual
+case: a flat relief has no «air» below a real block) marks the real nodes, the solvers see bridges as nodes of value
+0, and every consumer outside the solvers (the pit, the report, the fields, the count of blocks) sees only the real
+ones — `n_real`, `expand`, `real_pit`, `real_view`, `parent_index(real_only=True)`.
+An intermediate block of a chain uses ITS OWN table (as always); a bridge — the general one: with the domains of slopes
+the reduction is exact only where the chain stays in one domain (the assumption of the review, ТЗ 8.11.2).
+
 `PitGraph` holds no values of a particular RF beyond `value` (int64, the v′ of the solver): `with_values` keeps the
 structure and swaps the values (shells re-use one index for every RF). All functions are side-effect free; the arrays
 of a graph must be treated as read-only.
 
 Public: `build_graph`, `restrict_graph` (a subgraph of kept nodes — the cones, the shells), `cone_mask` (union of the
 cones over the nodes with v′ > 0), `predecessors` (CSR of the arcs, for OR-Tools and the explicit-arcs mode of HPF),
-`closure_violations` / `is_closed`, `parent_index` / `expand_mask` (back to the parent grid).
+`closure_violations` / `is_closed`, `nesting_violations` (all the shells in one pass), `parent_index` / `expand_mask`
+(back to the parent grid).
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
+from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
@@ -52,10 +67,41 @@ class PitGraph:
     tab_ptr: NDArray[np.int64]  # (T + 1,) table t is tab_off[tab_ptr[t]:tab_ptr[t + 1]]
     tab_off: NDArray[np.int32]  # (E, 3) (Δi, Δj, m) rows of all tables
     level_ptr: NDArray[np.int64]  # (mz + 1,) the nodes of the level k are level_ptr[k]:level_ptr[k + 1]
+    real: NDArray[np.bool_] | None = None  # (n,) True — a block, False — a bridge (v′ = 0); None — all are blocks
 
     @property
     def n(self) -> int:
+        """All nodes, bridges included (what the solvers see)."""
         return int(self.pos.shape[0])
+
+    @property
+    def n_real(self) -> int:
+        """The blocks: the nodes that are not bridges."""
+        return self.n if self.real is None else int(np.count_nonzero(self.real))
+
+    def expand(self, values_real: NDArray[Any]) -> NDArray[Any]:
+        """Values of the real nodes (in the order of the nodes) → values of all nodes: 0 at the bridges."""
+        v = np.asarray(values_real)
+        if v.shape != (self.n_real,):
+            raise ValueError("one value per real node is expected")
+        if self.real is None:
+            return v
+        out = np.zeros(self.n, dtype=v.dtype)
+        out[self.real] = v
+        return out
+
+    def real_pit(self, per_node: NDArray[Any]) -> NDArray[Any]:
+        """Anything per node of the graph → per real node (what the consumers outside the solvers see)."""
+        a = np.asarray(per_node)
+        if a.shape != (self.n,):
+            raise ValueError("one entry per node of the graph is expected")
+        return a if self.real is None else a[self.real]
+
+    def real_view(self) -> PitGraph:
+        """The graph of the real nodes only (the bridges dropped: its arcs are those of the nodes that are left)."""
+        if self.real is None:
+            return self
+        return restrict_graph(self, self.real)[0]
 
     @property
     def kernel_args(self) -> tuple[NDArray[np.int32], NDArray[np.uint8], NDArray[np.int32], NDArray[np.int64],
@@ -69,6 +115,8 @@ class PitGraph:
         v = np.asarray(value)
         if v.shape != (self.n,) or not np.issubdtype(v.dtype, np.integer):
             raise ValueError("value must be an integer array with one entry per node")
+        if self.real is not None and bool(np.any(v[~self.real] != 0)):
+            raise ValueError("the value of a bridge is 0")
         return replace(self, value=v.astype(np.int64, copy=False))
 
 
@@ -128,13 +176,17 @@ def _assemble(
     tpl: NDArray[np.uint8],
     tab_ptr: NDArray[np.int64],
     tab_off: NDArray[np.int32],
+    real: NDArray[np.bool_] | None = None,
 ) -> PitGraph:
-    """The graph of nodes with grid coordinates (i, j, k) sorted by growing P (the box and the index are made here)."""
+    """The graph of nodes with grid coordinates (i, j, k) sorted by growing P (the box and the index are made here).
+    `real` — False for a bridge; None — no bridges (or all True: stored as None)."""
+    if real is not None and bool(real.all()):
+        real = None
     n = len(i)
     if n == 0:
         z = np.zeros(0, dtype=np.int32)
         return PitGraph(dims, (0, 0, 0), (0, 0, 0), z, z.copy(), value[:0], tpl[:0], tab_ptr, tab_off,
-                        np.zeros(1, dtype=np.int64))  # fmt: skip
+                        np.zeros(1, dtype=np.int64), None)  # fmt: skip
     i0, i1 = int(i.min()), int(i.max()) + 1
     j0, j1 = int(j.min()), int(j.max()) + 1
     k0, k1 = int(k.min()), int(k.max()) + 1
@@ -146,7 +198,7 @@ def _assemble(
     index[pos64] = np.arange(n, dtype=np.int32)
     level_ptr = np.searchsorted(kk, np.arange(mz + 1)).astype(np.int64)
     return PitGraph(dims, (i0, j0, k0), (mx, my, mz), pos64.astype(np.int32), index, value, tpl, tab_ptr, tab_off,
-                    level_ptr)  # fmt: skip
+                    level_ptr, real)  # fmt: skip
 
 
 def build_graph(
@@ -155,11 +207,17 @@ def build_graph(
     air: NDArray[np.bool_],
     tpl: NDArray[np.uint8] | None,
     tables: Sequence[NDArray[np.int32]],
+    *,
+    bridges: bool = False,
+    bridge_table: int = 0,
 ) -> PitGraph:
     """The graph of a grid (nx, ny, nz) of parents; every array is 1-D of length nx·ny·nz in the order of P.
 
     `value` — integer v′ per cell (the value of an «air» cell is ignored); `air` — True: no node; `tpl` — the index of
     the offset table of a cell (None — table 0 everywhere); `tables` — the offset tables (see the module docstring).
+    `bridges` — an «air» cell inside the box of the real nodes that is on the way of a chain of the reduced template
+    becomes a bridge (v′ = 0, the table `bridge_table`; see BRIDGES above): the production graph (`plan.make_graph`)
+    always asks for them; the default (False) is the pure structure in which «air» is simply free.
     422 `pit_too_large` — see `check_size`."""
     nx, ny, nz = (int(d) for d in dims)
     total = nx * ny * nz
@@ -175,6 +233,8 @@ def build_graph(
     tab_ptr, tab_off = pack_tables(tables)
     if t is not None and total and int(t.max()) >= len(tab_ptr) - 1:
         raise ValueError("the index of a table is out of the list of tables")
+    if not 0 <= bridge_table < len(tab_ptr) - 1:
+        raise ValueError("bridge_table is out of the list of tables")
     m3 = ~a.reshape(nz, ny, nx)
     n = int(np.count_nonzero(m3))
     if n == 0:
@@ -188,9 +248,25 @@ def build_graph(
     check_size(n, mb.size)  # before the index is allocated
     vb = v.reshape(nz, ny, nx)[box][mb].astype(np.int64, copy=False)
     tb = np.zeros(n, dtype=np.uint8) if t is None else t.astype(np.uint8, copy=False).reshape(nz, ny, nx)[box][mb]
+    real = None
+    if bridges and n < mb.size:  # a box with no «air» in it has nothing to bridge
+        from bf_core.mine import graph_kernels as K
+
+        occ = mb.astype(np.uint8)  # 1 — a block, 2 — a bridge (made by the kernel)
+        added = int(K.mark_bridges(occ, tab_off[tab_ptr[bridge_table] : tab_ptr[bridge_table + 1]]))
+        if added:
+            check_size(n + added, mb.size)
+            nodes = occ > 0
+            real = occ[nodes] == 1
+            vv = np.zeros(n + added, dtype=np.int64)
+            vv[real] = vb
+            tt = np.full(n + added, bridge_table, dtype=np.uint8)
+            tt[real] = tb
+            vb, tb, mb = vv, tt, nodes
+        del occ
     kz, jy, ix = np.nonzero(mb)  # C order of (k, j, i) == the order of growing P
     return _assemble((nx, ny, nz), ix.astype(np.int64) + box[2].start, jy.astype(np.int64) + box[1].start,
-                     kz.astype(np.int64) + box[0].start, vb, tb, tab_ptr, tab_off)  # fmt: skip
+                     kz.astype(np.int64) + box[0].start, vb, tb, tab_ptr, tab_off, real)  # fmt: skip
 
 
 def _coords(g: PitGraph) -> tuple[NDArray[np.int64], NDArray[np.int64], NDArray[np.int64]]:
@@ -215,21 +291,27 @@ def restrict_graph(g: PitGraph, keep: NDArray[np.bool_]) -> tuple[PitGraph, NDAr
         raise ValueError("keep must be a bool array with one entry per node")
     ids = np.flatnonzero(keep)
     i, j, k = _coords(g)
-    sub = _assemble(g.dims, i[ids], j[ids], k[ids], g.value[ids], g.tpl[ids], g.tab_ptr, g.tab_off)
+    real = None if g.real is None else g.real[ids]
+    sub = _assemble(g.dims, i[ids], j[ids], k[ids], g.value[ids], g.tpl[ids], g.tab_ptr, g.tab_off, real)
     return sub, ids
 
 
-def parent_index(g: PitGraph) -> NDArray[np.int64]:
-    """P = i + nx·(j + ny·k) of every node in the parent grid (growing)."""
+def parent_index(g: PitGraph, *, real_only: bool = False) -> NDArray[np.int64]:
+    """P = i + nx·(j + ny·k) of every node in the parent grid (growing); `real_only` — of the blocks, no bridges."""
     i, j, k = _coords(g)
     nx, ny, _ = g.dims
-    return i + nx * (j + ny * k)
+    p = i + nx * (j + ny * k)
+    return p[g.real] if (real_only and g.real is not None) else p
 
 
 def expand_mask(g: PitGraph, mask: NDArray[np.bool_]) -> NDArray[np.bool_]:
-    """A bool per node → a bool per parent cell (nx·ny·nz, order of P); the cells without a node are False."""
+    """A bool per node → a bool per parent cell (nx·ny·nz, order of P); the cells without a node — and the bridges,
+    which are not blocks — are False."""
+    m = np.asarray(mask, dtype=bool)
+    if g.real is not None:
+        m = m & g.real
     out = np.zeros(g.dims[0] * g.dims[1] * g.dims[2], dtype=bool)
-    out[parent_index(g)[np.asarray(mask, dtype=bool)]] = True
+    out[parent_index(g)[m]] = True
     return out
 
 
@@ -274,6 +356,19 @@ def closure_violations(g: PitGraph, mined: NDArray[np.bool_]) -> tuple[int, int,
         raise ValueError("mined must be a bool array with one entry per node")
     bad, u, q = K.closure_violations(*g.kernel_args, m)
     return int(bad), int(u), int(q)
+
+
+def nesting_violations(g: PitGraph, lab: NDArray[np.int16]) -> tuple[int, int, int, int, int]:
+    """One pass over the arcs for ALL the shells `lab` (int per node: the number of the smallest shell with the node,
+    0 — in none) at once: (arcs u → q with lab[u] > 0 and not 0 < lab[q] <= lab[u], the first u, the first q, lab[u],
+    lab[q]); (0, −1, −1, 0, 0) — every shell k (`0 < lab <= k`) is closed, hence they are nested."""
+    from bf_core.mine import graph_kernels as K
+
+    a = np.asarray(lab)
+    if a.shape != (g.n,) or not np.issubdtype(a.dtype, np.integer):
+        raise ValueError("lab must be an integer array with one entry per node")
+    bad, u, q, lu, lq = K.nesting_violations(*g.kernel_args, a)
+    return int(bad), int(u), int(q), int(lu), int(lq)
 
 
 def is_closed(g: PitGraph, mined: NDArray[np.bool_]) -> bool:
