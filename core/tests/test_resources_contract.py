@@ -6,10 +6,11 @@ samples of the contract (`{status, body}`), read by vitest (`ui/test/resources/*
 
 Regenerate: `BF_REGEN_RESOURCES=1 uv run pytest -q tests/test_resources_contract.py` — the keys of this test replace
 the samples, the others stay as they are: `defaults`, `bad_param`, `group_numeric`, `refusals` are written by `spec.py`
-(`test_resources_spec.py`); `export_*`, `files_exist` (20.5), `drill*` (20.9), `compare_*` (20.10) are samples of the
-contract until their routes write them. Without the variable the test checks that the core still answers what the
-file holds; the times, the fingerprints, the versions of the libraries and the numbers of the jobs are left out, the
-floats are compared to 9 digits."""
+(`test_resources_spec.py`); `export_*`, `files_exist` (20.5) and `drill*` (20.9) are samples of the contract until
+their routes write them; `compare_reports`, `compare_post`, `compare_result` and `estimate_compare` (20.10) are real.
+Without the variable the test checks that the core still answers what the file
+holds; the times, the fingerprints, the versions of the libraries and the numbers of the jobs are left out, the floats
+are compared to 9 digits."""
 
 from __future__ import annotations
 
@@ -18,18 +19,22 @@ import os
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+import pytest
+
 from bf_core.db import dialect
 from bf_core.resources import job as rj
 from bf_core.resources import store as st
 from tests.estapi_util import finish, read_only
-from tests.resapi_world import BODY, RS, many_groups, model, ra  # noqa: F401 - the fixtures
+from tests.resapi_world import API, BODY, RS, many_groups, model, ra  # noqa: F401 - the fixtures
+from tests.test_blocks_fields_store import add_fields
 
 DATA = Path(__file__).parent / "data" / "resources" / "contract_answers.json"
 REGEN = os.environ.get("BF_REGEN_RESOURCES") == "1"
 NOTE = ("ЧАСТЬ КЛЮЧЕЙ — ответы настоящего ядра (BF_REGEN_RESOURCES=1 uv run pytest -q "
         "tests/test_resources_contract.py, "
         "20.7, модель Т8.10-1: 8 блоков 10×10×10 м, ρ = 2,5, Au 0,2…5,0 г/т, борт 1,0 → 12 500 т, 2,5 г/т, 31,25 кг; "
-        "tests/resapi_world.py); export_*, files_exist (20.5), drill*, compare_* (20.9, 20.10) — ОБРАЗЦЫ форм "
+        "tests/resapi_world.py); export_*, files_exist (20.5), drill* (20.9) — ОБРАЗЦЫ форм "
         "(docs/progress/e20-api.md §8–§10); defaults, bad_param, group_numeric, refusals пишет spec.py "
         "(BF_REGEN_RESOURCES=1 uv run pytest -q tests/test_resources_spec.py). Интерфейс принимается только на "
         "настоящих ответах.")  # fmt: skip
@@ -37,8 +42,9 @@ NOTE = ("ЧАСТЬ КЛЮЧЕЙ — ответы настоящего ядра 
 KEYS = ("report_post", "preview_result", "report_result", "reports_list", "report_get", "report_put", "report_rebuilt",
         "report_delete", "templates", "template_get", "template_gkz", "template_put", "template_delete",
         "report_not_found", "template_not_found", "field_not_found", "filter_not_found", "report_building",
-        "version_conflict", "name_taken", "filter_field_missing", "report_too_big", "read_only")  # fmt: skip
-SKIP = ("seconds", "created_at", "updated_at", "cells_sha", "versions", "job_id", "at")
+        "version_conflict", "name_taken", "filter_field_missing", "report_too_big", "read_only", "compare_reports",
+        "compare_post", "compare_result", "estimate_compare")  # fmt: skip
+SKIP = ("seconds", "created_at", "updated_at", "cells_sha", "versions", "job_id", "at", "stages")
 
 
 def answer(r: Any) -> dict[str, Any]:
@@ -104,8 +110,34 @@ def build(c: Any) -> dict[str, Any]:
         out["read_only"] = answer(start(c, base, save=True))
     finally:
         back()
+    out.update(compare_answers(c, mid, base))
     assert tuple(out) == KEYS, tuple(out)
     return json.loads(json.dumps(out, ensure_ascii=False))  # type: ignore[no-any-return]
+
+
+def compare_answers(c: Any, mid: int, base: dict[str, Any]) -> dict[str, Any]:
+    """Д-37 (20.10): two reports of one model with other cut-offs and density (a row only in one), and two estimates
+    of the model (OK against ID, with their STATUS) compared by the job of the route."""
+    a = result_of(c, start(c, base, save=True, name="Сравнение A"))["body"]["report_id"]
+    other = {**base, "density": 2.7, "cutoffs": [1.0, 3.0]}
+    b = result_of(c, start(c, other, save=True, name="Сравнение B"))["body"]["report_id"]
+    out: dict[str, Any] = {"compare_reports": answer(c.post(f"{RS}/compare", json={"report_a": a, "report_b": b}))}
+    au = np.array([0.2, 0.5, 0.8, 1.0, 1.5, 2.0, 3.0, 5.0])
+    est = {"op": "estimate", "params": {}, "inputs": [], "algo": "estimate-1"}
+    fields = [{"name": "OK_EST", "dtype": "f8", "unit": "g/t"}, {"name": "OK_STATUS", "dtype": "i1"},
+              {"name": "ID_EST", "dtype": "f8", "unit": "g/t"}, {"name": "ID_STATUS", "dtype": "i1"}]  # fmt: skip
+    ok = np.where(au > 0.3, au, np.nan)
+    idw = np.where(au < 4.0, au * 1.1 - 0.05, np.nan)
+    status = {"OK_STATUS": np.where(np.isfinite(ok), 0, 1).astype(float),
+              "ID_STATUS": np.where(np.isfinite(idw), 0, 1).astype(float)}  # fmt: skip
+    add_fields(c.project, c.store, mid, fields, {"OK_EST": ok, "ID_EST": idw, **status}, source=est, step=3)
+    url = f"{API}/blocks/{mid}/compare"
+    started = c.post(url, json={"field_a": "OK_EST", "field_b": "ID_EST", "domain": "CLASS"})
+    assert started.status_code == 200 and sorted(started.json()) == ["id", "source"], started.text
+    out["compare_post"] = {"status": 200, "body": {"source": "project", "id": 1}}
+    out["compare_result"] = result_of(c, started)
+    out["estimate_compare"] = out["compare_result"]
+    return out
 
 
 def masked(x: Any) -> Any:
@@ -121,6 +153,12 @@ def masked(x: Any) -> Any:
 
 def write(data: dict[str, Any]) -> None:
     DATA.write_text(json.dumps(data, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+
+
+@pytest.fixture(autouse=True)
+def _job_module(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`estimate.compare` is in the workers (until the line of `jobs/registry.py`): before the core starts."""
+    monkeypatch.setenv("BF_EXTRA_JOB_MODULES", "bf_core.blocks.compare_job")
 
 
 def test_answers_are_what_the_core_answers(ra) -> None:  # type: ignore[no-untyped-def]
