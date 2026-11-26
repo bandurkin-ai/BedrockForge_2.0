@@ -66,8 +66,8 @@ describe("the list, the drill and the comparison", () => {
   });
   it("the drill: the rules and the numbers of the cell", () => {
     const d = readDrill(answer("drill").body)!;
-    expect(d.cell).toEqual({ blocks: 3, volume: 3000, tonnes: 7500 });
-    expect(d.model_id).toBe(12);
+    expect(d.cell).toEqual({ blocks: 1, volume: 1000, tonnes: 2500 }); // the real answer of the core (20.9)
+    expect(d.model_id).toBe(1);
     expect(readDrill({})).toBeNull();
     expect(drillText({ ...d, stale: true, stale_reason: "изменена таблица" }, "Р")).toContain("набор блоков может отличаться");
   });

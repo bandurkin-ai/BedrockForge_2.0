@@ -35,6 +35,8 @@ export interface QuickRestrict {
   items: CondBody[];
   join: "and" | "or";
   invert: boolean;
+  /** a tree of the rules put by the transition from a cell of the report (20.15, `resources.drill`): joined to the items by «И», not inverted; absent — none */
+  rule?: Rule | null;
 }
 
 export interface CategoryStyle {
@@ -161,6 +163,7 @@ export function readStyle(raw: unknown): BlockStyle {
       items: Array.isArray(q.items) ? q.items.map(condOf).filter((x): x is CondBody => x !== null) : [],
       join: q.join === "or" ? "or" : "and",
       invert: q.invert === true,
+      ...(isObj(q.rule) && { rule: q.rule as unknown as Rule }),
     },
     colour: {
       field: typeof c.field === "string" && c.field ? c.field : null,
@@ -203,7 +206,7 @@ const write = (s: BlockStyle): Record<string, unknown> => ({
   visible: s.visible,
   mode: s.mode,
   filter_id: s.filter_id,
-  quick: { items: s.quick.items, join: s.quick.join, invert: s.quick.invert },
+  quick: { items: s.quick.items, join: s.quick.join, invert: s.quick.invert, ...(s.quick.rule && { rule: s.quick.rule }) },
   colour: { ...s.colour },
   edges: { ...s.edges },
   opacity: s.opacity,
@@ -286,9 +289,12 @@ export function kindFor(kind: ColourKind, field: BlockField | undefined): Colour
 /** The restrictor of the window as the rules of the core: the conditions joined by И / ИЛИ, «обратный» — НЕ. Null — none. */
 export function restrictOf(q: QuickRestrict): Rule | null {
   const items: Rule[] = q.items.map((cond) => ({ cond }));
-  if (!items.length) return null;
-  const rule: Rule = items.length === 1 ? items[0] : { op: q.join, items };
-  return q.invert ? { op: "not", items: [rule] } : rule;
+  const base: Rule | null = !items.length ? null : (() => {
+    const rule: Rule = items.length === 1 ? items[0] : { op: q.join, items };
+    return q.invert ? { op: "not", items: [rule] } : rule;
+  })();
+  if (!q.rule) return base;
+  return base ? { op: "and", items: [base, q.rule] } : q.rule;
 }
 
 /** The first thing wrong in the restrictor, in Russian (the same check as the window «Фильтры»); null — fine. */

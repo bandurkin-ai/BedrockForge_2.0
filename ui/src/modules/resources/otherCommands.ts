@@ -3,7 +3,7 @@
  * - `resources.curve` — the curve of a report as text (the chart is the result panel's, 20.13);
  * - `resources.export` — `POST /resources/reports/{id}/export` (XLSX or CSV; a file is not replaced unless `overwrite`);
  * - `resources.delete` — after the question «Влияние изменения» (`askImpact`: the comparisons built from the report) the report goes;
- * - `resources.drill` — the rules and the numbers of a cell (the 3D and the table of the blocks of the cell are 20.15);
+ * - `resources.drill` — the rules and the numbers of a cell; opens the window «Переход к блокам» and puts the rules as the temporary filter in the 3D (`drill.ts`, 20.15);
  * - `resources.compare` — two reports row by row.
  * The report of a command is `report_id`, else the one selected in the tree, else the one the window built last. No React.
  */
@@ -12,7 +12,8 @@ import type { CommandSource } from "../../shell/commands";
 import { askConfirm } from "../../shell/dialogs";
 import { needProject, needWritable, noted, refusal } from "../../shell/objectRun";
 import { askImpact } from "../lineage/impactAsk";
-import { compareReports, deleteReport, drillCell, loadExportJob, loadReport, refusalOf, startExport, waitJobEnd, type DrillBody, type ExportBody, type Refusal } from "./api";
+import { compareReports, deleteReport, loadExportJob, loadReport, refusalOf, startExport, waitJobEnd, type DrillBody, type ExportBody, type Refusal } from "./api";
+import { bindDrill, DRILL_TITLE, drillStore, showCell } from "./drill";
 import { compareText, curveText, drillText, fmtCount } from "./format";
 import { currentRun, loadReports, reportById, resourcesStore } from "./state";
 
@@ -103,16 +104,20 @@ export const labelsOf = (text: unknown): string[] | null => {
   return l.length ? l : null;
 };
 
-/** `resources.drill {report_id?, group?, cutoff?, kind?}`: the rules and the numbers of a cell. */
+/** `resources.drill {report_id?, group?, cutoff?, kind?}`: the numbers and the rules of a cell; the window «Переход к блокам» opens and the 3D shows the blocks of the cell. */
 export async function runDrill(app: App, a: Args): Promise<string> {
   const id = reportIdOf(app, a);
   const body: DrillBody = { group: labelsOf(a.group), cutoff: typeof a.cutoff === "number" ? a.cutoff : null };
   if (typeof a.kind === "string") body.kind = a.kind as DrillBody["kind"];
-  try {
-    return drillText(await drillCell(id, body), nameOf(id));
-  } catch (e) {
-    throw asError(refusalOf(e));
+  const label = body.group ? body.group.join(" / ") : "Итого";
+  const answer = await showCell({ reportId: id, reportName: nameOf(id), label, body });
+  if (!answer) {
+    const e = drillStore.get().error;
+    throw asError(e ?? { code: "drill_replaced", message: "Переход к блокам заменён другим.", hint: "Повторите команду.", param: null });
   }
+  const notes = drillStore.get().notes;
+  const shown = drillStore.get().applied ? "В 3D показаны только блоки ячейки (временный фильтр: «Сбросить» в окне или закрытие окна его снимает)." : "";
+  return [drillText(answer, nameOf(id)), `Открыто окно «${DRILL_TITLE}»: таблица блоков ячейки, блок — в инспектор.`, shown, ...notes].filter(Boolean).join("\n");
 }
 
 /** `resources.compare {report_a, report_b}`: two reports row by row. */
@@ -130,5 +135,6 @@ export function bindOtherCommands(app: App): void {
   r.bind("resources.export", noted(app, (a) => runExport(app, a)), needProject);
   r.bind("resources.delete", noted(app, (a, s) => runDelete(app, a, s)), needWritable(app));
   r.bind("resources.drill", noted(app, (a) => runDrill(app, a)), needProject);
+  bindDrill(app, nameOf);
   r.bind("resources.compare", noted(app, (a) => runCompare(a)), needProject);
 }

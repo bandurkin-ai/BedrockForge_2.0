@@ -419,13 +419,14 @@ export interface DrillAnswer {
   stale: boolean;
   stale_reason: string | null;
   model_id: number | null;
+  warnings: Warning[];
 }
 
 export function readDrill(raw: unknown): DrillAnswer | null {
   const d = obj(raw);
   if (!Object.keys(obj(d.rules)).length) return null;
   const c = obj(d.cell);
-  return { rules: obj(d.rules), cell: { blocks: count(c.blocks), volume: num(c.volume), tonnes: num(c.tonnes) }, stale: d.stale === true, stale_reason: str(d.stale_reason), model_id: num(d.model_id) };
+  return { rules: obj(d.rules), cell: { blocks: count(c.blocks), volume: num(c.volume), tonnes: num(c.tonnes) }, stale: d.stale === true, stale_reason: str(d.stale_reason), model_id: num(d.model_id), warnings: readWarnings(d.warnings) };
 }
 
 /** A line of the comparison of two reports (`POST /resources/compare`, ADR 0027 решение 26). */

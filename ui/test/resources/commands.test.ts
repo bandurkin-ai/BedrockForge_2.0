@@ -346,7 +346,7 @@ describe("the other commands", () => {
     const r = await app.registry.execute("resources.drill", { report_id: ID.report, group: "Измеренные; (пусто)", cutoff: 1 }, "claude");
     expect(r.ok).toBe(true);
     expect(core.sent.find((x) => x.path === `/resources/reports/${ID.report}/drill`)?.body).toEqual({ group: ["Измеренные", "(пусто)"], cutoff: 1 });
-    expect(r.result).toMatch(/Ячейка отчёта .*: блоков 3, объём 3\s000 м³, тоннаж 7\s500 т/);
+    expect(r.result).toMatch(/Ячейка отчёта .*: блоков 1, объём 1\s000 м³, тоннаж 2\s500 т/);
     expect(r.result).toContain('"cond"');
     const total = await app.registry.execute("resources.drill", { report_id: ID.report }, "claude");
     expect(total.ok).toBe(true);
