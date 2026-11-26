@@ -428,12 +428,34 @@ export function readDrill(raw: unknown): DrillAnswer | null {
   return { rules: obj(d.rules), cell: { blocks: count(c.blocks), volume: num(c.volume), tonnes: num(c.tonnes) }, stale: d.stale === true, stale_reason: str(d.stale_reason), model_id: num(d.model_id) };
 }
 
+/** What a report was made from (a line of the head of the comparison: the version of every input, Д-35). */
+export interface CompareInput {
+  kind: string;
+  id: string;
+  /** the fingerprint of the input as the core keeps it; null — not known */
+  fp: string | null;
+  name: string;
+}
+
+/** The head of one side of the comparison: the report, its model and its inputs with their versions and the state in the graph. */
+export interface CompareSide {
+  id: number;
+  name: string;
+  version: number | null;
+  stale: boolean;
+  stale_reason: string | null;
+  created_at: string;
+  model: { id: number | null; name: string; cells_sha: string | null };
+  inputs: CompareInput[];
+}
+
 /** A line of the comparison of two reports (`POST /resources/compare`, ADR 0027 решение 26). */
 export interface CompareRow {
   g: (string | null)[];
   total: boolean;
   kind: RowKind;
   cutoff: number | null;
+  cutoff_to: number | null;
   /** "a" / "b" — the row is only in one report (no difference, not 0) */
   only_in: "a" | "b" | null;
   a: ResultRow | null;
@@ -442,25 +464,45 @@ export interface CompareRow {
 }
 
 export interface CompareAnswer {
-  a: { id: number; name: string; stale: boolean };
-  b: { id: number; name: string; stale: boolean };
+  a: CompareSide;
+  b: CompareSide;
   grids_differ: boolean;
   warnings: Warning[];
+  /** the keys of the groups, as the columns of the table name them: the field, «уступ» */
+  keys: string[];
   elements: string[];
   rows: CompareRow[];
   curves: { a: Curve | null; b: Curve | null };
 }
 
+function readSide(raw: unknown): CompareSide {
+  const s = obj(raw);
+  const m = obj(s.model);
+  return {
+    id: s.id as number,
+    name: str(s.name) ?? "",
+    version: num(s.version),
+    stale: s.stale === true,
+    stale_reason: str(s.stale_reason),
+    created_at: str(s.created_at) ?? "",
+    model: { id: num(m.id), name: str(m.name) ?? "", cells_sha: str(m.cells_sha) },
+    inputs: list(s.inputs).map((x) => {
+      const i = obj(x);
+      return { kind: str(i.kind) ?? "", id: i.id === undefined || i.id === null ? "" : String(i.id), fp: str(i.fp), name: str(i.name) ?? "" };
+    }),
+  };
+}
+
 export function readCompare(raw: unknown): CompareAnswer | null {
   const c = obj(raw);
   if (!Array.isArray(c.rows) || !isNum(obj(c.a).id) || !isNum(obj(c.b).id)) return null;
-  const side = (s: unknown) => ({ id: obj(s).id as number, name: str(obj(s).name) ?? "", stale: obj(s).stale === true });
   const withKey = (v: unknown, g: unknown, kind: RowKind) => (v && typeof v === "object" ? readRow({ g, total: false, kind, ...obj(v) }) : null);
   return {
-    a: side(c.a),
-    b: side(c.b),
+    a: readSide(c.a),
+    b: readSide(c.b),
     grids_differ: c.grids_differ === true,
     warnings: readWarnings(c.warnings),
+    keys: list(c.keys).map((k) => (obj(k).kind === "bench" ? "уступ" : (str(obj(k).field) ?? ""))),
     elements: list(c.elements).filter((e): e is string => typeof e === "string"),
     rows: list(c.rows).map((x): CompareRow => {
       const r = obj(x);
@@ -473,6 +515,7 @@ export function readCompare(raw: unknown): CompareAnswer | null {
         total: r.total === true,
         kind,
         cutoff: num(r.cutoff),
+        cutoff_to: num(r.cutoff_to),
         only_in: r.only_in === "a" || r.only_in === "b" ? r.only_in : null,
         a: withKey(r.a, r.g, kind),
         b: withKey(r.b, r.g, kind),

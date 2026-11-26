@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { readCompare, readControl, readCurve, readDrill, readForm, readListRow, readReportResult, readRow, readWarnings } from "../../src/modules/resources/answers";
 import { compareText, curveText, drillText, fmt, groupText, rowTitle, summaryText } from "../../src/modules/resources/format";
+import { compareBody, selfCompare } from "./compareSample";
 import { answer } from "./harness";
 
 const result = () => readReportResult(answer("report_result").body)!;
@@ -71,13 +72,32 @@ describe("the list, the drill and the comparison", () => {
     expect(readDrill({})).toBeNull();
     expect(drillText({ ...d, stale: true, stale_reason: "изменена таблица" }, "Р")).toContain("набор блоков может отличаться");
   });
-  it("the comparison: the report against itself — all the differences 0; a row only in one has no difference (null, not 0)", () => {
+  it("the comparison of the real answer: Δ = A − B on the rows both have; a row only in one has no difference (null, not 0); the head of the versions", () => {
     const c = readCompare(answer("compare_reports").body)!;
+    expect(c.rows).toHaveLength(12);
+    const both = c.rows.filter((r) => r.only_in === null);
+    expect(both).toHaveLength(4);
+    for (const r of both) expect(r.delta?.tonnes).toBe((r.a?.tonnes ?? NaN) - (r.b?.tonnes ?? NaN)); // the difference is A − B
+    expect(both[0].a).toMatchObject({ blocks: 5, tonnes: 12500 });
+    expect(both[0].b).toMatchObject({ blocks: 5, tonnes: 13500 });
+    for (const r of c.rows.filter((x) => x.only_in !== null)) {
+      expect(r.delta, "a row only in one report has no difference").toBeNull();
+      expect(r.only_in === "a" ? r.b : r.a, "the other side is not there").toBeNull();
+    }
+    expect(c.a).toMatchObject({ id: 5, name: "Сравнение A", version: 1, stale: false, model: { id: 1, name: "Модель" } });
+    expect(c.a.model.cells_sha).toMatch(/^[0-9a-f]{64}$/);
+    expect(c.a.inputs.map((i) => i.kind)).toEqual(["object:block_model", "bm_field", "bm_field"]);
+    expect(c.keys).toEqual(["CLASS"]);
+    expect(c.warnings[0]).toMatchObject({ code: "density_differs" });
+    expect(compareText(c)).not.toContain("Различий нет"); // the tonnes differ and there are rows only in one report
+    expect(compareText(c)).toContain("Строки только в одном отчёте: 8");
+  });
+  it("the report against itself (A = B, made of the real answer): all the differences are 0", () => {
+    const c = readCompare(selfCompare())!;
     expect(c.rows.length).toBeGreaterThan(1);
     for (const r of c.rows) expect(r.delta?.tonnes).toBe(0);
-    expect(c.rows[0].a).toMatchObject({ blocks: 8 });
     expect(compareText(c)).toContain("Различий нет");
-    const only = readCompare({ ...(answer("compare_reports").body as object), rows: [{ g: ["Х"], kind: "cutoff", cutoff: 1, only_in: "b", a: null, b: { blocks: 1, elements: {} }, delta: null }] })!;
+    const only = readCompare({ ...compareBody(), rows: [{ g: ["Х"], kind: "cutoff", cutoff: 1, only_in: "b", a: null, b: { blocks: 1, elements: {} }, delta: null }] })!;
     expect(only.rows[0]).toMatchObject({ only_in: "b", a: null, delta: null });
     expect(only.rows[0].b).toMatchObject({ blocks: 1 });
     expect(readCompare({ rows: [] })).toBeNull();

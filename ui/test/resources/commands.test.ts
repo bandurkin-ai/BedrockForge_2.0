@@ -18,6 +18,8 @@ import { commands, RESOURCES_BUTTONS } from "../../src/modules/resources/command
 import { argsOfForm, EMPTY_FORM, paramsOfForm, type ResourceForm } from "../../src/modules/resources/form";
 import { ReportWindow } from "../../src/modules/resources/ReportWindow";
 import { currentForm, currentRun, resourcesStore, RESOURCES_WINDOW, setForm } from "../../src/modules/resources/state";
+import { COMPARE_WINDOW } from "../../src/modules/resources/compareState";
+import { compareBody, selfCompare } from "./compareSample";
 import { answer, FILE, ID, installCore, newApp, teardown, waitFor, type Core } from "./harness";
 
 let app: App;
@@ -51,7 +53,7 @@ describe("the declarations", () => {
     expect(by["resources.delete"].confirm).toBe(true);
     expect(by["resources.report"].required).toBeUndefined(); // without a model the window opens
     expect(by["resources.export"].required).toEqual(["format", "path"]);
-    expect(by["resources.compare"].required).toEqual(["report_a", "report_b"]);
+    expect(by["resources.compare"].required).toBeUndefined(); // without the reports the window opens
     for (const c of commands) {
       expect(c.title, c.id).toMatch(/[А-Яа-я]/);
       expect(c.description, c.id).toMatch(/[А-Яа-я]/);
@@ -359,15 +361,21 @@ describe("the other commands", () => {
     expect(r.result).toMatch(/Отчёт устарел \(изменена таблица проб\): набор блоков может отличаться/);
   });
 
-  it("`resources.compare`: the report against itself has no difference; a gap is not 0", async () => {
-    const r = await app.registry.execute("resources.compare", { report_a: ID.report, report_b: ID.report }, "claude");
+  it("`resources.compare`: the real answer — the differences and the rows only in one; the report against itself has no difference; a gap is not 0", async () => {
+    const r = await app.registry.execute("resources.compare", { report_a: ID.report, report_b: ID.report + 1 }, "claude");
     expect(r.ok).toBe(true);
-    expect(core.sent.find((x) => x.path === "/resources/compare")?.body).toEqual({ report_a: ID.report, report_b: ID.report });
-    expect(r.result).toContain("Различий нет");
-    const base = answer("compare_reports").body as { rows: { only_in: string | null; delta: unknown }[] };
-    core.force("POST /resources/compare", { status: 200, body: { ...base, grids_differ: true, rows: [{ ...base.rows[0], only_in: "a", delta: null }, ...base.rows.slice(1)] } });
-    const g = await app.registry.execute("resources.compare", { report_a: ID.report, report_b: ID.report }, "claude");
+    expect(core.sent.find((x) => x.path === "/resources/compare")?.body).toEqual({ report_a: ID.report, report_b: ID.report + 1 });
+    expect(r.result).toContain("Сравнение отчётов «Сравнение A» (A) и «Сравнение B» (B)");
+    expect(r.result).toMatch(/Строки только в одном отчёте: 8 \(у них нет разности — это пропуск, не 0\)/);
+    expect(r.result).toMatch(/Итого, ≥ 1: ΔТ = [-−]1\s000 т/);
+    expect(r.result).toContain("Плотность в отчётах разная");
+    expect(windowStore.get().windows.filter((w) => w.kind === COMPARE_WINDOW), "the assistant does not open a window").toHaveLength(0);
+    core.force("POST /resources/compare", { status: 200, body: selfCompare() as Record<string, unknown> });
+    const same = await app.registry.execute("resources.compare", { report_a: ID.report, report_b: ID.report }, "claude");
+    expect(same.result).toContain("Различий нет");
+    core.force("POST /resources/compare", { status: 200, body: { ...compareBody(), grids_differ: true } });
+    const g = await app.registry.execute("resources.compare", { report_a: ID.report, report_b: ID.report + 1 }, "claude");
     expect(g.result).toContain("Сетки различаются");
-    expect(g.result).toMatch(/Строки только в одном отчёте: 1 \(у них нет разности — это пропуск, не 0\)/);
+    expect(g.result).toMatch(/Строки только в одном отчёте: 8 \(у них нет разности — это пропуск, не 0\)/);
   });
 });
