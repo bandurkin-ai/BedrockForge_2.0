@@ -28,6 +28,8 @@ from bf_core.api.errors import ApiError
 from bf_core.db.schema import dh_results, objects
 
 from . import graph, store
+from .adapt_resources import owner as resource_owner
+from .adapt_resources import prepare_rebuild as resource_rebuild
 from .providers import Ctx, label_of
 from .store import Node
 
@@ -159,6 +161,7 @@ register("object:qaqc_data", _self, _qaqc_data)
 register("object:qaqc_report", _self, _qaqc_report)
 register("object:block_model", _self, _block_model)
 register("bm_field", _field_owner, _block_model)
+register("object:resource_report", resource_owner, resource_rebuild)  # ADR 0027 §21
 
 
 def prepare_step(svc: Any, node: Node, body: dict[str, Any]) -> Step:

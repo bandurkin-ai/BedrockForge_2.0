@@ -8,7 +8,7 @@
 import { useState } from "react";
 import { useApp } from "../../../shell/AppContext";
 import css from "../../../shell/PropsParts.module.css";
-import { quickIssue, restrictOf } from "../display";
+import { quickIssue, restrictOf, withoutRule } from "../display";
 import { filtersByName, filtersStore } from "../filters/state";
 import mod from "./Window.module.css";
 import { saveQuickAsFilter } from "./actions";
@@ -34,8 +34,9 @@ export function FilterPanel({ id }: { id: number }) {
   const proposed = name ?? `Ограничитель · ${model?.name ?? `№${id}`}`;
   const saveReason = app.registry.reason("filter.save");
   const manageReason = app.registry.reason("filters.manage");
-  const rule = restrictOf(style.quick);
-  const quickBad = quickIssue(style.quick);
+  const own = withoutRule(style.quick);
+  const rule = restrictOf(own);
+  const quickBad = quickIssue(own);
   const cannotSave = saveReason ?? (!rule ? "Быстрый ограничитель пуст: добавьте условие на вкладке «Быстрый ограничитель»." : quickBad);
 
   const choose = (value: string) => {

@@ -26,6 +26,7 @@ from bf_core.ops.provenance import remap_lineage
 from bf_core.ops.provenance import remap_objects as remap_built_records
 from bf_core.projects.lock import ProjectLock
 from bf_core.projects.project import DB_FILE, SUFFIX, folder_name, make_dirs, read_manifest, write_manifest
+from bf_core.resources.remap import remap_resources
 from bf_core.storage.blobs import BlobStore, valid_sha
 
 from .chart_remap import remap_charts
@@ -275,6 +276,7 @@ def _restore(
     remap_filters(conn, maps.get("objects", {}))  # ids of wireframes in the rules of the filters (ADR 0023 §8)
     remap_implicit(conn, maps.get("objects", {}), maps.get("dh_tables", {}), maps.get("dh_results", {}))  # ADR 0026 §26
     remap_planned(conn, maps.get("objects", {}))  # ADR 0026 §26: meta.set_id of the planned holes
+    remap_resources(conn, maps.get("objects", {}))  # ADR 0027 §14: ids inside the parameters of resource reports
     remap_lineage(conn, maps)  # the graph of dependencies (ADR 0025 §11)
     # files: into place and registered (owners came with blob_owners)
     now = dialect.utcnow()

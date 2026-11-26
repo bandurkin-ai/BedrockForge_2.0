@@ -35,6 +35,8 @@ export interface QuickRestrict {
   items: CondBody[];
   join: "and" | "or";
   invert: boolean;
+  /** a tree of the rules put by the transition from a cell of the report (20.15, `resources.drill`): joined to the items by «И», not inverted; absent — none; it is in memory only (`setTempRule`), not in the project */
+  rule?: Rule | null;
 }
 
 export interface CategoryStyle {
@@ -136,8 +138,19 @@ const condOf = (v: unknown): CondBody | null => {
   return cond;
 };
 
-/** The entry of `block_styles` as stored, tolerant: anything wrong is the default (the core keeps what it is given). */
-export function readStyle(raw: unknown): BlockStyle {
+/**
+ * The temporary rules of the models (`quick.rule`, Д-36): held in memory only, never in `block_styles` of the project — a closed project or a crash must not
+ * leave a filter in the 3D that has no way to be dropped. `readStyle(raw, id)` puts the rule of the model back into the style it returns.
+ */
+const tempRules = new Map<number, Rule>();
+export const tempRuleOf = (id: number): Rule | null => tempRules.get(id) ?? null;
+export function setTempRule(id: number, rule: Rule | null): void {
+  if (rule) tempRules.set(id, rule);
+  else tempRules.delete(id);
+}
+
+/** The entry of `block_styles` as stored, tolerant: anything wrong is the default (the core keeps what it is given). With the id of the model the temporary rule of the model (in memory) is in `quick.rule`. */
+export function readStyle(raw: unknown, id?: number): BlockStyle {
   const d = EMPTY_STYLE;
   const o = isObj(raw) ? raw : {};
   const q = isObj(o.quick) ? o.quick : {};
@@ -161,6 +174,7 @@ export function readStyle(raw: unknown): BlockStyle {
       items: Array.isArray(q.items) ? q.items.map(condOf).filter((x): x is CondBody => x !== null) : [],
       join: q.join === "or" ? "or" : "and",
       invert: q.invert === true,
+      ...(id !== undefined && tempRules.has(id) && { rule: tempRules.get(id) }),
     },
     colour: {
       field: typeof c.field === "string" && c.field ? c.field : null,
@@ -184,7 +198,7 @@ export function readStyle(raw: unknown): BlockStyle {
 /** The style of a model in the keys of the view (`viewStore.get()`): the entry, or the default (not shown). */
 export function styleIn(keys: Record<string, unknown>, id: number): BlockStyle {
   const map = keys[BLOCK_STYLES_KEY];
-  return readStyle(isObj(map) ? map[String(id)] : undefined);
+  return readStyle(isObj(map) ? map[String(id)] : undefined, id);
 }
 
 /** The models shown now, by the view: id → style. */
@@ -193,7 +207,7 @@ export function shownStyles(keys: Record<string, unknown>): Map<number, BlockSty
   const out = new Map<number, BlockStyle>();
   if (!isObj(map)) return out;
   for (const [k, v] of Object.entries(map)) {
-    const style = readStyle(v);
+    const style = readStyle(v, Number(k));
     if (/^\d+$/.test(k) && style.visible) out.set(Number(k), style);
   }
   return out;
@@ -286,10 +300,16 @@ export function kindFor(kind: ColourKind, field: BlockField | undefined): Colour
 /** The restrictor of the window as the rules of the core: the conditions joined by И / ИЛИ, «обратный» — НЕ. Null — none. */
 export function restrictOf(q: QuickRestrict): Rule | null {
   const items: Rule[] = q.items.map((cond) => ({ cond }));
-  if (!items.length) return null;
-  const rule: Rule = items.length === 1 ? items[0] : { op: q.join, items };
-  return q.invert ? { op: "not", items: [rule] } : rule;
+  const base: Rule | null = !items.length ? null : (() => {
+    const rule: Rule = items.length === 1 ? items[0] : { op: q.join, items };
+    return q.invert ? { op: "not", items: [rule] } : rule;
+  })();
+  if (!q.rule) return base;
+  return base ? { op: "and", items: [base, q.rule] } : q.rule;
 }
+
+/** The restrictor of the person without the temporary rule of a cell (Д-36): what goes to the library of filters (`filter.save`) — the rule of a cell is not saved. */
+export const withoutRule = (q: QuickRestrict): QuickRestrict => ({ ...q, rule: null });
 
 /** The first thing wrong in the restrictor, in Russian (the same check as the window «Фильтры»); null — fine. */
 export function quickIssue(q: QuickRestrict): string | null {

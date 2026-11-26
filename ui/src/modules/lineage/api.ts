@@ -52,6 +52,7 @@ export const KIND_TITLES: Record<string, string> = {
   "object:estimation": "параметры оценки",
   "object:simulation": "моделирование",
   "object:implicit_model": "неявная модель",
+  "object:resource_report": "отчёт по ресурсам",
 };
 
 export const kindTitle = (kind: string): string => KIND_TITLES[kind] ?? kind.replace(/^object:/, "");

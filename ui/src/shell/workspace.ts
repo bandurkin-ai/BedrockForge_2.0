@@ -7,7 +7,7 @@
 export type Theme = "dark" | "light";
 export type PanelId = "project" | "properties" | "assistant" | "bottom";
 export type RightTab = "properties" | "assistant";
-export type BottomTab = "table" | "audit" | "stats" | "qaqc" | "jobs" | "log";
+export type BottomTab = "table" | "audit" | "stats" | "qaqc" | "jobs" | "log" | "resources";
 export type TreeSection = "views" | "series" | "holes" | "wireframes" | "dtm" | "lines" | "rasters" | "blocks" | "filters" | "audit" | "reports" | "trends" | "variograms" | "estimation" | "simulation" | "implicit" | "planned";
 
 export const BOTTOM_TITLES: Record<BottomTab, string> = {
@@ -17,6 +17,7 @@ export const BOTTOM_TITLES: Record<BottomTab, string> = {
   qaqc: "QAQC",
   jobs: "Задания",
   log: "Журнал команд",
+  resources: "Ресурсы",
 };
 
 export const TREE_SECTIONS: Record<TreeSection, string> = {

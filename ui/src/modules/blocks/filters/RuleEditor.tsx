@@ -21,6 +21,7 @@ import {
   pathOfParam,
   removeAt,
   sameParam,
+  slabTitle,
   updateAt,
   type CondOp,
   type Draft,
@@ -195,6 +196,20 @@ export function RuleEditor({ draft, onChange, issue, fields, wireframes, testId 
                 <input className={css.input} style={{ width: 52 }} inputMode="numeric" value={w.m} aria-label="Подсетка доли m" aria-invalid={bad && issue?.param.endsWith(".m")} data-testid={`${id}-m`} onChange={(e) => patch({ m: Number(e.target.value) })} />
               </label>
             )}
+            {remove}
+          </div>
+          {note}
+        </div>
+      );
+    }
+
+    if ("slab" in node) {
+      return (
+        <div key={key(path)} className={mod.rule} data-testid={id} aria-invalid={bad || undefined}>
+          <div className={css.row}>
+            <span style={{ flex: 1 }} title="Слой задан переходом от отчёта или полосой swath; здесь его можно только увидеть или убрать" data-testid={`${id}-slab`}>
+              Слой: {slabTitle(node.slab)}
+            </span>
             {remove}
           </div>
           {note}

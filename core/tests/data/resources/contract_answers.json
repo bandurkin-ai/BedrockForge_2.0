@@ -1,0 +1,3704 @@
+{
+ "_note": "ЧАСТЬ КЛЮЧЕЙ — ответы настоящего ядра (BF_REGEN_RESOURCES=1 uv run pytest -q tests/test_resources_contract.py, 20.7, модель Т8.10-1: 8 блоков 10×10×10 м, ρ = 2,5, Au 0,2…5,0 г/т, борт 1,0 → 12 500 т, 2,5 г/т, 31,25 кг; tests/resapi_world.py); export_*, files_exist (20.5) — ОБРАЗЦЫ форм (docs/progress/e20-api.md §8–§10); defaults, bad_param, group_numeric, refusals пишет spec.py (BF_REGEN_RESOURCES=1 uv run pytest -q tests/test_resources_spec.py). Интерфейс принимается только на настоящих ответах.",
+ "report_post": {
+  "status": 200,
+  "body": {
+   "source": "project",
+   "id": 1
+  }
+ },
+ "preview_result": {
+  "status": 200,
+  "body": {
+   "report_id": null,
+   "name": "Отчёт по ресурсам",
+   "version": 0,
+   "saved": false,
+   "algo": "resources-1",
+   "params": {
+    "model_id": 1,
+    "elements": [
+     {
+      "field": "AU",
+      "unit": "g/t"
+     }
+    ],
+    "cutoff_field": "AU",
+    "cutoffs": [
+     1.0,
+     2.0
+    ],
+    "balance": null,
+    "density": 2.5,
+    "filter_id": null,
+    "restrict": null,
+    "groups": [
+     {
+      "kind": "field",
+      "field": "CLASS"
+     }
+    ],
+    "bench": null,
+    "curve": 0,
+    "template_id": "jorc"
+   },
+   "params_hash": "a1e27ee54b4f631c7855da11477115c7893d6135ea1163902ee1b356bc0a4d36",
+   "model": {
+    "id": 1,
+    "name": "Модель",
+    "version": 1,
+    "cells_sha": "854a676ba86a1ca6704dda75bc7c5e9a46c52242ff4c601b1da293f7dba1f7ca",
+    "grid": {
+     "corner": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "counts": [
+      2,
+      2,
+      2
+     ],
+     "size": [
+      10.0,
+      10.0,
+      10.0
+     ],
+     "order": "F",
+     "rotation": 0.0,
+     "div": [
+      1,
+      1,
+      1
+     ]
+    }
+   },
+   "elements": [
+    {
+     "field": "AU",
+     "unit": "g/t",
+     "unit_label": "г/т",
+     "metal_family": "g",
+     "metal_base": "г"
+    }
+   ],
+   "cutoff_field": "AU",
+   "density": {
+    "field": null,
+    "value": 2.5
+   },
+   "keys": [
+    {
+     "kind": "field",
+     "field": "CLASS",
+     "labels": [
+      "Измеренные",
+      "Выявленные",
+      "Предполагаемые"
+     ]
+    }
+   ],
+   "bench": null,
+   "rows": [
+    {
+     "g": [
+      null
+     ],
+     "total": true,
+     "kind": "cutoff",
+     "cutoff": 1.0,
+     "cutoff_to": null,
+     "blocks": 5,
+     "volume": 5000.0,
+     "tonnes": 12500.0,
+     "elements": {
+      "AU": {
+       "wt": 12500.0,
+       "sum": 31250.0,
+       "grade": 2.5,
+       "metal": 31250.0,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    },
+    {
+     "g": [
+      "Измеренные"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 1.0,
+     "cutoff_to": null,
+     "blocks": 1,
+     "volume": 1000.0,
+     "tonnes": 2500.0,
+     "elements": {
+      "AU": {
+       "wt": 2500.0,
+       "sum": 2500.0,
+       "grade": 1.0,
+       "metal": 2500.0,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    },
+    {
+     "g": [
+      "Выявленные"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 1.0,
+     "cutoff_to": null,
+     "blocks": 2,
+     "volume": 2000.0,
+     "tonnes": 5000.0,
+     "elements": {
+      "AU": {
+       "wt": 5000.0,
+       "sum": 8750.0,
+       "grade": 1.75,
+       "metal": 8750.0,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    },
+    {
+     "g": [
+      "Предполагаемые"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 1.0,
+     "cutoff_to": null,
+     "blocks": 2,
+     "volume": 2000.0,
+     "tonnes": 5000.0,
+     "elements": {
+      "AU": {
+       "wt": 5000.0,
+       "sum": 20000.0,
+       "grade": 4.0,
+       "metal": 20000.0,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    },
+    {
+     "g": [
+      null
+     ],
+     "total": true,
+     "kind": "cutoff",
+     "cutoff": 2.0,
+     "cutoff_to": null,
+     "blocks": 3,
+     "volume": 3000.0,
+     "tonnes": 7500.0,
+     "elements": {
+      "AU": {
+       "wt": 7500.0,
+       "sum": 25000.0,
+       "grade": 3.3333333333333335,
+       "metal": 25000.0,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    },
+    {
+     "g": [
+      "Измеренные"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 2.0,
+     "cutoff_to": null,
+     "blocks": 0,
+     "volume": 0.0,
+     "tonnes": 0.0,
+     "elements": {
+      "AU": {
+       "wt": 0.0,
+       "sum": 0.0,
+       "grade": null,
+       "metal": null,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    },
+    {
+     "g": [
+      "Выявленные"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 2.0,
+     "cutoff_to": null,
+     "blocks": 1,
+     "volume": 1000.0,
+     "tonnes": 2500.0,
+     "elements": {
+      "AU": {
+       "wt": 2500.0,
+       "sum": 5000.0,
+       "grade": 2.0,
+       "metal": 5000.0,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    },
+    {
+     "g": [
+      "Предполагаемые"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 2.0,
+     "cutoff_to": null,
+     "blocks": 2,
+     "volume": 2000.0,
+     "tonnes": 5000.0,
+     "elements": {
+      "AU": {
+       "wt": 5000.0,
+       "sum": 20000.0,
+       "grade": 4.0,
+       "metal": 20000.0,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    }
+   ],
+   "rows_total": 8,
+   "truncated": false,
+   "totals": {
+    "kind": "cutoff",
+    "cutoff": 1.0,
+    "blocks": 5,
+    "volume": 5000.0,
+    "tonnes": 12500.0,
+    "elements": {
+     "AU": {
+      "grade": 2.5,
+      "metal": 31250.0
+     }
+    }
+   },
+   "curve": null,
+   "control": {
+    "tolerance": 1e-12,
+    "sum_groups": {
+     "checked": true,
+     "tonnes": {
+      "sum": 12500.0,
+      "total": 12500.0,
+      "rel": 0.0
+     },
+     "volume": {
+      "sum": 5000.0,
+      "total": 5000.0,
+      "rel": 0.0
+     },
+     "metal": {
+      "AU": {
+       "sum": 31250.0,
+       "total": 31250.0,
+       "rel": 0.0
+      }
+     },
+     "ok": true
+    },
+    "no_density": {
+     "blocks": 0,
+     "volume": 0.0
+    },
+    "default_density": null,
+    "no_grade": {
+     "AU": {
+      "blocks": 0,
+      "tonnes": 0.0
+     }
+    },
+    "status": {},
+    "wireframes": [],
+    "warnings": []
+   },
+   "excluded": {
+    "filtered": 0,
+    "no_volume": 0,
+    "no_density": 0
+   },
+   "form": {
+    "template": {
+     "id": "jorc",
+     "name": "JORC",
+     "version": 1
+    },
+    "elements": [
+     {
+      "name": "AU",
+      "unit": "г/т",
+      "unit_label": "г/т",
+      "base": "g"
+     }
+    ],
+    "cutoff": {
+     "kind": "cutoff",
+     "value": 1.0
+    },
+    "cutoffs": [
+     1.0
+    ],
+    "columns": [
+     {
+      "key": "tonnes",
+      "part": null,
+      "group": null,
+      "title": "Руда, тыс. т",
+      "metric": "tonnes",
+      "element": null,
+      "unit": "тыс. т",
+      "decimals": 0
+     },
+     {
+      "key": "grade:AU",
+      "part": null,
+      "group": null,
+      "title": "AU, г/т",
+      "metric": "grade",
+      "element": "AU",
+      "unit": "г/т",
+      "decimals": 2
+     },
+     {
+      "key": "metal:AU",
+      "part": null,
+      "group": null,
+      "title": "Металл AU, тыс. унц",
+      "metric": "metal",
+      "element": "AU",
+      "unit": "тыс. унц",
+      "decimals": 1
+     }
+    ],
+    "sections": [
+     {
+      "title": null,
+      "rows": [
+       {
+        "label": "Измеренные",
+        "type": "group",
+        "cells": {
+         "tonnes": {
+          "value": 2.5,
+          "text": "3"
+         },
+         "grade:AU": {
+          "value": 1.0,
+          "text": "1,00"
+         },
+         "metal:AU": {
+          "value": 0.08037686642156995,
+          "text": "0,1"
+         }
+        }
+       },
+       {
+        "label": "Выявленные",
+        "type": "group",
+        "cells": {
+         "tonnes": {
+          "value": 5.0,
+          "text": "5"
+         },
+         "grade:AU": {
+          "value": 1.75,
+          "text": "1,75"
+         },
+         "metal:AU": {
+          "value": 0.28131903247549483,
+          "text": "0,3"
+         }
+        }
+       },
+       {
+        "label": "Изм. + Выяв.",
+        "type": "subtotal",
+        "cells": {
+         "tonnes": {
+          "value": 7.5,
+          "text": "8"
+         },
+         "grade:AU": {
+          "value": 1.5,
+          "text": "1,50"
+         },
+         "metal:AU": {
+          "value": 0.36169589889706477,
+          "text": "0,4"
+         }
+        },
+        "members": [
+         "Измеренные",
+         "Выявленные"
+        ]
+       },
+       {
+        "label": "Предполагаемые",
+        "type": "group",
+        "cells": {
+         "tonnes": {
+          "value": 5.0,
+          "text": "5"
+         },
+         "grade:AU": {
+          "value": 4.0,
+          "text": "4,00"
+         },
+         "metal:AU": {
+          "value": 0.6430149313725596,
+          "text": "0,6"
+         }
+        }
+       },
+       {
+        "label": "Итого",
+        "type": "total",
+        "cells": {
+         "tonnes": {
+          "value": 12.5,
+          "text": "13"
+         },
+         "grade:AU": {
+          "value": 2.5,
+          "text": "2,50"
+         },
+         "metal:AU": {
+          "value": 1.0047108302696244,
+          "text": "1,0"
+         }
+        }
+       }
+      ]
+     }
+    ],
+    "warnings": []
+   },
+   "warnings": [],
+   "files": [],
+   "seconds": {
+    "read": 0.0278,
+    "kernel": 2.3381,
+    "control": 0.0005,
+    "total": 2.368
+   }
+  }
+ },
+ "report_result": {
+  "status": 200,
+  "body": {
+   "report_id": 2,
+   "name": "Отчёт по ресурсам",
+   "version": 1,
+   "saved": true,
+   "algo": "resources-1",
+   "params": {
+    "model_id": 1,
+    "elements": [
+     {
+      "field": "AU",
+      "unit": "g/t"
+     }
+    ],
+    "cutoff_field": "AU",
+    "cutoffs": [
+     1.0,
+     2.0
+    ],
+    "balance": null,
+    "density": 2.5,
+    "filter_id": null,
+    "restrict": null,
+    "groups": [
+     {
+      "kind": "field",
+      "field": "CLASS"
+     }
+    ],
+    "bench": null,
+    "curve": 5,
+    "template_id": "jorc"
+   },
+   "params_hash": "a7c2c67a525bcbea8e852866a3d83ec2a5a261e5ce3688b80a9d2d0e808f71ce",
+   "model": {
+    "id": 1,
+    "name": "Модель",
+    "version": 1,
+    "grid": {
+     "corner": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "counts": [
+      2,
+      2,
+      2
+     ],
+     "size": [
+      10.0,
+      10.0,
+      10.0
+     ],
+     "order": "F",
+     "rotation": 0.0,
+     "div": [
+      1,
+      1,
+      1
+     ]
+    },
+    "cells_sha": "854a676ba86a1ca6704dda75bc7c5e9a46c52242ff4c601b1da293f7dba1f7ca"
+   },
+   "elements": [
+    {
+     "field": "AU",
+     "unit": "g/t",
+     "unit_label": "г/т",
+     "metal_family": "g",
+     "metal_base": "г"
+    }
+   ],
+   "cutoff_field": "AU",
+   "density": {
+    "field": null,
+    "value": 2.5
+   },
+   "keys": [
+    {
+     "kind": "field",
+     "field": "CLASS",
+     "labels": [
+      "Измеренные",
+      "Выявленные",
+      "Предполагаемые"
+     ]
+    }
+   ],
+   "bench": null,
+   "rows": [
+    {
+     "g": [
+      null
+     ],
+     "total": true,
+     "kind": "cutoff",
+     "cutoff": 1.0,
+     "cutoff_to": null,
+     "blocks": 5,
+     "volume": 5000.0,
+     "tonnes": 12500.0,
+     "elements": {
+      "AU": {
+       "wt": 12500.0,
+       "sum": 31250.0,
+       "grade": 2.5,
+       "metal": 31250.0,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    },
+    {
+     "g": [
+      "Измеренные"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 1.0,
+     "cutoff_to": null,
+     "blocks": 1,
+     "volume": 1000.0,
+     "tonnes": 2500.0,
+     "elements": {
+      "AU": {
+       "wt": 2500.0,
+       "sum": 2500.0,
+       "grade": 1.0,
+       "metal": 2500.0,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    },
+    {
+     "g": [
+      "Выявленные"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 1.0,
+     "cutoff_to": null,
+     "blocks": 2,
+     "volume": 2000.0,
+     "tonnes": 5000.0,
+     "elements": {
+      "AU": {
+       "wt": 5000.0,
+       "sum": 8750.0,
+       "grade": 1.75,
+       "metal": 8750.0,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    },
+    {
+     "g": [
+      "Предполагаемые"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 1.0,
+     "cutoff_to": null,
+     "blocks": 2,
+     "volume": 2000.0,
+     "tonnes": 5000.0,
+     "elements": {
+      "AU": {
+       "wt": 5000.0,
+       "sum": 20000.0,
+       "grade": 4.0,
+       "metal": 20000.0,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    },
+    {
+     "g": [
+      null
+     ],
+     "total": true,
+     "kind": "cutoff",
+     "cutoff": 2.0,
+     "cutoff_to": null,
+     "blocks": 3,
+     "volume": 3000.0,
+     "tonnes": 7500.0,
+     "elements": {
+      "AU": {
+       "wt": 7500.0,
+       "sum": 25000.0,
+       "grade": 3.3333333333333335,
+       "metal": 25000.0,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    },
+    {
+     "g": [
+      "Измеренные"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 2.0,
+     "cutoff_to": null,
+     "blocks": 0,
+     "volume": 0.0,
+     "tonnes": 0.0,
+     "elements": {
+      "AU": {
+       "wt": 0.0,
+       "sum": 0.0,
+       "grade": null,
+       "metal": null,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    },
+    {
+     "g": [
+      "Выявленные"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 2.0,
+     "cutoff_to": null,
+     "blocks": 1,
+     "volume": 1000.0,
+     "tonnes": 2500.0,
+     "elements": {
+      "AU": {
+       "wt": 2500.0,
+       "sum": 5000.0,
+       "grade": 2.0,
+       "metal": 5000.0,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    },
+    {
+     "g": [
+      "Предполагаемые"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 2.0,
+     "cutoff_to": null,
+     "blocks": 2,
+     "volume": 2000.0,
+     "tonnes": 5000.0,
+     "elements": {
+      "AU": {
+       "wt": 5000.0,
+       "sum": 20000.0,
+       "grade": 4.0,
+       "metal": 20000.0,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    }
+   ],
+   "rows_total": 8,
+   "truncated": false,
+   "totals": {
+    "kind": "cutoff",
+    "cutoff": 1.0,
+    "blocks": 5,
+    "volume": 5000.0,
+    "tonnes": 12500.0,
+    "elements": {
+     "AU": {
+      "grade": 2.5,
+      "metal": 31250.0
+     }
+    }
+   },
+   "curve": {
+    "field": "AU",
+    "cutoffs": [
+     0.2,
+     1.4,
+     2.6,
+     3.8,
+     5.0
+    ],
+    "blocks": [
+     8,
+     4,
+     2,
+     1,
+     1
+    ],
+    "volume": [
+     8000.0,
+     4000.0,
+     2000.0,
+     1000.0,
+     1000.0
+    ],
+    "tonnes": [
+     20000.0,
+     10000.0,
+     5000.0,
+     2500.0,
+     2500.0
+    ],
+    "elements": {
+     "AU": {
+      "grade": [
+       1.75,
+       2.875,
+       4.0,
+       5.0,
+       5.0
+      ],
+      "metal": [
+       35000.0,
+       28750.0,
+       20000.0,
+       12500.0,
+       12500.0
+      ]
+     }
+    }
+   },
+   "control": {
+    "tolerance": 1e-12,
+    "sum_groups": {
+     "checked": true,
+     "tonnes": {
+      "sum": 12500.0,
+      "total": 12500.0,
+      "rel": 0.0
+     },
+     "volume": {
+      "sum": 5000.0,
+      "total": 5000.0,
+      "rel": 0.0
+     },
+     "metal": {
+      "AU": {
+       "sum": 31250.0,
+       "total": 31250.0,
+       "rel": 0.0
+      }
+     },
+     "ok": true
+    },
+    "no_density": {
+     "blocks": 0,
+     "volume": 0.0
+    },
+    "default_density": null,
+    "no_grade": {
+     "AU": {
+      "blocks": 0,
+      "tonnes": 0.0
+     }
+    },
+    "status": {},
+    "wireframes": [],
+    "warnings": []
+   },
+   "excluded": {
+    "filtered": 0,
+    "no_volume": 0,
+    "no_density": 0
+   },
+   "form": {
+    "template": {
+     "id": "jorc",
+     "name": "JORC",
+     "version": 1
+    },
+    "elements": [
+     {
+      "name": "AU",
+      "unit": "г/т",
+      "unit_label": "г/т",
+      "base": "g"
+     }
+    ],
+    "cutoff": {
+     "kind": "cutoff",
+     "value": 1.0
+    },
+    "cutoffs": [
+     1.0
+    ],
+    "columns": [
+     {
+      "key": "tonnes",
+      "part": null,
+      "group": null,
+      "title": "Руда, тыс. т",
+      "metric": "tonnes",
+      "element": null,
+      "unit": "тыс. т",
+      "decimals": 0
+     },
+     {
+      "key": "grade:AU",
+      "part": null,
+      "group": null,
+      "title": "AU, г/т",
+      "metric": "grade",
+      "element": "AU",
+      "unit": "г/т",
+      "decimals": 2
+     },
+     {
+      "key": "metal:AU",
+      "part": null,
+      "group": null,
+      "title": "Металл AU, тыс. унц",
+      "metric": "metal",
+      "element": "AU",
+      "unit": "тыс. унц",
+      "decimals": 1
+     }
+    ],
+    "sections": [
+     {
+      "title": null,
+      "rows": [
+       {
+        "label": "Измеренные",
+        "type": "group",
+        "cells": {
+         "tonnes": {
+          "value": 2.5,
+          "text": "3"
+         },
+         "grade:AU": {
+          "value": 1.0,
+          "text": "1,00"
+         },
+         "metal:AU": {
+          "value": 0.08037686642156995,
+          "text": "0,1"
+         }
+        }
+       },
+       {
+        "label": "Выявленные",
+        "type": "group",
+        "cells": {
+         "tonnes": {
+          "value": 5.0,
+          "text": "5"
+         },
+         "grade:AU": {
+          "value": 1.75,
+          "text": "1,75"
+         },
+         "metal:AU": {
+          "value": 0.28131903247549483,
+          "text": "0,3"
+         }
+        }
+       },
+       {
+        "label": "Изм. + Выяв.",
+        "type": "subtotal",
+        "cells": {
+         "tonnes": {
+          "value": 7.5,
+          "text": "8"
+         },
+         "grade:AU": {
+          "value": 1.5,
+          "text": "1,50"
+         },
+         "metal:AU": {
+          "value": 0.36169589889706477,
+          "text": "0,4"
+         }
+        },
+        "members": [
+         "Измеренные",
+         "Выявленные"
+        ]
+       },
+       {
+        "label": "Предполагаемые",
+        "type": "group",
+        "cells": {
+         "tonnes": {
+          "value": 5.0,
+          "text": "5"
+         },
+         "grade:AU": {
+          "value": 4.0,
+          "text": "4,00"
+         },
+         "metal:AU": {
+          "value": 0.6430149313725596,
+          "text": "0,6"
+         }
+        }
+       },
+       {
+        "label": "Итого",
+        "type": "total",
+        "cells": {
+         "tonnes": {
+          "value": 12.5,
+          "text": "13"
+         },
+         "grade:AU": {
+          "value": 2.5,
+          "text": "2,50"
+         },
+         "metal:AU": {
+          "value": 1.0047108302696244,
+          "text": "1,0"
+         }
+        }
+       }
+      ]
+     }
+    ],
+    "warnings": []
+   },
+   "warnings": [],
+   "files": [],
+   "seconds": {
+    "read": 0.0037,
+    "kernel": 0.0014,
+    "control": 0.0003,
+    "write": 0.032,
+    "total": 0.0471
+   },
+   "events": [
+    [
+     "resources.changed",
+     {
+      "kind": "resource_report",
+      "id": 2
+     }
+    ]
+   ]
+  }
+ },
+ "reports_list": {
+  "status": 200,
+  "body": {
+   "reports": [
+    {
+     "id": 2,
+     "name": "Отчёт по ресурсам",
+     "version": 1,
+     "state": "ready",
+     "model": {
+      "id": 1,
+      "name": "Модель"
+     },
+     "totals": {
+      "kind": "cutoff",
+      "cutoff": 1.0,
+      "blocks": 5,
+      "volume": 5000.0,
+      "tonnes": 12500.0,
+      "elements": {
+       "AU": {
+        "grade": 2.5,
+        "metal": 31250.0
+       }
+      }
+     },
+     "graph": {
+      "stale": false,
+      "stale_reason": null,
+      "source_lost": false,
+      "pinned": false
+     },
+     "files": [],
+     "xlsx": false,
+     "created_at": "2026-11-26T08:09:15.673246+00:00",
+     "updated_at": "2026-11-26T08:09:15.673246+00:00",
+     "job_id": null,
+     "rows": 8,
+     "size": 7156
+    }
+   ]
+  }
+ },
+ "report_get": {
+  "status": 200,
+  "body": {
+   "report_id": 2,
+   "name": "Отчёт по ресурсам",
+   "version": 1,
+   "saved": true,
+   "algo": "resources-1",
+   "params": {
+    "model_id": 1,
+    "elements": [
+     {
+      "field": "AU",
+      "unit": "g/t"
+     }
+    ],
+    "cutoff_field": "AU",
+    "cutoffs": [
+     1.0,
+     2.0
+    ],
+    "balance": null,
+    "density": 2.5,
+    "filter_id": null,
+    "restrict": null,
+    "groups": [
+     {
+      "kind": "field",
+      "field": "CLASS"
+     }
+    ],
+    "bench": null,
+    "curve": 5,
+    "template_id": "jorc"
+   },
+   "params_hash": "a7c2c67a525bcbea8e852866a3d83ec2a5a261e5ce3688b80a9d2d0e808f71ce",
+   "model": {
+    "id": 1,
+    "name": "Модель",
+    "version": 1,
+    "grid": {
+     "corner": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "counts": [
+      2,
+      2,
+      2
+     ],
+     "size": [
+      10.0,
+      10.0,
+      10.0
+     ],
+     "order": "F",
+     "rotation": 0.0,
+     "div": [
+      1,
+      1,
+      1
+     ]
+    },
+    "cells_sha": "854a676ba86a1ca6704dda75bc7c5e9a46c52242ff4c601b1da293f7dba1f7ca"
+   },
+   "elements": [
+    {
+     "field": "AU",
+     "unit": "g/t",
+     "unit_label": "г/т",
+     "metal_family": "g",
+     "metal_base": "г"
+    }
+   ],
+   "cutoff_field": "AU",
+   "density": {
+    "field": null,
+    "value": 2.5
+   },
+   "keys": [
+    {
+     "kind": "field",
+     "field": "CLASS",
+     "labels": [
+      "Измеренные",
+      "Выявленные",
+      "Предполагаемые"
+     ]
+    }
+   ],
+   "bench": null,
+   "rows": [
+    {
+     "g": [
+      null
+     ],
+     "total": true,
+     "kind": "cutoff",
+     "cutoff": 1.0,
+     "cutoff_to": null,
+     "blocks": 5,
+     "volume": 5000.0,
+     "tonnes": 12500.0,
+     "elements": {
+      "AU": {
+       "wt": 12500.0,
+       "sum": 31250.0,
+       "metal": 31250.0,
+       "grade": 2.5,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    },
+    {
+     "g": [
+      "Измеренные"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 1.0,
+     "cutoff_to": null,
+     "blocks": 1,
+     "volume": 1000.0,
+     "tonnes": 2500.0,
+     "elements": {
+      "AU": {
+       "wt": 2500.0,
+       "sum": 2500.0,
+       "metal": 2500.0,
+       "grade": 1.0,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    },
+    {
+     "g": [
+      "Выявленные"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 1.0,
+     "cutoff_to": null,
+     "blocks": 2,
+     "volume": 2000.0,
+     "tonnes": 5000.0,
+     "elements": {
+      "AU": {
+       "wt": 5000.0,
+       "sum": 8750.0,
+       "metal": 8750.0,
+       "grade": 1.75,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    },
+    {
+     "g": [
+      "Предполагаемые"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 1.0,
+     "cutoff_to": null,
+     "blocks": 2,
+     "volume": 2000.0,
+     "tonnes": 5000.0,
+     "elements": {
+      "AU": {
+       "wt": 5000.0,
+       "sum": 20000.0,
+       "metal": 20000.0,
+       "grade": 4.0,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    },
+    {
+     "g": [
+      null
+     ],
+     "total": true,
+     "kind": "cutoff",
+     "cutoff": 2.0,
+     "cutoff_to": null,
+     "blocks": 3,
+     "volume": 3000.0,
+     "tonnes": 7500.0,
+     "elements": {
+      "AU": {
+       "wt": 7500.0,
+       "sum": 25000.0,
+       "metal": 25000.0,
+       "grade": 3.3333333333333335,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    },
+    {
+     "g": [
+      "Измеренные"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 2.0,
+     "cutoff_to": null,
+     "blocks": 0,
+     "volume": 0.0,
+     "tonnes": 0.0,
+     "elements": {
+      "AU": {
+       "wt": 0.0,
+       "sum": 0.0,
+       "metal": null,
+       "grade": null,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    },
+    {
+     "g": [
+      "Выявленные"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 2.0,
+     "cutoff_to": null,
+     "blocks": 1,
+     "volume": 1000.0,
+     "tonnes": 2500.0,
+     "elements": {
+      "AU": {
+       "wt": 2500.0,
+       "sum": 5000.0,
+       "metal": 5000.0,
+       "grade": 2.0,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    },
+    {
+     "g": [
+      "Предполагаемые"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 2.0,
+     "cutoff_to": null,
+     "blocks": 2,
+     "volume": 2000.0,
+     "tonnes": 5000.0,
+     "elements": {
+      "AU": {
+       "wt": 5000.0,
+       "sum": 20000.0,
+       "metal": 20000.0,
+       "grade": 4.0,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    }
+   ],
+   "rows_total": 8,
+   "truncated": false,
+   "totals": {
+    "kind": "cutoff",
+    "cutoff": 1.0,
+    "blocks": 5,
+    "volume": 5000.0,
+    "tonnes": 12500.0,
+    "elements": {
+     "AU": {
+      "grade": 2.5,
+      "metal": 31250.0
+     }
+    }
+   },
+   "curve": {
+    "field": "AU",
+    "cutoffs": [
+     0.2,
+     1.4,
+     2.6,
+     3.8,
+     5.0
+    ],
+    "blocks": [
+     8,
+     4,
+     2,
+     1,
+     1
+    ],
+    "volume": [
+     8000.0,
+     4000.0,
+     2000.0,
+     1000.0,
+     1000.0
+    ],
+    "tonnes": [
+     20000.0,
+     10000.0,
+     5000.0,
+     2500.0,
+     2500.0
+    ],
+    "elements": {
+     "AU": {
+      "grade": [
+       1.75,
+       2.875,
+       4.0,
+       5.0,
+       5.0
+      ],
+      "metal": [
+       35000.0,
+       28750.0,
+       20000.0,
+       12500.0,
+       12500.0
+      ]
+     }
+    }
+   },
+   "control": {
+    "default_density": null,
+    "no_density": {
+     "blocks": 0,
+     "volume": 0.0
+    },
+    "no_grade": {
+     "AU": {
+      "blocks": 0,
+      "tonnes": 0.0
+     }
+    },
+    "status": {},
+    "sum_groups": {
+     "checked": true,
+     "metal": {
+      "AU": {
+       "rel": 0.0,
+       "sum": 31250.0,
+       "total": 31250.0
+      }
+     },
+     "ok": true,
+     "tonnes": {
+      "rel": 0.0,
+      "sum": 12500.0,
+      "total": 12500.0
+     },
+     "volume": {
+      "rel": 0.0,
+      "sum": 5000.0,
+      "total": 5000.0
+     }
+    },
+    "tolerance": 1e-12,
+    "warnings": [],
+    "wireframes": []
+   },
+   "excluded": {
+    "filtered": 0,
+    "no_density": 0,
+    "no_volume": 0
+   },
+   "form": {
+    "template": {
+     "id": "jorc",
+     "name": "JORC",
+     "version": 1
+    },
+    "elements": [
+     {
+      "name": "AU",
+      "unit": "г/т",
+      "unit_label": "г/т",
+      "base": "g"
+     }
+    ],
+    "cutoff": {
+     "kind": "cutoff",
+     "value": 1.0
+    },
+    "cutoffs": [
+     1.0
+    ],
+    "columns": [
+     {
+      "key": "tonnes",
+      "part": null,
+      "group": null,
+      "title": "Руда, тыс. т",
+      "metric": "tonnes",
+      "element": null,
+      "unit": "тыс. т",
+      "decimals": 0
+     },
+     {
+      "key": "grade:AU",
+      "part": null,
+      "group": null,
+      "title": "AU, г/т",
+      "metric": "grade",
+      "element": "AU",
+      "unit": "г/т",
+      "decimals": 2
+     },
+     {
+      "key": "metal:AU",
+      "part": null,
+      "group": null,
+      "title": "Металл AU, тыс. унц",
+      "metric": "metal",
+      "element": "AU",
+      "unit": "тыс. унц",
+      "decimals": 1
+     }
+    ],
+    "sections": [
+     {
+      "title": null,
+      "rows": [
+       {
+        "label": "Измеренные",
+        "type": "group",
+        "cells": {
+         "tonnes": {
+          "value": 2.5,
+          "text": "3"
+         },
+         "grade:AU": {
+          "value": 1.0,
+          "text": "1,00"
+         },
+         "metal:AU": {
+          "value": 0.08037686642156995,
+          "text": "0,1"
+         }
+        }
+       },
+       {
+        "label": "Выявленные",
+        "type": "group",
+        "cells": {
+         "tonnes": {
+          "value": 5.0,
+          "text": "5"
+         },
+         "grade:AU": {
+          "value": 1.75,
+          "text": "1,75"
+         },
+         "metal:AU": {
+          "value": 0.28131903247549483,
+          "text": "0,3"
+         }
+        }
+       },
+       {
+        "label": "Изм. + Выяв.",
+        "type": "subtotal",
+        "cells": {
+         "tonnes": {
+          "value": 7.5,
+          "text": "8"
+         },
+         "grade:AU": {
+          "value": 1.5,
+          "text": "1,50"
+         },
+         "metal:AU": {
+          "value": 0.36169589889706477,
+          "text": "0,4"
+         }
+        },
+        "members": [
+         "Измеренные",
+         "Выявленные"
+        ]
+       },
+       {
+        "label": "Предполагаемые",
+        "type": "group",
+        "cells": {
+         "tonnes": {
+          "value": 5.0,
+          "text": "5"
+         },
+         "grade:AU": {
+          "value": 4.0,
+          "text": "4,00"
+         },
+         "metal:AU": {
+          "value": 0.6430149313725596,
+          "text": "0,6"
+         }
+        }
+       },
+       {
+        "label": "Итого",
+        "type": "total",
+        "cells": {
+         "tonnes": {
+          "value": 12.5,
+          "text": "13"
+         },
+         "grade:AU": {
+          "value": 2.5,
+          "text": "2,50"
+         },
+         "metal:AU": {
+          "value": 1.0047108302696244,
+          "text": "1,0"
+         }
+        }
+       }
+      ]
+     }
+    ],
+    "warnings": []
+   },
+   "warnings": [],
+   "files": [],
+   "seconds": null,
+   "page": 1,
+   "size": 500,
+   "state": "ready",
+   "stale": false,
+   "stale_reason": null,
+   "graph": {
+    "stale": false,
+    "stale_reason": null,
+    "source_lost": false,
+    "pinned": false
+   },
+   "error": null,
+   "inputs": [
+    {
+     "kind": "object:block_model",
+     "id": 1,
+     "fp": "854a676ba86a1ca6704dda75bc7c5e9a46c52242ff4c601b1da293f7dba1f7ca",
+     "name": "Модель"
+    },
+    {
+     "kind": "bm_field",
+     "id": "1:AU",
+     "fp": "cells|None",
+     "name": "Модель.AU"
+    },
+    {
+     "kind": "bm_field",
+     "id": "1:CLASS",
+     "fp": "cells|None",
+     "name": "Модель.CLASS"
+    }
+   ],
+   "fields": {
+    "AU": "cells|None",
+    "CLASS": "cells|None"
+   },
+   "created_at": "2026-11-26T08:09:15.673246+00:00",
+   "updated_at": "2026-11-26T08:09:15.673246+00:00",
+   "job_id": null
+  }
+ },
+ "report_put": {
+  "status": 200,
+  "body": {
+   "id": 2,
+   "version": 2,
+   "name": "Ресурсы ЮЗ"
+  }
+ },
+ "report_rebuilt": {
+  "status": 200,
+  "body": {
+   "report_id": 2,
+   "name": "Ресурсы ЮЗ",
+   "version": 3,
+   "saved": true,
+   "algo": "resources-1",
+   "params": {
+    "model_id": 1,
+    "elements": [
+     {
+      "field": "AU",
+      "unit": "g/t"
+     }
+    ],
+    "cutoff_field": "AU",
+    "cutoffs": [
+     1.0,
+     2.0
+    ],
+    "balance": null,
+    "density": 2.5,
+    "filter_id": null,
+    "restrict": null,
+    "groups": [
+     {
+      "kind": "field",
+      "field": "CLASS"
+     }
+    ],
+    "bench": null,
+    "curve": 5,
+    "template_id": "jorc"
+   },
+   "params_hash": "a7c2c67a525bcbea8e852866a3d83ec2a5a261e5ce3688b80a9d2d0e808f71ce",
+   "model": {
+    "id": 1,
+    "name": "Модель",
+    "version": 1,
+    "grid": {
+     "corner": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "counts": [
+      2,
+      2,
+      2
+     ],
+     "size": [
+      10.0,
+      10.0,
+      10.0
+     ],
+     "order": "F",
+     "rotation": 0.0,
+     "div": [
+      1,
+      1,
+      1
+     ]
+    },
+    "cells_sha": "854a676ba86a1ca6704dda75bc7c5e9a46c52242ff4c601b1da293f7dba1f7ca"
+   },
+   "elements": [
+    {
+     "field": "AU",
+     "unit": "g/t",
+     "unit_label": "г/т",
+     "metal_family": "g",
+     "metal_base": "г"
+    }
+   ],
+   "cutoff_field": "AU",
+   "density": {
+    "field": null,
+    "value": 2.5
+   },
+   "keys": [
+    {
+     "kind": "field",
+     "field": "CLASS",
+     "labels": [
+      "Измеренные",
+      "Выявленные",
+      "Предполагаемые"
+     ]
+    }
+   ],
+   "bench": null,
+   "rows": [
+    {
+     "g": [
+      null
+     ],
+     "total": true,
+     "kind": "cutoff",
+     "cutoff": 1.0,
+     "cutoff_to": null,
+     "blocks": 5,
+     "volume": 5000.0,
+     "tonnes": 12500.0,
+     "elements": {
+      "AU": {
+       "wt": 12500.0,
+       "sum": 31250.0,
+       "grade": 2.5,
+       "metal": 31250.0,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    },
+    {
+     "g": [
+      "Измеренные"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 1.0,
+     "cutoff_to": null,
+     "blocks": 1,
+     "volume": 1000.0,
+     "tonnes": 2500.0,
+     "elements": {
+      "AU": {
+       "wt": 2500.0,
+       "sum": 2500.0,
+       "grade": 1.0,
+       "metal": 2500.0,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    },
+    {
+     "g": [
+      "Выявленные"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 1.0,
+     "cutoff_to": null,
+     "blocks": 2,
+     "volume": 2000.0,
+     "tonnes": 5000.0,
+     "elements": {
+      "AU": {
+       "wt": 5000.0,
+       "sum": 8750.0,
+       "grade": 1.75,
+       "metal": 8750.0,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    },
+    {
+     "g": [
+      "Предполагаемые"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 1.0,
+     "cutoff_to": null,
+     "blocks": 2,
+     "volume": 2000.0,
+     "tonnes": 5000.0,
+     "elements": {
+      "AU": {
+       "wt": 5000.0,
+       "sum": 20000.0,
+       "grade": 4.0,
+       "metal": 20000.0,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    },
+    {
+     "g": [
+      null
+     ],
+     "total": true,
+     "kind": "cutoff",
+     "cutoff": 2.0,
+     "cutoff_to": null,
+     "blocks": 3,
+     "volume": 3000.0,
+     "tonnes": 7500.0,
+     "elements": {
+      "AU": {
+       "wt": 7500.0,
+       "sum": 25000.0,
+       "grade": 3.3333333333333335,
+       "metal": 25000.0,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    },
+    {
+     "g": [
+      "Измеренные"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 2.0,
+     "cutoff_to": null,
+     "blocks": 0,
+     "volume": 0.0,
+     "tonnes": 0.0,
+     "elements": {
+      "AU": {
+       "wt": 0.0,
+       "sum": 0.0,
+       "grade": null,
+       "metal": null,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    },
+    {
+     "g": [
+      "Выявленные"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 2.0,
+     "cutoff_to": null,
+     "blocks": 1,
+     "volume": 1000.0,
+     "tonnes": 2500.0,
+     "elements": {
+      "AU": {
+       "wt": 2500.0,
+       "sum": 5000.0,
+       "grade": 2.0,
+       "metal": 5000.0,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    },
+    {
+     "g": [
+      "Предполагаемые"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 2.0,
+     "cutoff_to": null,
+     "blocks": 2,
+     "volume": 2000.0,
+     "tonnes": 5000.0,
+     "elements": {
+      "AU": {
+       "wt": 5000.0,
+       "sum": 20000.0,
+       "grade": 4.0,
+       "metal": 20000.0,
+       "missing_t": 0.0,
+       "missing_n": 0
+      }
+     }
+    }
+   ],
+   "rows_total": 8,
+   "truncated": false,
+   "totals": {
+    "kind": "cutoff",
+    "cutoff": 1.0,
+    "blocks": 5,
+    "volume": 5000.0,
+    "tonnes": 12500.0,
+    "elements": {
+     "AU": {
+      "grade": 2.5,
+      "metal": 31250.0
+     }
+    }
+   },
+   "curve": {
+    "field": "AU",
+    "cutoffs": [
+     0.2,
+     1.4,
+     2.6,
+     3.8,
+     5.0
+    ],
+    "blocks": [
+     8,
+     4,
+     2,
+     1,
+     1
+    ],
+    "volume": [
+     8000.0,
+     4000.0,
+     2000.0,
+     1000.0,
+     1000.0
+    ],
+    "tonnes": [
+     20000.0,
+     10000.0,
+     5000.0,
+     2500.0,
+     2500.0
+    ],
+    "elements": {
+     "AU": {
+      "grade": [
+       1.75,
+       2.875,
+       4.0,
+       5.0,
+       5.0
+      ],
+      "metal": [
+       35000.0,
+       28750.0,
+       20000.0,
+       12500.0,
+       12500.0
+      ]
+     }
+    }
+   },
+   "control": {
+    "tolerance": 1e-12,
+    "sum_groups": {
+     "checked": true,
+     "tonnes": {
+      "sum": 12500.0,
+      "total": 12500.0,
+      "rel": 0.0
+     },
+     "volume": {
+      "sum": 5000.0,
+      "total": 5000.0,
+      "rel": 0.0
+     },
+     "metal": {
+      "AU": {
+       "sum": 31250.0,
+       "total": 31250.0,
+       "rel": 0.0
+      }
+     },
+     "ok": true
+    },
+    "no_density": {
+     "blocks": 0,
+     "volume": 0.0
+    },
+    "default_density": null,
+    "no_grade": {
+     "AU": {
+      "blocks": 0,
+      "tonnes": 0.0
+     }
+    },
+    "status": {},
+    "wireframes": [],
+    "warnings": []
+   },
+   "excluded": {
+    "filtered": 0,
+    "no_volume": 0,
+    "no_density": 0
+   },
+   "form": {
+    "template": {
+     "id": "jorc",
+     "name": "JORC",
+     "version": 1
+    },
+    "elements": [
+     {
+      "name": "AU",
+      "unit": "г/т",
+      "unit_label": "г/т",
+      "base": "g"
+     }
+    ],
+    "cutoff": {
+     "kind": "cutoff",
+     "value": 1.0
+    },
+    "cutoffs": [
+     1.0
+    ],
+    "columns": [
+     {
+      "key": "tonnes",
+      "part": null,
+      "group": null,
+      "title": "Руда, тыс. т",
+      "metric": "tonnes",
+      "element": null,
+      "unit": "тыс. т",
+      "decimals": 0
+     },
+     {
+      "key": "grade:AU",
+      "part": null,
+      "group": null,
+      "title": "AU, г/т",
+      "metric": "grade",
+      "element": "AU",
+      "unit": "г/т",
+      "decimals": 2
+     },
+     {
+      "key": "metal:AU",
+      "part": null,
+      "group": null,
+      "title": "Металл AU, тыс. унц",
+      "metric": "metal",
+      "element": "AU",
+      "unit": "тыс. унц",
+      "decimals": 1
+     }
+    ],
+    "sections": [
+     {
+      "title": null,
+      "rows": [
+       {
+        "label": "Измеренные",
+        "type": "group",
+        "cells": {
+         "tonnes": {
+          "value": 2.5,
+          "text": "3"
+         },
+         "grade:AU": {
+          "value": 1.0,
+          "text": "1,00"
+         },
+         "metal:AU": {
+          "value": 0.08037686642156995,
+          "text": "0,1"
+         }
+        }
+       },
+       {
+        "label": "Выявленные",
+        "type": "group",
+        "cells": {
+         "tonnes": {
+          "value": 5.0,
+          "text": "5"
+         },
+         "grade:AU": {
+          "value": 1.75,
+          "text": "1,75"
+         },
+         "metal:AU": {
+          "value": 0.28131903247549483,
+          "text": "0,3"
+         }
+        }
+       },
+       {
+        "label": "Изм. + Выяв.",
+        "type": "subtotal",
+        "cells": {
+         "tonnes": {
+          "value": 7.5,
+          "text": "8"
+         },
+         "grade:AU": {
+          "value": 1.5,
+          "text": "1,50"
+         },
+         "metal:AU": {
+          "value": 0.36169589889706477,
+          "text": "0,4"
+         }
+        },
+        "members": [
+         "Измеренные",
+         "Выявленные"
+        ]
+       },
+       {
+        "label": "Предполагаемые",
+        "type": "group",
+        "cells": {
+         "tonnes": {
+          "value": 5.0,
+          "text": "5"
+         },
+         "grade:AU": {
+          "value": 4.0,
+          "text": "4,00"
+         },
+         "metal:AU": {
+          "value": 0.6430149313725596,
+          "text": "0,6"
+         }
+        }
+       },
+       {
+        "label": "Итого",
+        "type": "total",
+        "cells": {
+         "tonnes": {
+          "value": 12.5,
+          "text": "13"
+         },
+         "grade:AU": {
+          "value": 2.5,
+          "text": "2,50"
+         },
+         "metal:AU": {
+          "value": 1.0047108302696244,
+          "text": "1,0"
+         }
+        }
+       }
+      ]
+     }
+    ],
+    "warnings": []
+   },
+   "warnings": [],
+   "files": [],
+   "seconds": {
+    "read": 0.0111,
+    "kernel": 0.329,
+    "control": 0.0004,
+    "write": 0.012,
+    "total": 0.3616
+   },
+   "events": [
+    [
+     "resources.changed",
+     {
+      "kind": "resource_report",
+      "id": 2
+     }
+    ]
+   ]
+  }
+ },
+ "report_delete": {
+  "status": 200,
+  "body": {
+   "id": 3,
+   "deleted": true
+  }
+ },
+ "templates": {
+  "status": 200,
+  "body": {
+   "templates": [
+    {
+     "id": "jorc",
+     "name": "JORC",
+     "builtin": true,
+     "version": 1
+    },
+    {
+     "id": "gkz",
+     "name": "ГКЗ",
+     "builtin": true,
+     "version": 1
+    }
+   ]
+  }
+ },
+ "template_get": {
+  "status": 200,
+  "body": {
+   "template": {
+    "id": "jorc",
+    "name": "JORC",
+    "version": 1,
+    "labels": [
+     "Измеренные",
+     "Выявленные",
+     "Предполагаемые"
+    ],
+    "subtotals": [
+     {
+      "label": "Изм. + Выяв.",
+      "members": [
+       "Измеренные",
+       "Выявленные"
+      ]
+     }
+    ],
+    "total": "Итого",
+    "key": "class",
+    "section": null,
+    "columns": [
+     "tonnes",
+     "grade",
+     "metal"
+    ],
+    "balance": false,
+    "units": {
+     "tonnes": "kt",
+     "volume": "km3",
+     "metal": {
+      "g": "koz",
+      "t": "t"
+     }
+    },
+    "decimals": {
+     "tonnes": 0,
+     "volume": 0,
+     "grade": 2,
+     "metal": 1
+    },
+    "builtin": true
+   }
+  }
+ },
+ "template_gkz": {
+  "status": 200,
+  "body": {
+   "template": {
+    "id": "gkz",
+    "name": "ГКЗ",
+    "version": 1,
+    "labels": [
+     "A",
+     "B",
+     "C1",
+     "C2"
+    ],
+    "subtotals": [
+     {
+      "label": "A + B + C1",
+      "members": [
+       "A",
+       "B",
+       "C1"
+      ]
+     }
+    ],
+    "total": "Итого",
+    "key": "class",
+    "section": null,
+    "columns": [
+     "tonnes",
+     "grade",
+     "metal"
+    ],
+    "balance": true,
+    "units": {
+     "tonnes": "kt",
+     "volume": "km3",
+     "metal": {
+      "g": "kg",
+      "t": "t"
+     }
+    },
+    "decimals": {
+     "tonnes": 0,
+     "volume": 0,
+     "grade": 2,
+     "metal": 0
+    },
+    "builtin": true
+   }
+  }
+ },
+ "template_put": {
+  "status": 200,
+  "body": {
+   "id": "svoy",
+   "version": 1
+  }
+ },
+ "template_delete": {
+  "status": 200,
+  "body": {
+   "id": "svoy",
+   "deleted": true
+  }
+ },
+ "report_not_found": {
+  "status": 404,
+  "body": {
+   "code": "resource_report_not_found",
+   "message": "Отчёт по ресурсам не найден.",
+   "hint": "Обновите раздел «Отчёты по ресурсам»."
+  }
+ },
+ "template_not_found": {
+  "status": 404,
+  "body": {
+   "id": "nope",
+   "code": "template_not_found",
+   "message": "Шаблон отчёта «nope» не найден.",
+   "hint": "Выберите шаблон из списка."
+  }
+ },
+ "field_not_found": {
+  "status": 404,
+  "body": {
+   "param": "groups.0",
+   "code": "block_field_not_found",
+   "message": "Поле «NOPE» не найдено.",
+   "hint": "Обновите свойства модели."
+  }
+ },
+ "filter_not_found": {
+  "status": 404,
+  "body": {
+   "code": "filter_not_found",
+   "message": "Фильтр не найден.",
+   "hint": "Обновите список фильтров."
+  }
+ },
+ "report_building": {
+  "status": 409,
+  "body": {
+   "code": "report_building",
+   "message": "Отчёт сейчас строится.",
+   "hint": "Дождитесь окончания задания или отмените его."
+  }
+ },
+ "version_conflict": {
+  "status": 409,
+  "body": {
+   "version": 3,
+   "code": "version_conflict",
+   "message": "Отчёт или шаблон изменён в другом окне.",
+   "hint": "Обновите вкладку и повторите."
+  }
+ },
+ "name_taken": {
+  "status": 409,
+  "body": {
+   "param": "name",
+   "code": "name_taken",
+   "message": "Отчёт «ресурсы юз» уже есть.",
+   "hint": "Выберите другое название."
+  }
+ },
+ "filter_field_missing": {
+  "status": 422,
+  "body": {
+   "field": "PIT",
+   "model": "Модель",
+   "code": "filter_field_missing",
+   "message": "В модели «Модель» нет поля «PIT», которое нужно фильтру.",
+   "hint": "Выберите другую модель или другой фильтр, либо добавьте поле в модель."
+  }
+ },
+ "report_too_big": {
+  "status": 422,
+  "body": {
+   "code": "report_too_big",
+   "message": "Слишком много групп, бортов и содержаний для одного отчёта.",
+   "hint": "Уберите ключ группировки или часть бортов, или возьмите меньше элементов."
+  }
+ },
+ "read_only": {
+  "status": 423,
+  "body": {
+   "code": "project_read_only",
+   "message": "Проект открыт только для чтения: он уже открыт в другом окне BedrockForge.",
+   "hint": "Закройте проект в другом окне и откройте его заново."
+  }
+ },
+ "drill": {
+  "status": 200,
+  "body": {
+   "rules": {
+    "op": "and",
+    "items": [
+     {
+      "cond": {
+       "field": "CLASS",
+       "op": "=",
+       "value": "Измеренные"
+      }
+     },
+     {
+      "expr": "AU >= 1"
+     }
+    ]
+   },
+   "cell": {
+    "blocks": 1,
+    "volume": 1000.0,
+    "tonnes": 2500.0
+   },
+   "stale": false,
+   "stale_reason": null,
+   "model_id": 1,
+   "warnings": []
+  }
+ },
+ "drill_rows": {
+  "status": 200,
+  "body": {
+   "rules": {
+    "op": "and",
+    "items": [
+     {
+      "cond": {
+       "field": "CLASS",
+       "op": "=",
+       "value": "Измеренные"
+      }
+     },
+     {
+      "expr": "AU >= 1"
+     }
+    ]
+   },
+   "cell": {
+    "blocks": 1,
+    "volume": 1000.0,
+    "tonnes": 2500.0
+   },
+   "stale": false,
+   "stale_reason": null,
+   "model_id": 1,
+   "warnings": [],
+   "page": 1,
+   "size": 1000,
+   "total": 1,
+   "rows": [
+    {
+     "i": 1,
+     "j": 1,
+     "k": 0,
+     "x": 15.0,
+     "y": 15.0,
+     "z": 5.0,
+     "dx": 10.0,
+     "dy": 10.0,
+     "dz": 10.0,
+     "f": 1.0,
+     "volume": 1000.0,
+     "tonnes": 2500.0,
+     "keys": {
+      "CLASS": "Измеренные"
+     },
+     "elements": {
+      "AU": 1.0
+     }
+    }
+   ],
+   "csv": null
+  }
+ },
+ "compare_reports": {
+  "status": 200,
+  "body": {
+   "a": {
+    "id": 5,
+    "name": "Сравнение A",
+    "version": 1,
+    "model": {
+     "id": 1,
+     "name": "Модель",
+     "version": 1,
+     "grid": {
+      "corner": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "counts": [
+       2,
+       2,
+       2
+      ],
+      "size": [
+       10.0,
+       10.0,
+       10.0
+      ],
+      "order": "F",
+      "rotation": 0.0,
+      "div": [
+       1,
+       1,
+       1
+      ]
+     },
+     "cells_sha": "854a676ba86a1ca6704dda75bc7c5e9a46c52242ff4c601b1da293f7dba1f7ca"
+    },
+    "inputs": [
+     {
+      "kind": "object:block_model",
+      "id": 1,
+      "fp": "854a676ba86a1ca6704dda75bc7c5e9a46c52242ff4c601b1da293f7dba1f7ca",
+      "name": "Модель"
+     },
+     {
+      "kind": "bm_field",
+      "id": "1:AU",
+      "fp": "cells|None",
+      "name": "Модель.AU"
+     },
+     {
+      "kind": "bm_field",
+      "id": "1:CLASS",
+      "fp": "cells|None",
+      "name": "Модель.CLASS"
+     }
+    ],
+    "stale": false,
+    "stale_reason": null,
+    "created_at": "2026-11-26T08:09:16.671149+00:00"
+   },
+   "b": {
+    "id": 6,
+    "name": "Сравнение B",
+    "version": 1,
+    "model": {
+     "id": 1,
+     "name": "Модель",
+     "version": 1,
+     "grid": {
+      "corner": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "counts": [
+       2,
+       2,
+       2
+      ],
+      "size": [
+       10.0,
+       10.0,
+       10.0
+      ],
+      "order": "F",
+      "rotation": 0.0,
+      "div": [
+       1,
+       1,
+       1
+      ]
+     },
+     "cells_sha": "854a676ba86a1ca6704dda75bc7c5e9a46c52242ff4c601b1da293f7dba1f7ca"
+    },
+    "inputs": [
+     {
+      "kind": "object:block_model",
+      "id": 1,
+      "fp": "854a676ba86a1ca6704dda75bc7c5e9a46c52242ff4c601b1da293f7dba1f7ca",
+      "name": "Модель"
+     },
+     {
+      "kind": "bm_field",
+      "id": "1:AU",
+      "fp": "cells|None",
+      "name": "Модель.AU"
+     },
+     {
+      "kind": "bm_field",
+      "id": "1:CLASS",
+      "fp": "cells|None",
+      "name": "Модель.CLASS"
+     }
+    ],
+    "stale": false,
+    "stale_reason": null,
+    "created_at": "2026-11-26T08:09:16.917435+00:00"
+   },
+   "grids_differ": false,
+   "warnings": [
+    {
+     "code": "density_differs",
+     "message": "Плотность в отчётах разная: разность тонн включает и её."
+    }
+   ],
+   "keys": [
+    {
+     "kind": "field",
+     "field": "CLASS"
+    }
+   ],
+   "elements": [
+    "AU"
+   ],
+   "rows": [
+    {
+     "g": null,
+     "total": true,
+     "kind": "cutoff",
+     "cutoff": 1.0,
+     "cutoff_to": null,
+     "only_in": null,
+     "a": {
+      "blocks": 5,
+      "volume": 5000.0,
+      "tonnes": 12500.0,
+      "elements": {
+       "AU": {
+        "wt": 12500.0,
+        "sum": 31250.0,
+        "metal": 31250.0,
+        "grade": 2.5,
+        "missing_t": 0.0,
+        "missing_n": 0
+       }
+      }
+     },
+     "b": {
+      "blocks": 5,
+      "volume": 5000.0,
+      "tonnes": 13500.0,
+      "elements": {
+       "AU": {
+        "wt": 13500.0,
+        "sum": 33750.0,
+        "metal": 33750.0,
+        "grade": 2.5,
+        "missing_t": 0.0,
+        "missing_n": 0
+       }
+      }
+     },
+     "delta": {
+      "blocks": 0,
+      "volume": 0.0,
+      "tonnes": -1000.0,
+      "elements": {
+       "AU": {
+        "grade": 0.0,
+        "metal": -2500.0
+       }
+      }
+     }
+    },
+    {
+     "g": [
+      "Измеренные"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 1.0,
+     "cutoff_to": null,
+     "only_in": null,
+     "a": {
+      "blocks": 1,
+      "volume": 1000.0,
+      "tonnes": 2500.0,
+      "elements": {
+       "AU": {
+        "wt": 2500.0,
+        "sum": 2500.0,
+        "metal": 2500.0,
+        "grade": 1.0,
+        "missing_t": 0.0,
+        "missing_n": 0
+       }
+      }
+     },
+     "b": {
+      "blocks": 1,
+      "volume": 1000.0,
+      "tonnes": 2700.0,
+      "elements": {
+       "AU": {
+        "wt": 2700.0,
+        "sum": 2700.0,
+        "metal": 2700.0,
+        "grade": 1.0,
+        "missing_t": 0.0,
+        "missing_n": 0
+       }
+      }
+     },
+     "delta": {
+      "blocks": 0,
+      "volume": 0.0,
+      "tonnes": -200.0,
+      "elements": {
+       "AU": {
+        "grade": 0.0,
+        "metal": -200.0
+       }
+      }
+     }
+    },
+    {
+     "g": [
+      "Выявленные"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 1.0,
+     "cutoff_to": null,
+     "only_in": null,
+     "a": {
+      "blocks": 2,
+      "volume": 2000.0,
+      "tonnes": 5000.0,
+      "elements": {
+       "AU": {
+        "wt": 5000.0,
+        "sum": 8750.0,
+        "metal": 8750.0,
+        "grade": 1.75,
+        "missing_t": 0.0,
+        "missing_n": 0
+       }
+      }
+     },
+     "b": {
+      "blocks": 2,
+      "volume": 2000.0,
+      "tonnes": 5400.0,
+      "elements": {
+       "AU": {
+        "wt": 5400.0,
+        "sum": 9450.0,
+        "metal": 9450.0,
+        "grade": 1.75,
+        "missing_t": 0.0,
+        "missing_n": 0
+       }
+      }
+     },
+     "delta": {
+      "blocks": 0,
+      "volume": 0.0,
+      "tonnes": -400.0,
+      "elements": {
+       "AU": {
+        "grade": 0.0,
+        "metal": -700.0
+       }
+      }
+     }
+    },
+    {
+     "g": [
+      "Предполагаемые"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 1.0,
+     "cutoff_to": null,
+     "only_in": null,
+     "a": {
+      "blocks": 2,
+      "volume": 2000.0,
+      "tonnes": 5000.0,
+      "elements": {
+       "AU": {
+        "wt": 5000.0,
+        "sum": 20000.0,
+        "metal": 20000.0,
+        "grade": 4.0,
+        "missing_t": 0.0,
+        "missing_n": 0
+       }
+      }
+     },
+     "b": {
+      "blocks": 2,
+      "volume": 2000.0,
+      "tonnes": 5400.0,
+      "elements": {
+       "AU": {
+        "wt": 5400.0,
+        "sum": 21600.0,
+        "metal": 21600.0,
+        "grade": 4.0,
+        "missing_t": 0.0,
+        "missing_n": 0
+       }
+      }
+     },
+     "delta": {
+      "blocks": 0,
+      "volume": 0.0,
+      "tonnes": -400.0,
+      "elements": {
+       "AU": {
+        "grade": 0.0,
+        "metal": -1600.0
+       }
+      }
+     }
+    },
+    {
+     "g": null,
+     "total": true,
+     "kind": "cutoff",
+     "cutoff": 2.0,
+     "cutoff_to": null,
+     "only_in": "a",
+     "a": {
+      "blocks": 3,
+      "volume": 3000.0,
+      "tonnes": 7500.0,
+      "elements": {
+       "AU": {
+        "wt": 7500.0,
+        "sum": 25000.0,
+        "metal": 25000.0,
+        "grade": 3.3333333333333335,
+        "missing_t": 0.0,
+        "missing_n": 0
+       }
+      }
+     },
+     "b": null,
+     "delta": null
+    },
+    {
+     "g": [
+      "Измеренные"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 2.0,
+     "cutoff_to": null,
+     "only_in": "a",
+     "a": {
+      "blocks": 0,
+      "volume": 0.0,
+      "tonnes": 0.0,
+      "elements": {
+       "AU": {
+        "wt": 0.0,
+        "sum": 0.0,
+        "metal": null,
+        "grade": null,
+        "missing_t": 0.0,
+        "missing_n": 0
+       }
+      }
+     },
+     "b": null,
+     "delta": null
+    },
+    {
+     "g": [
+      "Выявленные"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 2.0,
+     "cutoff_to": null,
+     "only_in": "a",
+     "a": {
+      "blocks": 1,
+      "volume": 1000.0,
+      "tonnes": 2500.0,
+      "elements": {
+       "AU": {
+        "wt": 2500.0,
+        "sum": 5000.0,
+        "metal": 5000.0,
+        "grade": 2.0,
+        "missing_t": 0.0,
+        "missing_n": 0
+       }
+      }
+     },
+     "b": null,
+     "delta": null
+    },
+    {
+     "g": [
+      "Предполагаемые"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 2.0,
+     "cutoff_to": null,
+     "only_in": "a",
+     "a": {
+      "blocks": 2,
+      "volume": 2000.0,
+      "tonnes": 5000.0,
+      "elements": {
+       "AU": {
+        "wt": 5000.0,
+        "sum": 20000.0,
+        "metal": 20000.0,
+        "grade": 4.0,
+        "missing_t": 0.0,
+        "missing_n": 0
+       }
+      }
+     },
+     "b": null,
+     "delta": null
+    },
+    {
+     "g": null,
+     "total": true,
+     "kind": "cutoff",
+     "cutoff": 3.0,
+     "cutoff_to": null,
+     "only_in": "b",
+     "a": null,
+     "b": {
+      "blocks": 2,
+      "volume": 2000.0,
+      "tonnes": 5400.0,
+      "elements": {
+       "AU": {
+        "wt": 5400.0,
+        "sum": 21600.0,
+        "metal": 21600.0,
+        "grade": 4.0,
+        "missing_t": 0.0,
+        "missing_n": 0
+       }
+      }
+     },
+     "delta": null
+    },
+    {
+     "g": [
+      "Измеренные"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 3.0,
+     "cutoff_to": null,
+     "only_in": "b",
+     "a": null,
+     "b": {
+      "blocks": 0,
+      "volume": 0.0,
+      "tonnes": 0.0,
+      "elements": {
+       "AU": {
+        "wt": 0.0,
+        "sum": 0.0,
+        "metal": null,
+        "grade": null,
+        "missing_t": 0.0,
+        "missing_n": 0
+       }
+      }
+     },
+     "delta": null
+    },
+    {
+     "g": [
+      "Выявленные"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 3.0,
+     "cutoff_to": null,
+     "only_in": "b",
+     "a": null,
+     "b": {
+      "blocks": 0,
+      "volume": 0.0,
+      "tonnes": 0.0,
+      "elements": {
+       "AU": {
+        "wt": 0.0,
+        "sum": 0.0,
+        "metal": null,
+        "grade": null,
+        "missing_t": 0.0,
+        "missing_n": 0
+       }
+      }
+     },
+     "delta": null
+    },
+    {
+     "g": [
+      "Предполагаемые"
+     ],
+     "total": false,
+     "kind": "cutoff",
+     "cutoff": 3.0,
+     "cutoff_to": null,
+     "only_in": "b",
+     "a": null,
+     "b": {
+      "blocks": 2,
+      "volume": 2000.0,
+      "tonnes": 5400.0,
+      "elements": {
+       "AU": {
+        "wt": 5400.0,
+        "sum": 21600.0,
+        "metal": 21600.0,
+        "grade": 4.0,
+        "missing_t": 0.0,
+        "missing_n": 0
+       }
+      }
+     },
+     "delta": null
+    }
+   ],
+   "curves": {
+    "a": null,
+    "b": null
+   }
+  }
+ },
+ "compare_post": {
+  "status": 200,
+  "body": {
+   "source": "project",
+   "id": 1
+  }
+ },
+ "compare_result": {
+  "status": 200,
+  "body": {
+   "model_id": 1,
+   "field": "OK_EST_ID_EST_D",
+   "a": "OK_EST",
+   "b": "ID_EST",
+   "field_written": true,
+   "version": 3,
+   "rows": 8,
+   "stats": {
+    "n": 6,
+    "mean": -0.09666666666666683,
+    "std": 0.0839973544556945,
+    "min": -0.25000000000000044,
+    "max": 0.0,
+    "percentiles": {
+     "1": -0.25000000000000044,
+     "5": -0.25000000000000044,
+     "25": -0.15000000000000036,
+     "50": -0.07500000000000007,
+     "75": -0.030000000000000027,
+     "95": 0.0,
+     "99": 0.0
+    }
+   },
+   "histogram": {
+    "edges": [
+     -0.25000000000000044,
+     -0.24500000000000044,
+     -0.24000000000000044,
+     -0.23500000000000043,
+     -0.2300000000000004,
+     -0.2250000000000004,
+     -0.2200000000000004,
+     -0.21500000000000039,
+     -0.21000000000000038,
+     -0.20500000000000035,
+     -0.20000000000000034,
+     -0.19500000000000034,
+     -0.19000000000000034,
+     -0.18500000000000033,
+     -0.18000000000000033,
+     -0.17500000000000032,
+     -0.17000000000000032,
+     -0.1650000000000003,
+     -0.16000000000000028,
+     -0.15500000000000028,
+     -0.15000000000000027,
+     -0.14500000000000024,
+     -0.14000000000000024,
+     -0.13500000000000023,
+     -0.13000000000000023,
+     -0.12500000000000022,
+     -0.12000000000000022,
+     -0.11500000000000021,
+     -0.11000000000000021,
+     -0.10500000000000018,
+     -0.10000000000000017,
+     -0.09500000000000017,
+     -0.09000000000000016,
+     -0.08500000000000016,
+     -0.08000000000000015,
+     -0.07500000000000015,
+     -0.07000000000000012,
+     -0.06500000000000011,
+     -0.06000000000000011,
+     -0.055000000000000104,
+     -0.0500000000000001,
+     -0.045000000000000095,
+     -0.04000000000000006,
+     -0.03500000000000006,
+     -0.030000000000000054,
+     -0.02500000000000005,
+     -0.020000000000000046,
+     -0.015000000000000041,
+     -0.010000000000000009,
+     -0.0050000000000000044,
+     0.0
+    ],
+    "counts": [
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     1
+    ]
+   },
+   "domains": [
+    {
+     "domain": "Измеренные",
+     "blocks": 2,
+     "missing": 1,
+     "volume": 2000.0,
+     "mean_a": 0.75,
+     "mean_b": 0.775,
+     "mean_delta": -0.025000000000000022,
+     "status_changed": 1
+    },
+    {
+     "domain": "Выявленные",
+     "blocks": 3,
+     "missing": 0,
+     "volume": 3000.0,
+     "mean_a": 1.4333333333333333,
+     "mean_b": 1.5266666666666666,
+     "mean_delta": -0.09333333333333349,
+     "status_changed": 0
+    },
+    {
+     "domain": "Предполагаемые",
+     "blocks": 1,
+     "missing": 1,
+     "volume": 1000.0,
+     "mean_a": 3.0,
+     "mean_b": 3.2500000000000004,
+     "mean_delta": -0.25000000000000044,
+     "status_changed": 1
+    }
+   ],
+   "status": {
+    "a": "OK_STATUS",
+    "b": "ID_STATUS",
+    "changed": 2
+   },
+   "warnings": [],
+   "stages": {
+    "read": 0.004,
+    "calc": 0.003,
+    "write": 0.014,
+    "total": 0.021
+   },
+   "events": [
+    [
+     "objects.changed",
+     {
+      "kind": "block_model",
+      "id": 1
+     }
+    ]
+   ]
+  }
+ },
+ "estimate_compare": {
+  "status": 200,
+  "body": {
+   "model_id": 1,
+   "field": "OK_EST_ID_EST_D",
+   "a": "OK_EST",
+   "b": "ID_EST",
+   "field_written": true,
+   "version": 3,
+   "rows": 8,
+   "stats": {
+    "n": 6,
+    "mean": -0.09666666666666683,
+    "std": 0.0839973544556945,
+    "min": -0.25000000000000044,
+    "max": 0.0,
+    "percentiles": {
+     "1": -0.25000000000000044,
+     "5": -0.25000000000000044,
+     "25": -0.15000000000000036,
+     "50": -0.07500000000000007,
+     "75": -0.030000000000000027,
+     "95": 0.0,
+     "99": 0.0
+    }
+   },
+   "histogram": {
+    "edges": [
+     -0.25000000000000044,
+     -0.24500000000000044,
+     -0.24000000000000044,
+     -0.23500000000000043,
+     -0.2300000000000004,
+     -0.2250000000000004,
+     -0.2200000000000004,
+     -0.21500000000000039,
+     -0.21000000000000038,
+     -0.20500000000000035,
+     -0.20000000000000034,
+     -0.19500000000000034,
+     -0.19000000000000034,
+     -0.18500000000000033,
+     -0.18000000000000033,
+     -0.17500000000000032,
+     -0.17000000000000032,
+     -0.1650000000000003,
+     -0.16000000000000028,
+     -0.15500000000000028,
+     -0.15000000000000027,
+     -0.14500000000000024,
+     -0.14000000000000024,
+     -0.13500000000000023,
+     -0.13000000000000023,
+     -0.12500000000000022,
+     -0.12000000000000022,
+     -0.11500000000000021,
+     -0.11000000000000021,
+     -0.10500000000000018,
+     -0.10000000000000017,
+     -0.09500000000000017,
+     -0.09000000000000016,
+     -0.08500000000000016,
+     -0.08000000000000015,
+     -0.07500000000000015,
+     -0.07000000000000012,
+     -0.06500000000000011,
+     -0.06000000000000011,
+     -0.055000000000000104,
+     -0.0500000000000001,
+     -0.045000000000000095,
+     -0.04000000000000006,
+     -0.03500000000000006,
+     -0.030000000000000054,
+     -0.02500000000000005,
+     -0.020000000000000046,
+     -0.015000000000000041,
+     -0.010000000000000009,
+     -0.0050000000000000044,
+     0.0
+    ],
+    "counts": [
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     1
+    ]
+   },
+   "domains": [
+    {
+     "domain": "Измеренные",
+     "blocks": 2,
+     "missing": 1,
+     "volume": 2000.0,
+     "mean_a": 0.75,
+     "mean_b": 0.775,
+     "mean_delta": -0.025000000000000022,
+     "status_changed": 1
+    },
+    {
+     "domain": "Выявленные",
+     "blocks": 3,
+     "missing": 0,
+     "volume": 3000.0,
+     "mean_a": 1.4333333333333333,
+     "mean_b": 1.5266666666666666,
+     "mean_delta": -0.09333333333333349,
+     "status_changed": 0
+    },
+    {
+     "domain": "Предполагаемые",
+     "blocks": 1,
+     "missing": 1,
+     "volume": 1000.0,
+     "mean_a": 3.0,
+     "mean_b": 3.2500000000000004,
+     "mean_delta": -0.25000000000000044,
+     "status_changed": 1
+    }
+   ],
+   "status": {
+    "a": "OK_STATUS",
+    "b": "ID_STATUS",
+    "changed": 2
+   },
+   "warnings": [],
+   "stages": {
+    "read": 0.004,
+    "calc": 0.003,
+    "write": 0.014,
+    "total": 0.021
+   },
+   "events": [
+    [
+     "objects.changed",
+     {
+      "kind": "block_model",
+      "id": 1
+     }
+    ]
+   ]
+  }
+ },
+ "export_post": {
+  "status": 200,
+  "body": {
+   "source": "jobs",
+   "id": 42
+  }
+ },
+ "export_result": {
+  "status": 200,
+  "body": {
+   "path": "C:\\Отчёты\\resources.xlsx",
+   "format": "xlsx",
+   "bytes": 21874,
+   "rows": 7
+  }
+ },
+ "files_exist": {
+  "status": 409,
+  "body": {
+   "files": [
+    "C:\\Отчёты\\resources.xlsx"
+   ],
+   "code": "files_exist",
+   "message": "Файл с таким именем уже есть: он не заменяется.",
+   "hint": "Выберите другое имя или удалите файл."
+  }
+ },
+ "defaults": {
+  "status": 200,
+  "body": {
+   "params": {
+    "elements": null,
+    "cutoff_field": null,
+    "cutoffs": [
+     null
+    ],
+    "balance": null,
+    "density": null,
+    "filter_id": null,
+    "restrict": null,
+    "groups": [],
+    "bench": {
+     "h": 10.0,
+     "z0": null,
+     "z_min": null,
+     "z_max": null
+    },
+    "curve": 100,
+    "template_id": null,
+    "save": false,
+    "choices": {
+     "key_kinds": [
+      "field",
+      "bench"
+     ],
+     "row_kinds": [
+      "cutoff",
+      "all",
+      "balance",
+      "offbalance"
+     ],
+     "export_formats": [
+      "xlsx",
+      "csv"
+     ]
+    },
+    "limits": {
+     "elements": 20,
+     "cutoffs": 200,
+     "group_keys": 3,
+     "benches": 1000,
+     "combinations": 20000,
+     "cells": 2000000,
+     "curve": 500,
+     "page": 1000
+    }
+   },
+   "ranges": {
+    "bench.h": {
+     "lo": 1e-06,
+     "hi": 1000.0,
+     "lo_open": false,
+     "integer": false,
+     "unit": "м"
+    },
+    "bench.z": {
+     "lo": -10000000.0,
+     "hi": 10000000.0,
+     "lo_open": false,
+     "integer": false,
+     "unit": "м"
+    },
+    "cutoff": {
+     "lo": -1000000000000.0,
+     "hi": 1000000000000.0,
+     "lo_open": false,
+     "integer": false,
+     "unit": ""
+    },
+    "curve": {
+     "lo": 2,
+     "hi": 500,
+     "lo_open": false,
+     "integer": true,
+     "unit": "точек (0 — без кривой)"
+    }
+   }
+  }
+ },
+ "bad_param": {
+  "status": 422,
+  "body": {
+   "param": "cutoffs.step",
+   "code": "bad_param",
+   "message": "Бортов больше 200.",
+   "hint": "Увеличьте шаг или сузьте диапазон."
+  }
+ },
+ "group_numeric": {
+  "status": 422,
+  "body": {
+   "param": "groups.1",
+   "code": "group_numeric",
+   "message": "Поле «AU» числовое: группировать можно только по категориям.",
+   "hint": "Переведите числовое поле в категории калькулятором блочной модели."
+  }
+ },
+ "refusals": {
+  "report_too_big": {
+   "status": 422,
+   "body": {
+    "code": "report_too_big",
+    "message": "Отчёт слишком велик: сочетаний групп больше 20 000 или ячеек больше 2 000 000.",
+    "hint": "Уберите один из ключей группы, задайте меньше бортов или добавьте ограничитель."
+   }
+  },
+  "filter_field_missing": {
+   "status": 422,
+   "body": {
+    "code": "filter_field_missing",
+    "message": "В ограничителе используется поле, которого нет в модели.",
+    "hint": "Постройте поле (например PIT) или уберите условие."
+   }
+  },
+  "group_numeric": {
+   "status": 422,
+   "body": {
+    "code": "group_numeric",
+    "message": "Группировать можно только по категориям: поле числовое.",
+    "hint": "Переведите числовое поле в категории калькулятором блочной модели."
+   }
+  },
+  "resource_report_not_found": {
+   "status": 404,
+   "body": {
+    "code": "resource_report_not_found",
+    "message": "Отчёт по ресурсам не найден.",
+    "hint": "Обновите раздел «Отчёты по ресурсам»."
+   }
+  },
+  "block_field_not_found": {
+   "status": 404,
+   "body": {
+    "code": "block_field_not_found",
+    "message": "Поле блочной модели не найдено.",
+    "hint": "Обновите свойства модели."
+   }
+  },
+  "filter_not_found": {
+   "status": 404,
+   "body": {
+    "code": "filter_not_found",
+    "message": "Фильтр не найден.",
+    "hint": "Обновите библиотеку фильтров и выберите фильтр заново."
+   }
+  },
+  "template_not_found": {
+   "status": 404,
+   "body": {
+    "code": "template_not_found",
+    "message": "Шаблон отчёта не найден.",
+    "hint": "Обновите список шаблонов."
+   }
+  },
+  "report_building": {
+   "status": 409,
+   "body": {
+    "code": "report_building",
+    "message": "Отчёт сейчас строится.",
+    "hint": "Дождитесь окончания задания или отмените его."
+   }
+  },
+  "version_conflict": {
+   "status": 409,
+   "body": {
+    "code": "version_conflict",
+    "message": "Отчёт или шаблон изменён в другом окне.",
+    "hint": "Обновите вкладку и повторите."
+   }
+  },
+  "files_exist": {
+   "status": 409,
+   "body": {
+    "code": "files_exist",
+    "message": "Файл с таким именем уже есть: он не заменяется.",
+    "hint": "Выберите другое имя или удалите файл."
+   }
+  },
+  "project_read_only": {
+   "status": 423,
+   "body": {
+    "code": "project_read_only",
+    "message": "Проект открыт только для чтения.",
+    "hint": "Закройте проект в другом окне BedrockForge и откройте его заново."
+   }
+  }
+ }
+}

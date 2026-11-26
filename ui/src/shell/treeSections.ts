@@ -43,7 +43,10 @@ const ACTIONS: Partial<Record<TreeSection, SectionAction[]>> = {
     { label: "Загрузить контрольные пробы QAQC…", command: "qaqc.import" },
     { label: "Настройка QAQC…", command: "qaqc.setup", args: { tab: "data" } },
   ],
-  reports: [{ label: "Сформировать отчёт QAQC…", command: "qaqc.open", args: { section: "report" } }],
+  reports: [
+    { label: "Сформировать отчёт QAQC…", command: "qaqc.open", args: { section: "report" } },
+    { label: "Отчёт по ресурсам…", command: "resources.report" },
+  ],
 };
 
 /** «+» of a section: the command it runs at once, or — without `command` — the menu of the section's actions. */

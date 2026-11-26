@@ -771,7 +771,13 @@
       "budget_mb": 300,
       "limits": {"compile_s": 60.87, "left_s": 8.33},
       "note": "ТЗ 8.0.2: первая компиляция ядер ≤ 30 с. Замер 17.39: шаг blocks 22–25 с + swath подблоков 7–9 с + недокомпилированное заданиями 3–6 с = 32,7 / 40,6 с (на 4 потоках, один процесс на компиляцию); ci-предел — замер × 1,5. Не из кеша каждый процесс: замыкания `_extent`, `_sums` в `swath_sub_kernels._build` (≈ 5,7 с)."
-    }
+    },
+    "resources_report": {"params": {"rows": 2000000, "threads": 2}, "budget_s": 4.5, "budget_mb": 1200, "limits": {"report_s": 1.2}, "note": "ТЗ 8.10 (Э20, 20.11): 10 бортов × 2 группировки × 3 элемента; замер ci 0,35–0,75 с, 520–820 МБ"},
+    "resources_curve": {"params": {"rows": 2000000, "threads": 2}, "budget_s": 3.5, "budget_mb": 900, "limits": {"curve_s": 1.2}, "note": "ТЗ 8.10 (Э20, 20.11): 100 бортов + кривая 100 точек; замер ci 0,39–0,71 с"},
+    "resources_bench": {"params": {"rows": 2000000, "threads": 2, "dz": 15}, "budget_s": 3.5, "budget_mb": 900, "limits": {"bench_s": 0.8}, "note": "ТЗ 8.10 (Э20, 20.11): уступы H = 10 м, dz = 15; замер ci 0,31–0,35 с"},
+    "resources_drill": {"params": {"rows": 2000000, "threads": 2}, "budget_s": 4.0, "budget_mb": 900, "limits": {"group_s": 0.6, "rows_s": 0.8}, "note": "Д-36 (20.9): замер 2 млн, 2 потока: ячейка 0,15 с, итог 0,10 с, страница 0,20 с, пик 523 МБ"},
+    "resources_xlsx": {"params": {"rows": 20000, "threads": 2}, "budget_s": 4.0, "budget_mb": 1000, "limits": {"export_s": 3.0}, "note": "ТЗ 8.10 (Э20, 20.11): XLSX; 19 тыс. строк 0,42 с, пик ≈ 600 МБ"},
+    "estimate_compare": {"params": {"rows": 2000000, "threads": 2}, "budget_s": 3.0, "budget_mb": 1000, "limits": {"compare_s": 1.5}, "note": "Д-37 (20.10): замер 2 млн, 2 потока 0,48–0,70 с"}
   },
   "full": {
     "section_wireframes": {"params": {"triangles": 10000000, "sections": 100}, "budget_s": 10.0, "budget_mb": 1500, "limits": {"batch_warm_s": 0.3, "batch_cached_s": 0.1, "cache_job_s": 60.0}, "note": "ADR 0016, ТЗ 5.3 и 8.1.5: пакет 10 млн ≤ 300 мс, кеш 100 разрезов ≤ 60 с"},
@@ -1556,7 +1562,13 @@
       "budget_mb": 500,
       "limits": {"compile_s": 55.0, "left_s": 6.5},
       "note": "ТЗ 8.0.2: первая компиляция ядер ≤ 30 с. Замер 17.39: ИСКЛЮЧЕНИЕ: 32,7; 40,6 и 35,8 с (шаг blocks 22–25 с, swath подблоков 7–9 с, недокомпилированное заданиями 3–6 с: regularize_kernels.accumulate/prep, shell._fill/_mask/_parents, slice._box/_raster; каждый процесс заново — замыкания `_extent`, `_sums` в swath_sub_kernels._build, ≈ 5,7 с, не из кеша) — предел 55 с; подшаг 17.39б."
-    }
+    },
+    "resources_report": {"params": {"rows": 20000000, "threads": 4}, "budget_s": 16.0, "budget_mb": 1000, "limits": {"report_s": 5.0}, "note": "ТЗ 8.10 (Э20, 20.11): цель ≤ 5 с; замер 20 млн, 4 потока 1,8–3,1 с"},
+    "resources_curve": {"params": {"rows": 20000000, "threads": 4}, "budget_s": 10.0, "budget_mb": 1000, "limits": {"curve_s": 2.0}, "note": "ТЗ 8.10 (Э20, 20.11): цель ≤ 2 с; замер 1,76–1,85 с (≈ 90 % предела)"},
+    "resources_bench": {"params": {"rows": 20000000, "threads": 4, "dz": 15}, "budget_s": 15.0, "budget_mb": 1000, "limits": {"bench_s": 5.0}, "note": "ТЗ 8.10 (Э20, 20.11): цель ≤ 5 с; замер 2,15–2,34 с"},
+    "resources_drill": {"params": {"rows": 20000000, "threads": 4}, "budget_s": 15.0, "budget_mb": 1500, "limits": {"group_s": 3.0, "rows_s": 3.0}, "note": "Д-36: цель ≤ 3 с; прогноз по 2 млн ≈ 1,5–2 с"},
+    "resources_xlsx": {"params": {"rows": 100000, "threads": 4}, "budget_s": 12.0, "budget_mb": 1000, "limits": {"export_s": 10.0}, "note": "ТЗ 8.10 (Э20, 20.11): XLSX ≤ 10 с; 99 тыс. строк 1,5–1,7 с, 12 МБ"},
+    "estimate_compare": {"params": {"rows": 20000000, "threads": 4}, "budget_s": 15.0, "budget_mb": 1500, "limits": {"compare_s": 5.0}, "note": "Д-37: ориентир ≤ 5 с; замер 20 млн 3,9–4,9 с на занятой машине"}
   },
   "external": {
     "series_step": {"file": "bench/out/series_step.json", "limits": {"step_median_ms": 300, "step_prefetched_median_ms": 100}, "report": ["step_p95_ms", "step_prefetched_p95_ms", "step_mark_median_ms", "section_lines", "shadow_lines", "steps_cold", "steps_prefetched"]},

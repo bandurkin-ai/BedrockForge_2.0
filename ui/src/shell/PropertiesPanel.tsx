@@ -9,6 +9,7 @@ import { LayerProps } from "../modules/lines/LayerProps";
 import { LineageProps } from "../modules/lineage/LineageProps";
 import { nodeOfSelected } from "../modules/lineage/state";
 import { RasterProps } from "../modules/rasters/RasterProps";
+import { ReportProps } from "../modules/resources/ReportProps";
 import { HoleCard } from "../modules/tables/HoleCard";
 import { tablesStore } from "../modules/tables/state";
 import { WireframeProps } from "../modules/wireframes/WireframeProps";
@@ -30,6 +31,7 @@ export function PropertiesPanel() {
       {selected.kind === "wireframe" && <WireframeProps key={key} id={selected.id} />}
       {selected.kind === "blocks" && <BlockProps key={key} id={selected.id} />}
       {selected.kind === "implicit" && <ImplicitProps key={key} id={selected.id} />}
+      {selected.kind === "resource_report" && <ReportProps key={key} id={selected.id} />}
       {node && <LineageProps key={`lin:${key}`} node={node} />}
       {hole && <HoleCard />}
     </div>

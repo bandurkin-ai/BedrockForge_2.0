@@ -57,10 +57,13 @@ HANDLER_MODULES: tuple[str, ...] = (
     "bf_core.blocks.check_job",
     "bf_core.blocks.export",
     "bf_core.blocks.report",
+    "bf_core.blocks.compare_job",
     "bf_core.blocks.fill.jobs",
     "bf_core.blocks.jobs",
     "bf_core.blocks.jobs_fields",
     "bf_core.qaqc.jobs",
+    "bf_core.resources.job",
+    "bf_core.resources.export_job",
 )
 
 Queue = str  # "heavy" | "quick"

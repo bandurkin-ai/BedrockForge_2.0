@@ -30,7 +30,7 @@ export function useStyle(id: number): BlockStyle {
     const map = k[BLOCK_STYLES_KEY];
     return isObj(map) ? map[String(id)] : undefined;
   });
-  return useMemo(() => readStyle(raw), [raw]);
+  return useMemo(() => readStyle(raw, id), [raw, id]);
 }
 
 /** The model: the details when they are of its version (the labels, the statistics), else the list's row; undefined — gone. */
