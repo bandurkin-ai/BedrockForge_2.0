@@ -341,7 +341,7 @@ test("3. «Pit-by-pit»: the table is the text of the core, the chart, NPV of th
   await panel.getByTestId("pit-calendar-reset").click();
   await expect(table.locator('tr[data-row="8"] td[data-col="best_npv"]')).toHaveText(rep.table.rows[7].cells.best_npv.text!, { timeout: 30_000 });
 
-  // «3D» of the shell 5: the quick restrictor `PIT <= 5` of the model; its count is read in the window of the model
+  // «3D» of the shell 5: the quick restrictor `PIT >= 1` and `PIT <= 5` of the model (PIT = 0 is outside every shell); its count is read in the window of the model
   const n = 5;
   await table.locator(`tr[data-row="${n}"] td button`).evaluate((el) => el.scrollIntoView({ block: "center" }));
   await panel.getByTestId(`pit-show-${n}`).click();
@@ -350,16 +350,15 @@ test("3. «Pit-by-pit»: the table is the text of the core, the chart, NPV of th
   await expect(modelWindow).toBeVisible({ timeout: 30_000 });
   await modelWindow.getByTestId("model-tab-quick").click();
   await expect(modelWindow.getByTestId("quick-row-0-field")).toHaveValue("PIT", { timeout: 30_000 });
-  await expect(modelWindow.getByTestId("quick-row-0-op")).toHaveValue("<=");
+  await expect(modelWindow.getByTestId("quick-row-0-op")).toHaveValue(">=");
+  await expect(modelWindow.getByTestId("quick-row-1-field")).toHaveValue("PIT");
+  await expect(modelWindow.getByTestId("quick-row-1-op")).toHaveValue("<=");
   const passedOf = async () => Number(/прошло(\d+)из/.exec((await modelWindow.getByTestId("quick-passed").innerText()).replace(/\s/g, ""))?.[1]);
   defect.shown = await passedOf();
   defect.shell = n;
   defect.shellBlocks = meta[n - 1].blocks;
-  expect(defect.shown).toBeGreaterThanOrEqual(defect.shellBlocks); // see the test «defect»
-  // the field PIT as a filter, the right way: `PIT >= 1` and `PIT <= n` pass exactly the blocks of the shell n (the nodes of the shell of the core)
-  expect((await runCommand(page, "blocks.quick", { model_id: ids.model, field: "PIT", op: ">=", value: "1", append: true })).ok).toBe(true);
+  // exactly the blocks of the shell n (the nodes of the shell of the core)
   await expect.poll(passedOf, { timeout: 30_000 }).toBe(defect.shellBlocks);
-  await expect(modelWindow.getByTestId("quick-row-1-field")).toHaveValue("PIT");
   expect((await runCommand(page, "blocks.quick", { model_id: ids.model, clear: true })).ok).toBe(true);
   await closeWindows(page);
 
