@@ -286,7 +286,8 @@ RF = 1 (руда — ORE), `value` — Σ v_b замыкания C_k при RF_k
 | `too_many_scenarios` | 422 | в проекте уже 200 сценариев (трактовка, §15) |
 | `pit_internal` | 500 | нарушена вложенность или замкнутость оболочки (Т8.11-5), с журналом; результат не пишется |
 | `pit_scenario_not_found`, `block_model_not_found`, `block_field_not_found {param}`, `wireframe_not_found`, `filter_not_found` | 404 | объект не найден |
-| `pit_running`, `pit_no_result`, `version_conflict {version}`, `name_taken {param}`, `pit_fields_taken`, `model_changed`, `pit_stale` | 409 | состояние (`pit_no_result`, `filter_not_found` — трактовка, §15); `pit_stale` — рельеф изменён после расчёта (поверхности, каркас): «Перезапустите расчёт сценария» |
+| `pit_running`, `pit_no_result`, `version_conflict {version}`, `name_taken {param}`, `pit_fields_taken`, `model_changed`, `pit_stale`, `pit_scenario_broken` | 409 | состояние (`pit_no_result`, `filter_not_found`, `pit_scenario_broken` — трактовка, §15); `pit_stale` — рельеф изменён после расчёта (поверхности, каркас): «Перезапустите расчёт сценария»; `pit_scenario_broken` — в проекте нет файла результата сценария (или в нём нет нужной оболочки): «Запустите расчёт сценария заново» (`store.broken`) |
+| `not_implemented` | 501 | вид задания не зарегистрирован в этой сборке (`routes_extra.registered`: `pit.surfaces`, `pit.solid`); в собранном ядре не встречается — страховка от сборки без регистрации `bf_core.mine.dtm_job` |
 | `out_of_memory` (ошибка задания, не ответ маршрута) | — | `MemoryError` в любом задании карьера: «Не хватило памяти на расчёт карьера», подсказка — закрыть программы или укрупнить модель регуляризацией |
 | `project_read_only` | 423 | проект открыт только для чтения (§1) |
 
@@ -332,6 +333,16 @@ ALGO = "pit-1", VERSION, KIND = "pit_scenario", REFUSALS, EMPTY_LABEL = "(пус
     рёбра графа, где сценарий — источник, теряют номер (`src_id` 0, имя остаётся). Новый сценарий с тем же именем полей — 409 `pit_fields_taken` с подсказкой про префикс.
 11. `rate` — доля в год (0,08), не проценты; окно показывает проценты и переводит.
 12. Таблица pit-by-pit (`table`) — текст ядра по образцу формы Э20 (`{value, text}`); столбцы и знаки — 21.8, форма ячейки — этот контракт.
+13. (21.21б-1, формы ответов не меняет.) Мосты долин рельефа: «воздух» внутри охвата реальных узлов, через который проходит транзитивная дуга шаблона, становится узлом с v′ = 0
+    (`PitGraph.real`, `graph.py` BRIDGES; общая таблица углов). Мост не блок: в `PIT`, `ORE`, отчёте, числе блоков и поверхностях его нет. Плотность 0 в блоке — пропуск
+    (как пустое поле: `default_density` или 422 `pit_density_missing`). Пустые ячейки разреженной модели обходятся только ниже рельефа (граница уровня по столбцу,
+    `econ_empty.py`), их число входит в предел `pit_too_large` до чтения порций. Значения MineLib `.upit` разбираются как десятичные строки (точное масштабирование).
+14. (21.21б-2.) Задание любого вида, исчерпавшее память (`MemoryError`), завершается ошибкой `out_of_memory` (`limits.OUT_OF_MEMORY`), а не обрывом процесса; `pit_scenario_broken` (409) — файла
+    результата нет в проекте (`store.broken`).
+15. Сверка с кодом (21.22): маршруты `routes.py` / `routes_extra.py` — `GET /defaults`, `POST /validate`, `POST /check`, `GET|POST /scenarios`, `GET|PUT|DELETE /scenarios/{id}`,
+    `POST /scenarios/{id}/run`, `GET /scenarios/{id}/template`, `GET /scenarios/{id}/report`, `POST /scenarios/{id}/surfaces`, `POST /scenarios/{id}/solid`, `POST /compare`; коды §13 =
+    `spec_parts.REFUSALS` + `bad_param`, `variable_grid`, `pit_too_large`, `pit_density_missing`, `pit_empty`, `pit_solid_failed`, `pit_internal`, `pit_scenario_broken`, `not_implemented`,
+    `out_of_memory`; в ADR 0028 решение 30 `pit.check` в «только просмотр» — «работает», в коде — 423 (п. 9).
 
 ## 16. Команды реестра (решение 29; лента «Карьер», Ctrl+K, ассистент; клавиш нет)
 
