@@ -6,7 +6,7 @@ import { useSyncExternalStore, type ReactNode } from "react";
 import css from "../../shell/PropsParts.module.css";
 import type { Store } from "../../shell/store";
 import type { FormField, FormIssue } from "./forms";
-import { pitStore } from "./state";
+import { pitStore, type PitState } from "./state";
 
 export function useSel<T, R>(store: Store<T>, select: (s: T) => R): R {
   const get = () => select(store.get());
@@ -22,9 +22,11 @@ export function Fieldset({ title, disabled = false, children }: { title: string;
   );
 }
 
-/** The words under a field: `which` is the form (`scenario` or `economics`), `field` — the place; nothing while the form has nothing wrong there. */
-export function Issue({ which, field }: { which: "scenario" | "economics"; field: FormField }) {
-  const issue = useSel(pitStore, (s) => (which === "scenario" ? s.scenarioIssue : s.econIssue));
+/** The words under a field: `which` is the form (`scenario`, `economics`, `rocks`, `slopes`, `calendar`), `field` — the place; nothing while the form has nothing wrong there. */
+const ISSUES = { scenario: (s: PitState) => s.scenarioIssue, economics: (s: PitState) => s.econIssue, rocks: (s: PitState) => s.rocksIssue, slopes: (s: PitState) => s.slopesIssue, calendar: (s: PitState) => s.calendarIssue };
+
+export function Issue({ which, field }: { which: keyof typeof ISSUES; field: FormField }) {
+  const issue = useSel(pitStore, ISSUES[which]);
   if (!issue || issue.field !== field) return null;
   return (
     <p className={css.error} role="alert" data-testid={`pit-issue-${field}`}>

@@ -18,15 +18,24 @@ import { cancelJob, onCoreEvent } from "../jobs/state";
 import { askImpact } from "../lineage/impactAsk";
 import { projectStore } from "../projects/state";
 import { DEFAULT_PARAMS, readCheckSummary, type PitParams, type ScenarioDetail } from "./answers";
+import { readCheck } from "./checkModel";
 import { createScenario, deleteScenario, loadJob, loadRunResult, loadScenario, refusalOf, startCheck, startRun, updateScenario, waitJobEnd, type Refusal } from "./api";
 import { economicsFormOfArgs, economicsOfParams, economicsPatch, EMPTY_SCENARIO, hasEconomics, hasRelief, hasScenarioKeys, issueOfRefusal, mergeParams, nameIssue, scenarioFormOfArgs, scenarioFormOfParams, scenarioPatch, type Args, type FormIssue, type ScenarioForm } from "./forms";
 import { checkText, runText } from "./format";
+import { calendarFormOfParams } from "./formsCalendar";
+import { rocksFormOfParams } from "./formsRocks";
+import { slopesFormOfParams } from "./formsSlopes";
+import { bindCalendar, bindRocks, bindSlopes } from "./bindSetup";
+import { CalendarWindow } from "./CalendarWindow";
+import { CheckWindow } from "./CheckWindow";
 import { EconomicsWindow } from "./EconomicsWindow";
+import { RocksWindow } from "./RocksWindow";
 import { ScenarioWindow } from "./ScenarioWindow";
-import { beginRun, currentRun, currentScenarioId, ECONOMICS_TITLE, ensureDefaults, ensureModelDefaults, isRunning, loadScenarios, patchRun, pitEvent, pitStore, PIT_ECONOMICS_WINDOW, PIT_SCENARIO_WINDOW, resetPit, runReason, scenarioById, SCENARIO_TITLE, selectedScenario, selectScenario, setEconIssue, setScenarioIssue } from "./state";
+import { SlopesWindow } from "./SlopesWindow";
+import { beginCheck, beginRun, CALENDAR_TITLE, CHECK_TITLE, currentRun, currentScenarioId, ECONOMICS_TITLE, ensureDefaults, ensureModelDefaults, isRunning, loadScenarios, patchCheck, patchRun, pitEvent, pitStore, PIT_CALENDAR_WINDOW, PIT_CHECK_WINDOW, PIT_ECONOMICS_WINDOW, PIT_ROCKS_WINDOW, PIT_SCENARIO_WINDOW, PIT_SLOPES_WINDOW, resetPit, ROCKS_TITLE, SLOPES_TITLE, runReason, scenarioById, SCENARIO_TITLE, selectedScenario, selectScenario, setEconIssue, setScenarioIssue, type PitState } from "./state";
 
 /** A refusal as an error of the core that keeps the place in the params (`param`): the window marks the field with it. */
-const asError = (r: Refusal) => {
+export const asError = (r: Refusal) => {
   const e = refusal(r.code, r.message, r.hint);
   if (r.param) e.body = { param: r.param };
   return e;
@@ -87,6 +96,41 @@ export async function applyParams(id: number, patch: Partial<PitParams>, extra: 
 
 export const windowOfScenario = (): string | null => windowStore.get().windows.find((w) => w.kind === PIT_SCENARIO_WINDOW)?.id ?? null;
 export const windowOfEconomics = (): string | null => windowStore.get().windows.find((w) => w.kind === PIT_ECONOMICS_WINDOW)?.id ?? null;
+export const windowOfRocks = (): string | null => windowStore.get().windows.find((w) => w.kind === PIT_ROCKS_WINDOW)?.id ?? null;
+export const windowOfSlopes = (): string | null => windowStore.get().windows.find((w) => w.kind === PIT_SLOPES_WINDOW)?.id ?? null;
+export const windowOfCalendar = (): string | null => windowStore.get().windows.find((w) => w.kind === PIT_CALENDAR_WINDOW)?.id ?? null;
+export const windowOfCheck = (): string | null => windowStore.get().windows.find((w) => w.kind === PIT_CHECK_WINDOW)?.id ?? null;
+
+/** Opens (or brings forward) the window of a kind; its title names the scenario. */
+export function showWindow(kind: string, title: string, size: "form" | "normal"): string {
+  const open = windowStore.get().windows.find((w) => w.kind === kind)?.id;
+  if (open) {
+    updateWindow(open, { title });
+    focusWindow(open);
+    return open;
+  }
+  return openWindow(kind, title, size, {}, ...viewport());
+}
+
+/** Opens the window «Проверка шаблона карьера» (its result is `pitStore.check`: the command fills it). */
+export const openCheckWindow = (): string => showWindow(PIT_CHECK_WINDOW, CHECK_TITLE, "normal");
+
+/** The window of the rocks / the slopes / the calendar of a scenario: the form is read from the scenario, its readiness and the defaults of its model are read too. */
+async function openSetup(kind: string, base: string, id: number, form: (p: PitParams) => Partial<PitState>, size: "form" | "normal"): Promise<string> {
+  void ensureDefaults();
+  const detail = await freshScenario(id);
+  pitStore.set(form(detail.params));
+  if (detail.params.model_id !== null) {
+    void loadBlockDetails(detail.params.model_id);
+    void ensureModelDefaults(detail.params.model_id);
+  }
+  await selectScenario(id);
+  return showWindow(kind, `${base} · ${detail.name}`, size);
+}
+
+export const openRocksWindow = (id: number): Promise<string> => openSetup(PIT_ROCKS_WINDOW, ROCKS_TITLE, id, (p) => ({ rocksForm: rocksFormOfParams(p), rocksIssue: null }), "normal");
+export const openSlopesWindow = (id: number): Promise<string> => openSetup(PIT_SLOPES_WINDOW, SLOPES_TITLE, id, (p) => ({ slopesForm: slopesFormOfParams(p), slopesIssue: null }), "form");
+export const openCalendarWindow = (id: number): Promise<string> => openSetup(PIT_CALENDAR_WINDOW, CALENDAR_TITLE, id, (p) => ({ calendarForm: calendarFormOfParams(p), calendarIssue: null }), "form");
 
 /** The model of a new scenario: the one selected in the tree, else the one the form has, else the first of the project. */
 export function defaultModel(app: App): number | null {
@@ -224,24 +268,33 @@ export async function runRelief(app: App, a: Args): Promise<string> {
   }
 }
 
-/** `pit.check {scenario_id?}`: the job `pit.check` followed to its end; the answer — the text of the result (the window of 21.17 shows the same result). */
+/** `pit.check {scenario_id?}`: the job `pit.check` followed to its end; the window «Проверка шаблона» shows the result (the table and the chart φ_эфф(az)), the answer is its text. */
 export async function runCheck(app: App, a: Args): Promise<string> {
   const id = scenarioIdOf(app, a);
   const detail = await freshScenario(id);
+  const seq = beginCheck(id, detail.name);
+  openCheckWindow();
   try {
     const started = await startCheck(detail.params);
     const end = await waitJobEnd(started);
-    if (end.status === "cancelled") return "Проверка шаблона отменена";
+    if (end.status === "cancelled") {
+      patchCheck(seq, { phase: "idle" });
+      return "Проверка шаблона отменена";
+    }
     const job = await loadJob(started);
     if (end.status === "failed" || job.error) {
       const e = job.error ?? end.error;
       throw refusal(e?.code ?? "job_failed", e?.message ?? "Шаблон не проверен.", e?.hint ?? "Повторите проверку.");
     }
-    const c = readCheckSummary(job.result);
-    if (!c) throw refusal("bad_answer", "Ядро вернуло проверку шаблона в непонятной форме.", "Обновите программу.");
-    return checkText(c);
+    const summary = readCheckSummary(job.result);
+    const full = readCheck(job.result);
+    if (!summary || !full) throw refusal("bad_answer", "Ядро вернуло проверку шаблона в непонятной форме.", "Обновите программу.");
+    patchCheck(seq, { phase: "done", result: full });
+    return checkText(summary);
   } catch (e) {
-    throw asError(refusalOf(e)); // a refusal made here is a CoreError too: it keeps its words
+    const r = refusalOf(e);
+    patchCheck(seq, { phase: "failed", error: r });
+    throw asError(r); // a refusal made here is a CoreError too: it keeps its words
   }
 }
 
@@ -346,7 +399,10 @@ export function bindPit(app: App): () => void {
   r.bind("pit.run", noted(app, (a) => runRun(app, a)), (ctx) => needProject(ctx) ?? runReason(app));
   r.bind("pit.rename", noted(app, (a) => runRename(app, a)), writable);
   r.bind("pit.delete", noted(app, (a, s) => runDelete(app, a, s)), writable);
-  // 21.17: bindRocks(app), bindSlopes(app), bindCalendar(app) · 21.18: bindReport(app), bindShow(app) · 21.19: bindSurfaces(app), bindSolid(app), bindCompare(app)
+  bindRocks(app);
+  bindSlopes(app);
+  bindCalendar(app);
+  // 21.18: bindReport(app), bindShow(app) · 21.19: bindSurfaces(app), bindSolid(app), bindCompare(app)
 
   // the scenarios belong to the project: another project — clean windows and the lists read again
   let uid: string | null = projectStore.get().current?.uid ?? null;
@@ -384,9 +440,13 @@ export function bindPit(app: App): () => void {
   return () => offs.forEach((off) => off());
 }
 
-/** The windows for the shell's window layer (`shell/Shell.tsx`); null — not a window of this module. The windows of 21.17–21.19 add their cases here. */
+/** The windows for the shell's window layer (`shell/Shell.tsx`); null — not a window of this module. The windows of 21.18–21.19 add their cases here. */
 export function renderPitWindow(w: FloatWin): ReactNode | null {
   if (w.kind === PIT_SCENARIO_WINDOW) return createElement(ScenarioWindow, { winId: w.id });
   if (w.kind === PIT_ECONOMICS_WINDOW) return createElement(EconomicsWindow, { winId: w.id });
+  if (w.kind === PIT_ROCKS_WINDOW) return createElement(RocksWindow, { winId: w.id });
+  if (w.kind === PIT_SLOPES_WINDOW) return createElement(SlopesWindow, { winId: w.id });
+  if (w.kind === PIT_CALENDAR_WINDOW) return createElement(CalendarWindow, { winId: w.id });
+  if (w.kind === PIT_CHECK_WINDOW) return createElement(CheckWindow, { winId: w.id });
   return null;
 }

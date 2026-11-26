@@ -8,7 +8,7 @@ import { checkDraft, EMPTY_DRAFT, ruleToDraft, type Draft, type Rule } from "../
 import { numberText, parseDecimal } from "../blocks/report/state";
 import { DEFAULT_LIMITS, DEFAULT_PARAMS, DEFAULT_RF, rfValues, SOLVERS, type Limits, type ModelDefaults, type PitParams, type RfRange, type Solver } from "./answers";
 
-export type FormField = "model" | "name" | "relief" | "filter" | "restrict" | "solver" | "elements" | "density" | "mining" | "rf" | "prefix" | "general";
+export type FormField = "model" | "name" | "relief" | "filter" | "restrict" | "solver" | "elements" | "density" | "mining" | "rf" | "prefix" | "general" | "rock_by" | "rock_types" | "slopes" | "domains" | "k" | "tolerance" | "q_ore" | "q_mass" | "rate";
 
 /** The first wrong thing: the place in the form (and the path in the params, to mark a row), the words, the hint (as `{code, message, hint}` of the core). */
 export interface FormIssue {
@@ -24,9 +24,9 @@ export const isIssue = (v: unknown): v is FormIssue => !!v && typeof v === "obje
 export type Args = Record<string, unknown>;
 
 /** The key is in the call (`null` is a value: it clears; a key that is not there leaves the scenario as it is). */
-const has = (a: Args, k: string): boolean => a[k] !== undefined;
-const txt = (v: unknown): string => (typeof v === "number" ? numberText(v) : typeof v === "string" ? v.trim() : "");
-const numOf = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" ? parseDecimal(v) : null);
+export const has = (a: Args, k: string): boolean => a[k] !== undefined;
+export const txt = (v: unknown): string => (typeof v === "number" ? numberText(v) : typeof v === "string" ? v.trim() : "");
+export const numOf = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" ? parseDecimal(v) : null);
 
 // ---- the units ----
 
@@ -142,7 +142,7 @@ export function economicsOfParams(p: PitParams, keep: EconomicsForm = EMPTY_ECON
 /** The part of `params` the window «Экономика» owns. */
 export type EconomicsPatch = Pick<PitParams, "elements" | "density" | "default_density" | "mining" | "rf" | "prefix">;
 
-type Got<T> = { ok: true; patch: T } | { ok: false; issue: FormIssue };
+export type Got<T> = { ok: true; patch: T } | { ok: false; issue: FormIssue };
 
 /** «0,8; 1; 1,2» → the sorted list without repeats, or the words of what is wrong. */
 export function parseRfList(text: string, limits: Limits = DEFAULT_LIMITS): { ok: true; values: number[] } | { ok: false; message: string; hint: string } {
@@ -179,7 +179,7 @@ export function shellCount(f: EconomicsForm, limits: Limits = DEFAULT_LIMITS): n
   return r.ok ? r.values.length : null;
 }
 
-const money = (field: FormField, text: string, what: string, param: string, otherwise: number | null): { ok: true; value: number | null } | { ok: false; issue: FormIssue } => {
+export const money = (field: FormField, text: string, what: string, param: string, otherwise: number | null): { ok: true; value: number | null } | { ok: false; issue: FormIssue } => {
   if (!text.trim()) return { ok: true, value: otherwise };
   const n = parseDecimal(text);
   if (n === null) return { ok: false, issue: issue(field, `${what} — не число.`, "Введите число, например 12,5.", param) };

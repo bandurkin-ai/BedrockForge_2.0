@@ -70,9 +70,9 @@ describe("the declarations", () => {
     expect(PIT_GROUPS[0].buttons.map((b) => b.command)).toEqual(["pit.new", "pit.economics", "pit.rocks", "pit.slopes", "pit.relief", "pit.calendar"]);
     expect(PIT_GROUPS[1].buttons.map((b) => b.command)).toEqual(["pit.check", "pit.run"]);
   });
-  it("the commands of the windows of 21.17–21.19 wait for their lanes: unavailable with the stage; the commands of this lane are bound", () => {
-    for (const id of ["pit.rocks", "pit.slopes", "pit.calendar", "pit.report", "pit.surfaces", "pit.solid", "pit.compare", "pit.show"]) expect(app.registry.reason(id), id).toMatch(/появится на этапе Э21/);
-    for (const id of ["pit.new", "pit.economics", "pit.relief", "pit.check", "pit.rename", "pit.delete"]) expect(app.registry.reason(id), id).toBeNull();
+  it("the commands of the windows of 21.18–21.19 wait for their lanes: unavailable with the stage; the commands of 21.16–21.17 are bound", () => {
+    for (const id of ["pit.report", "pit.surfaces", "pit.solid", "pit.compare", "pit.show"]) expect(app.registry.reason(id), id).toMatch(/появится на этапе Э21/);
+    for (const id of ["pit.new", "pit.economics", "pit.rocks", "pit.slopes", "pit.relief", "pit.calendar", "pit.check", "pit.rename", "pit.delete"]) expect(app.registry.reason(id), id).toBeNull();
   });
 });
 
