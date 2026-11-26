@@ -17,11 +17,29 @@ NOW = datetime(2026, 11, 26, 12, 0, 0, tzinfo=UTC)
 M = 1_000_000
 
 
-def _line(at: datetime, model: str | None = "claude-opus-5-5", inp: int = 1000, out: int = 200, cr: int = 0,
-          cw: int = 0, cost: float | None | str = "auto") -> str:
+def _line(
+    at: datetime,
+    model: str | None = "claude-opus-5-5",
+    inp: int = 1000,
+    out: int = 200,
+    cr: int = 0,
+    cw: int = 0,
+    cost: float | None | str = "auto",
+) -> str:
     c = prices.cost(model, inp, out, cr, cw) if cost == "auto" else cost
-    row = {"at": usage._fmt(at), "model": model, "input": inp, "output": out, "cache_read": cr, "cache_write": cw,
-           "cost_usd": c, "long": False, "dialog_uid": None, "project_uid": None, "prices_version": "2026-11"}
+    row = {
+        "at": usage._fmt(at),
+        "model": model,
+        "input": inp,
+        "output": out,
+        "cache_read": cr,
+        "cache_write": cw,
+        "cost_usd": c,
+        "long": False,
+        "dialog_uid": None,
+        "project_uid": None,
+        "prices_version": "2026-11",
+    }
     return json.dumps(row)
 
 
@@ -33,12 +51,16 @@ def _write(tmp: Path, lines: list[str]) -> None:
 
 # ------------------------------------------------------------------------------------------------------- prices
 
-@pytest.mark.parametrize(("model", "inp", "out", "cr"), [
-    ("claude-opus-5-5", 4.0, 20.0, 0.20),
-    ("claude-sonnet-5-5", 2.0, 10.0, 0.10),
-    ("claude-haiku-5-5", 0.10, 0.50, 0.01),
-    ("claude-fable-5-2", 8.0, 40.0, 0.20),
-])
+
+@pytest.mark.parametrize(
+    ("model", "inp", "out", "cr"),
+    [
+        ("claude-opus-5-5", 4.0, 20.0, 0.20),
+        ("claude-sonnet-5-5", 2.0, 10.0, 0.10),
+        ("claude-haiku-5-5", 0.10, 0.50, 0.01),
+        ("claude-fable-5-2", 8.0, 40.0, 0.20),
+    ],
+)
 def test_prices_of_four_models(model: str, inp: float, out: float, cr: float) -> None:
     n = 50_000  # below the long tier of Haiku
     k = n / M
@@ -51,13 +73,16 @@ def test_prices_of_four_models(model: str, inp: float, out: float, cr: float) ->
 
 
 def test_list_has_four_models_and_defaults() -> None:
-    assert [m.id for m in prices.MODELS] == ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5",
-                                              "claude-fable-5-2"]
+    assert [m.id for m in prices.MODELS] == [
+        "claude-opus-5-5",
+        "claude-sonnet-5-5",
+        "claude-haiku-5-5",
+        "claude-fable-5-2",
+    ]
     assert prices.DEFAULT_MODEL == "claude-opus-5-5" and prices.DEFAULT_EFFORT == "medium"
     assert [m["id"] for m in prices.models_payload() if m["default"]] == ["claude-opus-5-5"]
     haiku = prices.models_payload()[2]
-    assert haiku["long"] == {"threshold": 100000, "input": 0.5, "output": 2.5, "cache_read": 0.05,
-                             "cache_write": 0.625}
+    assert haiku["long"] == {"threshold": 100000, "input": 0.5, "output": 2.5, "cache_read": 0.05, "cache_write": 0.625}
     assert haiku["price"]["cache_write"] == 0.125
     assert [e["id"] for e in prices.efforts_payload()] == ["low", "medium", "high", "xhigh", "max"]
 
@@ -95,9 +120,19 @@ def test_bad_token_counts_are_rejected(bad: object) -> None:
 
 # ------------------------------------------------------------------------------------------------------- record
 
+
 def test_record_appends_a_line_with_cost(tmp_path: Path) -> None:
-    row = usage.record(tmp_path, model="claude-opus-5-5", input=1000, output=500, cache_read=2000, cache_write=800,
-                       dialog_uid="d1", project_uid=None, now=NOW)
+    row = usage.record(
+        tmp_path,
+        model="claude-opus-5-5",
+        input=1000,
+        output=500,
+        cache_read=2000,
+        cache_write=800,
+        dialog_uid="d1",
+        project_uid=None,
+        now=NOW,
+    )
     assert row["cost_usd"] == pytest.approx((1000 * 4 + 500 * 20 + 2000 * 0.2 + 800 * 5) / M)
     assert row["long"] is False and row["prices_version"] == "2026-11"
     lines = usage.usage_path(tmp_path).read_text(encoding="utf-8").splitlines()
@@ -136,6 +171,7 @@ def test_default_profile_uses_paths_py(tmp_path: Path, monkeypatch: pytest.Monke
 
 # ------------------------------------------------------------------------------------------------------- summary
 
+
 def test_summary_empty_profile(tmp_path: Path) -> None:
     s = usage.summary(tmp_path, NOW, UTC)
     assert s["since"] is None and s["prices_version"] == "2026-11"
@@ -144,12 +180,15 @@ def test_summary_empty_profile(tmp_path: Path) -> None:
 
 
 def test_periods_and_models(tmp_path: Path) -> None:
-    _write(tmp_path, [
-        _line(NOW - timedelta(hours=1), "claude-opus-5-5", 1000, 100),
-        _line(NOW - timedelta(hours=2), "claude-sonnet-5-5-20261101", 2000, 200, cr=500),
-        _line(NOW - timedelta(days=3), "claude-sonnet-5-5", 4000, 400),
-        _line(NOW - timedelta(days=40), "claude-haiku-5-5", 150_000, 100),
-    ])
+    _write(
+        tmp_path,
+        [
+            _line(NOW - timedelta(hours=1), "claude-opus-5-5", 1000, 100),
+            _line(NOW - timedelta(hours=2), "claude-sonnet-5-5-20261101", 2000, 200, cr=500),
+            _line(NOW - timedelta(days=3), "claude-sonnet-5-5", 4000, 400),
+            _line(NOW - timedelta(days=40), "claude-haiku-5-5", 150_000, 100),
+        ],
+    )
     s = usage.summary(tmp_path, NOW, UTC)
     assert (s["today"]["requests"], s["days30"]["requests"], s["all"]["requests"]) == (2, 3, 4)
     assert [m["model"] for m in s["today"]["by_model"]] == ["claude-opus-5-5", "claude-sonnet-5-5"]
@@ -158,7 +197,8 @@ def test_periods_and_models(tmp_path: Path) -> None:
     assert sonnet["tokens"] == {"input": 6000, "output": 600, "cache_read": 500, "cache_write": 0}
     assert s["all"]["tokens"]["input"] == 1000 + 2000 + 4000 + 150_000
     assert s["all"]["cost_usd"] == pytest.approx(
-        (1000 * 4 + 100 * 20 + 2000 * 2 + 200 * 10 + 500 * 0.1 + 4000 * 2 + 400 * 10 + 150_000 * 0.5 + 100 * 2.5) / M)
+        (1000 * 4 + 100 * 20 + 2000 * 2 + 200 * 10 + 500 * 0.1 + 4000 * 2 + 400 * 10 + 150_000 * 0.5 + 100 * 2.5) / M
+    )
     assert s["since"] == usage._fmt(NOW - timedelta(days=40))
 
 
@@ -166,11 +206,14 @@ def test_local_day_boundaries_by_timezone(tmp_path: Path) -> None:
     tz = timezone(timedelta(hours=5))  # UTC+5
     now = datetime(2026, 11, 26, 20, 0, tzinfo=UTC)  # 27 Nov 01:00 local
     midnight = datetime(2026, 11, 27, 0, 0, tzinfo=tz)  # = 26 Nov 19:00 UTC
-    _write(tmp_path, [
-        _line(midnight - timedelta(milliseconds=1)),  # 26 Nov 23:59:59.999 local: yesterday
-        _line(midnight),  # 27 Nov 00:00:00.000 local: today
-        _line(midnight + timedelta(hours=3)),
-    ])
+    _write(
+        tmp_path,
+        [
+            _line(midnight - timedelta(milliseconds=1)),  # 26 Nov 23:59:59.999 local: yesterday
+            _line(midnight),  # 27 Nov 00:00:00.000 local: today
+            _line(midnight + timedelta(hours=3)),
+        ],
+    )
     s = usage.summary(tmp_path, now, tz)
     assert s["today"]["requests"] == 2 and s["days30"]["requests"] == 3
     # the same instants for a machine in UTC-8: all three are still 26 Nov local (now = 26 Nov 12:00 local)
@@ -181,8 +224,13 @@ def test_local_day_boundaries_by_timezone(tmp_path: Path) -> None:
 def test_local_midnight_with_a_zone_change_of_day(tmp_path: Path) -> None:
     tz = timezone(timedelta(hours=-8))
     now = datetime(2026, 11, 27, 3, 0, tzinfo=UTC)  # 26 Nov 19:00 local
-    _write(tmp_path, [_line(datetime(2026, 11, 26, 7, 59, 59, tzinfo=UTC)),  # 25 Nov 23:59:59 local
-                      _line(datetime(2026, 11, 26, 8, 0, 0, tzinfo=UTC))])  # 26 Nov 00:00:00 local
+    _write(
+        tmp_path,
+        [
+            _line(datetime(2026, 11, 26, 7, 59, 59, tzinfo=UTC)),  # 25 Nov 23:59:59 local
+            _line(datetime(2026, 11, 26, 8, 0, 0, tzinfo=UTC)),
+        ],
+    )  # 26 Nov 00:00:00 local
     assert usage.summary(tmp_path, now, tz)["today"]["requests"] == 1
     # the same file for UTC: both are on the 26th UTC... and the 27th has started 3 hours ago
     assert usage.summary(tmp_path, now, UTC)["today"]["requests"] == 0
@@ -238,13 +286,15 @@ def test_summary_cache_follows_the_file(tmp_path: Path) -> None:
 
 # ------------------------------------------------------------------------------------------------------- fold
 
+
 def _old_file(tmp: Path) -> list[str]:
     lines = []
     for d in range(1, 120):
         at = NOW - timedelta(days=d, minutes=d)
         for model in ("claude-opus-5-5", "claude-haiku-5-5", "claude-mystery-1"):
-            lines.append(_line(at, model, 1000 + d, 100 + d, cr=d, cw=2 * d,
-                               cost=None if "mystery" in model else "auto"))
+            lines.append(
+                _line(at, model, 1000 + d, 100 + d, cr=d, cw=2 * d, cost=None if "mystery" in model else "auto")
+            )
     lines += [_line(NOW - timedelta(hours=h)) for h in (1, 2, 3)]
     _write(tmp, lines)
     return lines
@@ -337,6 +387,7 @@ def test_sql_engine_survives_a_quote_and_cyrillic_in_the_path(tmp_path: Path) ->
 
 # ------------------------------------------------------------------------------------------------------- speed
 
+
 def test_summary_of_100k_lines_is_fast(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     def no_python_engine(*_a: object) -> None:
         raise AssertionError("the SQL engine must count a regular file itself")
@@ -346,9 +397,23 @@ def test_summary_of_100k_lines_is_fast(tmp_path: Path, monkeypatch: pytest.Monke
     rows = []
     for i in range(100_000):
         at = NOW - timedelta(seconds=i * 20)
-        rows.append(json.dumps({"at": usage._fmt(at), "model": models[i % 4], "input": 1200 + i % 50, "output": 300,
-                                "cache_read": 9000, "cache_write": 400, "cost_usd": 0.0421, "long": False,
-                                "dialog_uid": "d" + str(i % 40), "project_uid": "p1", "prices_version": "2026-11"}))
+        rows.append(
+            json.dumps(
+                {
+                    "at": usage._fmt(at),
+                    "model": models[i % 4],
+                    "input": 1200 + i % 50,
+                    "output": 300,
+                    "cache_read": 9000,
+                    "cache_write": 400,
+                    "cost_usd": 0.0421,
+                    "long": False,
+                    "dialog_uid": "d" + str(i % 40),
+                    "project_uid": "p1",
+                    "prices_version": "2026-11",
+                }
+            )
+        )
     _write(tmp_path, rows)
     t0 = time.perf_counter()
     s = usage.summary(tmp_path, NOW, UTC)
@@ -361,6 +426,7 @@ def test_summary_of_100k_lines_is_fast(tmp_path: Path, monkeypatch: pytest.Monke
 
 
 # ------------------------------------------------------------------------------------------------------- prefs
+
 
 def test_prefs_defaults(tmp_path: Path) -> None:
     r = prefs.resolve(tmp_path, {})
@@ -401,11 +467,17 @@ def test_prefs_reads_real_environment(tmp_path: Path, monkeypatch: pytest.Monkey
     assert (r.model, r.effort, r.model_source) == ("claude-fable-5-2", "xhigh", "env")
 
 
-@pytest.mark.parametrize(("kwargs", "param"), [
-    ({"model": "claude-opus-4"}, "model"), ({"model": ""}, "model"), ({"model": "claude-haiku-5-5-2026"}, "model"),
-    ({"effort": "ultra"}, "effort"), ({"effort": "MEDIUM"}, "effort"),
-    ({"model": "claude-haiku-5-5", "effort": "ultra"}, "effort"),
-])
+@pytest.mark.parametrize(
+    ("kwargs", "param"),
+    [
+        ({"model": "claude-opus-4"}, "model"),
+        ({"model": ""}, "model"),
+        ({"model": "claude-haiku-5-5-2026"}, "model"),
+        ({"effort": "ultra"}, "effort"),
+        ({"effort": "MEDIUM"}, "effort"),
+        ({"model": "claude-haiku-5-5", "effort": "ultra"}, "effort"),
+    ],
+)
 def test_prefs_wrong_values_are_refused_in_russian(tmp_path: Path, kwargs: dict[str, str], param: str) -> None:
     with pytest.raises(ApiError) as err:
         prefs.set_prefs(tmp_path, **kwargs)

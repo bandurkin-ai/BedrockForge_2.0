@@ -1,7 +1,7 @@
 """The bodies of the requests of the Claude assistant API (подшаг 23.1; docs/progress/e23-api.md §3, §5-§9): the samples
 of `contract_answers.json` -> `requests` parse; every refusal is `bad_param {param}` (the first key that failed),
 `assistant_bad_key_format` or `assistant_bad_tools {detail}` with a Russian text and a hint; the value of a secret is
-never in an error; the limits of the contract (text 20 000, title 200, code 4096, context 4 KB, 400 tools, 256 KB)."""
+never in an error; the limits of the contract (text 20 000, title 200, code 4096, context 4 KB, 400 tools, 512 KB)."""
 
 from __future__ import annotations
 
@@ -130,8 +130,8 @@ def test_tools_refusals() -> None:
     )
     many = [tool(name=f"ui_t{i}") for i in range(sb.TOOLS_MAX + 1)]
     assert "more than" in bad(many)
-    big = [tool(name=f"ui_b{i}", description="я" * 2000) for i in range(80)]  # > 256 KB of JSON
-    assert "256" in bad(big)
+    big = [tool(name=f"ui_b{i}", description="я" * 2000) for i in range(300)]  # > 512 KB of JSON
+    assert "512" in bad(big)
     ok400 = [tool(name=f"ui_t{i}") for i in range(sb.TOOLS_MAX)]
     assert len(sc.parse_body(sc.TurnBody, turn(tools=ok400)).tools) == 400
     nullable = tool(

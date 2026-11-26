@@ -77,25 +77,36 @@ def resolve(data_dir: str | os.PathLike[str] | None = None, env: Mapping[str, st
     """Model and effort of a turn with the source of each (`prefs` | `env` | `default`)."""
     env = os.environ if env is None else env
     stored = load(data_dir)
-    model, model_source = _pick([("prefs", stored.get("model")), ("env", env.get(ENV_MODEL))],
-                                _MODEL_IDS, prices.DEFAULT_MODEL, "model")
-    effort, effort_source = _pick([("prefs", stored.get("effort")), ("env", env.get(ENV_EFFORT))],
-                                  _EFFORT_IDS, prices.DEFAULT_EFFORT, "effort")
+    model, model_source = _pick(
+        [("prefs", stored.get("model")), ("env", env.get(ENV_MODEL))], _MODEL_IDS, prices.DEFAULT_MODEL, "model"
+    )
+    effort, effort_source = _pick(
+        [("prefs", stored.get("effort")), ("env", env.get(ENV_EFFORT))], _EFFORT_IDS, prices.DEFAULT_EFFORT, "effort"
+    )
     return Resolved(model, model_source, effort, effort_source)
 
 
 def _bad(param: str, value: Any) -> ApiError:
     if param == "model":
         names = ", ".join(m.title for m in prices.MODELS)
-        return ApiError(422, "bad_param", f"Неизвестная модель Claude: «{str(value)[:60]}».",
-                        f"Выберите одну из моделей списка: {names}.", {"param": "model"})
+        return ApiError(
+            422,
+            "bad_param",
+            f"Неизвестная модель Claude: «{str(value)[:60]}».",
+            f"Выберите одну из моделей списка: {names}.",
+            {"param": "model"},
+        )
     names = ", ".join(title for _, title in prices.EFFORTS)
-    return ApiError(422, "bad_param", f"Неизвестная глубина рассуждений: «{str(value)[:60]}».",
-                    f"Выберите один из уровней: {names}.", {"param": "effort"})
+    return ApiError(
+        422,
+        "bad_param",
+        f"Неизвестная глубина рассуждений: «{str(value)[:60]}».",
+        f"Выберите один из уровней: {names}.",
+        {"param": "effort"},
+    )
 
 
-def set_prefs(data_dir: str | os.PathLike[str] | None, model: str | None = None,
-              effort: str | None = None) -> Resolved:
+def set_prefs(data_dir: str | os.PathLike[str] | None, model: str | None = None, effort: str | None = None) -> Resolved:
     """`PUT /prefs`: validates both values first (nothing is written on an error), merges with the file, writes it
     atomically and returns the new resolution. `None` leaves a value as it is."""
     if model is not None and (not isinstance(model, str) or model.strip() not in _MODEL_IDS):

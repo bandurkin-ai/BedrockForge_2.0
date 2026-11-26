@@ -430,7 +430,7 @@ def test_limits_of_the_contract() -> None:
     assert (sb.TEXT_MAX, sb.TITLE_MAX, sb.CODE_MAX, sb.TOOL_TEXT_MAX, sb.CONTEXT_MAX) == (20_000, 200, 4096, 4000, 4096)
     assert (sb.TOOLS_MAX, sb.TOOLS_BYTES_MAX, sb.TOOL_DESCRIPTION_MAX, sb.DATA_TEXT_MAX, sb.PAGE_MAX) == (
         400,
-        256 * 1024,
+        512 * 1024,
         2000,
         16_000,
         200,

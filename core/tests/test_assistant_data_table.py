@@ -7,9 +7,7 @@ there."""
 from __future__ import annotations
 
 import json
-import sys
 import time
-import types
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -18,19 +16,10 @@ import numpy as np
 import pytest
 
 from bf_core.api.errors import ApiError
+from bf_core.assistant import data_table as dt  # noqa: E402
 from bf_core.db import dialect
 from bf_core.drillholes import store as dh
 from tests.test_stats_source import make, noop, table
-
-try:
-    import bf_core.assistant.data_tools  # noqa: F401
-except ImportError:  # 23.7 is merged by the orchestrator: until then the registry is a stub
-    _stub = types.ModuleType("bf_core.assistant.data_tools")
-    _stub.REGISTERED = {}  # type: ignore[attr-defined]
-    _stub.register = lambda name, schema, fn: _stub.REGISTERED.__setitem__(name, (schema, fn))  # type: ignore[attr-defined]
-    sys.modules["bf_core.assistant.data_tools"] = _stub
-
-from bf_core.assistant import data_table as dt  # noqa: E402
 
 
 @pytest.fixture()
@@ -44,10 +33,13 @@ def world(tmp_path: Path):  # type: ignore[no-untyped-def]
 def test_registered_with_schemas() -> None:
     from bf_core.assistant import data_tools
 
-    reg = data_tools.REGISTERED  # type: ignore[attr-defined]
+    reg = data_tools.DATA_TOOLS
     assert {"data_table", "data_stats"} <= set(reg)
-    assert reg["data_table"][0]["required"] == ["table"] and reg["data_stats"][0]["required"] == ["table", "field"]
-    assert reg["data_table"][1] is dt.data_table and reg["data_stats"][1] is dt.data_stats
+    assert reg["data_table"].input_schema["required"] == ["table"] and reg["data_stats"].input_schema["required"] == [
+        "table",
+        "field",
+    ]
+    assert reg["data_table"].fn is dt.data_table and reg["data_stats"].fn is dt.data_stats
 
 
 # --- data_table -------------------------------------------------------------------------------------------------

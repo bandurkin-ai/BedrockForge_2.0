@@ -6,8 +6,6 @@ here by a stub when that file is not there."""
 
 from __future__ import annotations
 
-import sys
-import types
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -16,21 +14,12 @@ import pytest
 import sqlalchemy as sa
 
 from bf_core.api.errors import ApiError
+from bf_core.assistant import data_audit as da  # noqa: E402
 from bf_core.audit import service
 from bf_core.audit.checks import AuditConfig
 from bf_core.db import dialect
 from bf_core.db.schema import audit_findings, objects
 from tests.test_stats_source import make, noop
-
-try:
-    import bf_core.assistant.data_tools  # noqa: F401
-except ImportError:  # 23.7 is merged by the orchestrator: until then the registry is a stub
-    _stub = types.ModuleType("bf_core.assistant.data_tools")
-    _stub.REGISTERED = {}  # type: ignore[attr-defined]
-    _stub.register = lambda name, schema, fn: _stub.REGISTERED.__setitem__(name, (schema, fn))  # type: ignore[attr-defined]
-    sys.modules["bf_core.assistant.data_tools"] = _stub
-
-from bf_core.assistant import data_audit as da  # noqa: E402
 
 
 def run_audit(project: Any, set_id: int, table: int) -> dict[str, Any]:
@@ -48,10 +37,10 @@ def world(tmp_path: Path):  # type: ignore[no-untyped-def]
 def test_registered_with_schemas() -> None:
     from bf_core.assistant import data_tools
 
-    reg = data_tools.REGISTERED  # type: ignore[attr-defined]
+    reg = data_tools.DATA_TOOLS
     assert {"data_audit", "data_findings"} <= set(reg)
-    assert reg["data_findings"][0]["properties"]["severity"]["enum"] == ["E", "W", "I"]
-    assert reg["data_audit"][1] is da.data_audit and reg["data_findings"][1] is da.data_findings
+    assert reg["data_findings"].input_schema["properties"]["severity"]["enum"] == ["E", "W", "I"]
+    assert reg["data_audit"].fn is da.data_audit and reg["data_findings"].fn is da.data_findings
 
 
 def test_audit_never_run(world) -> None:  # type: ignore[no-untyped-def]

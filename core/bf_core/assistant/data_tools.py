@@ -34,6 +34,8 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from bf_core.api.errors import ApiError
+
 from .schemas_base import DATA_TEXT_MAX, PAGE_MAX
 
 log = logging.getLogger("bf_core.assistant.data")
@@ -353,6 +355,9 @@ def run(name: str, args: Any, *, project: Any, set_id: int | None = None, timeou
         return DataResult(text, False, clean(call.summary, 4000) if call.summary else _summary_of(payload))
     except DataError as exc:
         return DataResult(clean(str(exc), 1000), True, clean(str(exc), 300))
+    except ApiError as exc:  # a read of another module (audit, table, stats): Russian message + hint of the core
+        text = clean(f"{exc.message} {exc.hint}".strip(), 1000)
+        return DataResult(text, True, clean(exc.message, 300))
     except Exception:  # noqa: BLE001 - a tool never breaks the turn: the model gets a text
         log.exception("data tool %s failed", name)
         return DataResult("Не удалось выполнить чтение данных: внутренняя ошибка ядра.", True, "ошибка")

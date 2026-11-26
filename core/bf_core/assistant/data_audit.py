@@ -178,5 +178,12 @@ FUNCTIONS: dict[str, Callable[[Any, dict[str, Any]], dict[str, Any]]] = {
 
 from .data_tools import register  # noqa: E402  (the common call of 23.7 imports this module after `register`)
 
+TITLES = {"data_audit": "Итог аудита", "data_findings": "Находки аудита"}
+DESCRIPTIONS = {
+    "data_audit": "Итог последнего аудита набора скважин: число находок по важности и правила с находками. "
+    "Если аудит не запускался или устарел — об этом сказано в ответе.",
+    "data_findings": "Находки аудита набора скважин постранично; фильтры: правило, важность (E/W/I), скважина.",
+}
+
 for _name, _fn in FUNCTIONS.items():
-    register(_name, SCHEMAS[_name], _fn)
+    register(_name, SCHEMAS[_name], _fn, title=TITLES[_name], description=DESCRIPTIONS[_name])

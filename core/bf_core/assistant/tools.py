@@ -104,7 +104,7 @@ def build_tools(
 
 
 # 23.9б (ADR 0029 decision 17, measure of 23.9: 342 KB / ~80 thousand tokens for 270 tools): what goes to the API is
-# shortened - a description of a tool to 300 characters, of a parameter to 120 (~290 KB); the palette keeps the full text.
+# shortened - a description of a tool to 300 characters, of a parameter to 120 (~290 KB); the palette keeps all text.
 API_DESCRIPTION_LIMIT = 300
 API_PARAM_LIMIT = 120
 

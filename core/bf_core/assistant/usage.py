@@ -53,6 +53,7 @@ def usage_path(data_dir: str | os.PathLike[str] | None = None) -> Path:
 
 # ---------------------------------------------------------------------------------------------------- locking
 
+
 def _acquire(fh: Any) -> bool:
     deadline = time.monotonic() + LOCK_TIMEOUT_S
     while True:
@@ -106,6 +107,7 @@ def _locked(path: Path) -> Iterator[None]:
 
 # ---------------------------------------------------------------------------------------------------- time
 
+
 def _fmt(dt: datetime) -> str:
     u = dt.astimezone(UTC)
     return u.strftime("%Y-%m-%dT%H:%M:%S.") + f"{u.microsecond // 1000:03d}Z"
@@ -138,11 +140,15 @@ def _bounds(now: datetime | None, tz: tzinfo | None) -> tuple[str, str, str]:
     now = now or datetime.now(UTC)
     today = _local_today(now, tz)
     start30 = today - timedelta(days=29)
-    return (_fmt(_local_midnight(today, tz)), _fmt(_local_midnight(start30, tz)),
-            _fmt(_local_midnight(date(start30.year, start30.month, 1), tz)))
+    return (
+        _fmt(_local_midnight(today, tz)),
+        _fmt(_local_midnight(start30, tz)),
+        _fmt(_local_midnight(date(start30.year, start30.month, 1), tz)),
+    )
 
 
 # ---------------------------------------------------------------------------------------------------- summary file
+
 
 def _read_folded(directory: Path) -> dict[str, Any]:
     try:
@@ -163,19 +169,39 @@ def _write_atomic(path: Path, data: bytes) -> None:
 
 # ---------------------------------------------------------------------------------------------------- record
 
-def record(data_dir: str | os.PathLike[str] | None, *, model: str | None, input: int, output: int,
-           cache_read: int = 0, cache_write: int = 0, dialog_uid: str | None = None,
-           project_uid: str | None = None, now: datetime | None = None, tz: tzinfo | None = None,
-           fold_bytes: int | None = None) -> dict[str, Any]:
+
+def record(
+    data_dir: str | os.PathLike[str] | None,
+    *,
+    model: str | None,
+    input: int,
+    output: int,
+    cache_read: int = 0,
+    cache_write: int = 0,
+    dialog_uid: str | None = None,
+    project_uid: str | None = None,
+    now: datetime | None = None,
+    tz: tzinfo | None = None,
+    fold_bytes: int | None = None,
+) -> dict[str, Any]:
     """Appends one API call and returns the written row (`cost_usd` is `None` for an unknown model).
 
     Raises `ValueError` for a bad token count and `OSError` when the profile is not writable: the caller decides
     whether a lost line may break the turn."""
     cost = prices.cost(model, input, output, cache_read, cache_write)
-    row = {"at": _fmt(now or datetime.now(UTC)), "model": model or "", "input": input, "output": output,
-           "cache_read": cache_read, "cache_write": cache_write, "cost_usd": cost,
-           "long": prices.is_long(model, input, cache_read, cache_write), "dialog_uid": dialog_uid,
-           "project_uid": project_uid, "prices_version": prices.PRICES_VERSION}
+    row = {
+        "at": _fmt(now or datetime.now(UTC)),
+        "model": model or "",
+        "input": input,
+        "output": output,
+        "cache_read": cache_read,
+        "cache_write": cache_write,
+        "cost_usd": cost,
+        "long": prices.is_long(model, input, cache_read, cache_write),
+        "dialog_uid": dialog_uid,
+        "project_uid": project_uid,
+        "prices_version": prices.PRICES_VERSION,
+    }
     line = (json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
     path = usage_path(data_dir)
     with _locked(path):
@@ -196,6 +222,7 @@ def _last_byte(path: Path) -> bytes:
 
 
 # ---------------------------------------------------------------------------------------------------- fold
+
 
 def fold(data_dir: str | os.PathLike[str] | None, now: datetime | None = None, tz: tzinfo | None = None) -> int:
     """Folds the months older than the 30-day window into `usage-summary.json`; returns the number of folded lines.
@@ -244,8 +271,9 @@ def _fold_locked(path: Path, now: datetime | None, tz: tzinfo | None) -> int:
             n += 1
     if n == 0 and old_cut is not None and old_cut >= cut:
         return 0
-    folded.update(version=1, folded_before=cut if old_cut is None else max(old_cut, cut), first_at=first_at,
-                  months=months)
+    folded.update(
+        version=1, folded_before=cut if old_cut is None else max(old_cut, cut), first_at=first_at, months=months
+    )
     # summary first: lines of the file older than `folded_before` are ignored, so a crash between the two writes
     # neither loses nor doubles anything
     _write_atomic(directory / SUMMARY_FILE, json.dumps(folded, ensure_ascii=False, indent=1).encode("utf-8"))
@@ -255,6 +283,7 @@ def _fold_locked(path: Path, now: datetime | None, tz: tzinfo | None) -> int:
 
 
 # ---------------------------------------------------------------------------------------------------- summary
+
 
 def _model_key(model: Any, memo: dict[str, str]) -> str:
     key = model if isinstance(model, str) else ""
@@ -294,13 +323,17 @@ def _period(acc: dict[str, dict[str, int]]) -> dict[str, Any]:
 def _view(a: dict[str, int]) -> dict[str, Any]:
     # a period of unpriced calls only has no cost at all (null), not a zero
     cost = None if a["requests"] and a["unpriced"] == a["requests"] else a["cost_nano"] / _NANO
-    return {"requests": a["requests"],
-            "tokens": {k: a[k] for k in ("input", "output", "cache_read", "cache_write")},
-            "cost_usd": cost, "unpriced_requests": a["unpriced"]}
+    return {
+        "requests": a["requests"],
+        "tokens": {k: a[k] for k in ("input", "output", "cache_read", "cache_write")},
+        "cost_usd": cost,
+        "unpriced_requests": a["unpriced"],
+    }
 
 
-def summary(data_dir: str | os.PathLike[str] | None, now: datetime | None = None,
-            tz: tzinfo | None = None) -> dict[str, Any]:
+def summary(
+    data_dir: str | os.PathLike[str] | None, now: datetime | None = None, tz: tzinfo | None = None
+) -> dict[str, Any]:
     """`GET /usage`: {today, days30, all, prices_version, since}. `tz` — the local zone (default: of the machine)."""
     path = usage_path(data_dir)
     start_today, start30, _ = _bounds(now, tz)
@@ -361,8 +394,13 @@ def _compute(path: Path, start_today: str, start30: str) -> dict[str, Any]:
                     dst[k] += a[i]
         return out
 
-    return {"today": _period(merge((2,))), "days30": _period(merge((1, 2))), "all": _period(merge((0, 1, 2))),
-            "prices_version": prices.PRICES_VERSION, "since": since}
+    return {
+        "today": _period(merge((2,))),
+        "days30": _period(merge((1, 2))),
+        "all": _period(merge((0, 1, 2))),
+        "prices_version": prices.PRICES_VERSION,
+        "since": since,
+    }
 
 
 def _scan_duckdb(path: Path, fold_cut: str, start_today: str, start30: str, acc: _Acc) -> str | None:

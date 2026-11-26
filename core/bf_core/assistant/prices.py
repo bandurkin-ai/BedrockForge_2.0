@@ -47,16 +47,34 @@ class ModelPrice:
 
 
 MODELS: tuple[ModelPrice, ...] = (
-    ModelPrice("claude-opus-5-5", "Opus 5.5", "Самая сильная: сложные вопросы и длинные цепочки действий.",
-               4.0, 20.0, 0.20, default=True),
+    ModelPrice(
+        "claude-opus-5-5",
+        "Opus 5.5",
+        "Самая сильная: сложные вопросы и длинные цепочки действий.",
+        4.0,
+        20.0,
+        0.20,
+        default=True,
+    ),
     ModelPrice("claude-sonnet-5-5", "Sonnet 5.5", "Быстрее и дешевле Opus: повседневные вопросы.", 2.0, 10.0, 0.10),
-    ModelPrice("claude-haiku-5-5", "Haiku 5.5", "Самая быстрая и дешёвая: простые команды и справки.",
-               0.10, 0.50, 0.01, long=LongTier(100_000, 0.50, 2.50, 0.05)),
+    ModelPrice(
+        "claude-haiku-5-5",
+        "Haiku 5.5",
+        "Самая быстрая и дешёвая: простые команды и справки.",
+        0.10,
+        0.50,
+        0.01,
+        long=LongTier(100_000, 0.50, 2.50, 0.05),
+    ),
     ModelPrice("claude-fable-5-2", "Fable 5.2", "Самая дорогая: проверка и трудные случаи.", 8.0, 40.0, 0.20),
 )
 
 EFFORTS: tuple[tuple[str, str], ...] = (
-    ("low", "Быстро"), ("medium", "Обычно"), ("high", "Тщательно"), ("xhigh", "Очень тщательно"), ("max", "Максимум"),
+    ("low", "Быстро"),
+    ("medium", "Обычно"),
+    ("high", "Тщательно"),
+    ("xhigh", "Очень тщательно"),
+    ("max", "Максимум"),
 )
 
 _BY_ID = {m.id: m for m in MODELS}
@@ -101,8 +119,9 @@ def cost(model: str | None, input: int, output: int, cache_read: int = 0, cache_
     if is_long(model, input, cache_read, cache_write):
         assert price.long is not None
         tier = price.long
-    total = (input * tier.input + output * tier.output + cache_read * tier.cache_read
-             + cache_write * tier.cache_write) / _PER_MILLION
+    total = (
+        input * tier.input + output * tier.output + cache_read * tier.cache_read + cache_write * tier.cache_write
+    ) / _PER_MILLION
     return round(total, 9)
 
 
@@ -118,12 +137,28 @@ def models_payload() -> list[dict[str, Any]]:
     for m in MODELS:
         long = None
         if m.long is not None:
-            long = {"threshold": m.long.threshold, "input": m.long.input, "output": m.long.output,
-                    "cache_read": m.long.cache_read, "cache_write": m.long.cache_write}
-        out.append({"id": m.id, "title": m.title, "default": m.default, "note": m.note,
-                    "price": {"input": m.input, "output": m.output, "cache_read": m.cache_read,
-                              "cache_write": m.cache_write},
-                    "long": long})
+            long = {
+                "threshold": m.long.threshold,
+                "input": m.long.input,
+                "output": m.long.output,
+                "cache_read": m.long.cache_read,
+                "cache_write": m.long.cache_write,
+            }
+        out.append(
+            {
+                "id": m.id,
+                "title": m.title,
+                "default": m.default,
+                "note": m.note,
+                "price": {
+                    "input": m.input,
+                    "output": m.output,
+                    "cache_read": m.cache_read,
+                    "cache_write": m.cache_write,
+                },
+                "long": long,
+            }
+        )
     return out
 
 

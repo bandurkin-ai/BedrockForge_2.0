@@ -357,5 +357,13 @@ FUNCTIONS: dict[str, Callable[[Any, dict[str, Any]], dict[str, Any]]] = {
 
 from .data_tools import register  # noqa: E402  (the common call of 23.7 imports this module after `register`)
 
+TITLES = {"data_table": "Таблица набора", "data_stats": "Статистика компонента"}
+DESCRIPTIONS = {
+    "data_table": "Страница таблицы набора скважин («Устья», «Инклинометрия», таблица проб или интервалов); "
+    "пропуск — null, не 0.",
+    "data_stats": "Статистика числового поля таблицы проб или интервалов (n, пропуски, среднее, квантили, CV), "
+    "при необходимости по доменам; как на вкладке «Статистика».",
+}
+
 for _name, _fn in FUNCTIONS.items():
-    register(_name, SCHEMAS[_name], _fn)
+    register(_name, SCHEMAS[_name], _fn, title=TITLES[_name], description=DESCRIPTIONS[_name])
