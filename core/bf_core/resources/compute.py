@@ -180,22 +180,28 @@ def default_frac(model: Model) -> str | None:
     return None if f is None else str(f["name"])
 
 
-def group_codes(core: Core, cols: dict[str, np.ndarray], n: int) -> tuple[np.ndarray, int]:
-    """int64 [n]: the code of the digits of the NON-bench keys (−1 — no keys at all), and the stride of the bench key
-    (0 — none). A bench key adds its digit in the kernel."""
-    if not core.keys:
-        return np.full(n, -1, dtype=np.int64), 0
-    code = np.zeros(n, dtype=np.int64)
-    bstride = 0
+def _plain(model: Model, ch: Any) -> bool:
+    """True — whole parents on a regular grid: the volume is one number, the layer of a row is `P // (nx·ny)`."""
+    return ch.s is None and model.grid.tensors is None
+
+
+def _key_slots(core: Core, cols: dict[str, np.ndarray], dummy: np.ndarray) -> tuple[tuple[np.ndarray, ...], np.ndarray,
+                                                                                    np.ndarray, int]:  # fmt: skip
+    """The three int32 columns of the field keys (the dummy where a slot is a bench or unused), their strides in the
+    code (0 — not a field key), their radixes and the stride of the bench key (0 — none)."""
+    kcols = [dummy, dummy, dummy]
+    kmul = np.zeros(3, dtype=np.int64)
+    radix = np.ones(3, dtype=np.int64)
+    bstride, slot = 0, 0
     for key, stride in zip(core.keys, core.strides(), strict=True):
         if key.bench is not None:
             bstride = stride
             continue
         assert key.field is not None
-        digit = cols[key.field].astype(np.int64) + 1  # −1 (empty) → 0
-        digit[(digit < 0) | (digit >= key.radix)] = 0  # a code beyond the labels: «(пусто)», not a crash
-        code += digit * stride
-    return code, bstride
+        kcols[slot] = np.ascontiguousarray(cols[key.field], dtype=np.int32)
+        kmul[slot], radix[slot] = stride, key.radix
+        slot += 1
+    return (kcols[0], kcols[1], kcols[2]), kmul, radix, bstride
 
 
 def run(
@@ -208,38 +214,51 @@ def run(
     bench_i = core.bench_key()
     bench = None if bench_i is None else core.keys[bench_i].bench
     nbg = len(core.group_edges) + 2
-    grades_n = len(core.grades)
+    ngr = len(core.grades)
+    cap = min(chunk, max(model.rows, 1))
+    bin_t, bin_g = np.empty(cap, dtype=np.int32), np.empty(cap, dtype=np.int32)
+    veff, tonnes = np.empty(cap), np.empty(cap)
+    gbuf = np.empty((ngr, cap))
+    counts = np.zeros(3, dtype=np.int64)
+    dummy_i, dummy_f = np.zeros(cap, dtype=np.int32), np.empty(0)
+    edges, gedges = (
+        np.ascontiguousarray(core.edges, dtype=np.float64),
+        np.ascontiguousarray(core.group_edges, np.float64),
+    )
+    nxy = np.uint64(model.grid.counts[0] * model.grid.counts[1])
     for ch, f in r.iter(model, extra=core.reads(), chunk=chunk):
         tick(0.05 + 0.9 * (ch.start + ch.n) / max(model.rows, 1), None)
         cols, n = ch.cols, ch.n
-        vol = geometry.row_volumes(model.grid, ch.p, ch.s, ch.w, cols[core.frac] if core.frac else None)
-        ok = f > 0.0
-        out.excluded["filtered"] += n - int(np.count_nonzero(ok))
-        keep = ok & ~np.isnan(vol)
-        out.excluded["no_volume"] += int(np.count_nonzero(ok & ~keep))
-        veff = np.where(keep, vol * f, 0.0)
-        dens = cols[core.density_field] if core.density_field else np.full(n, core.density_value, dtype=np.float64)
-        has = np.isfinite(dens) & (dens >= 0.0)
-        lost = keep & ~has  # no density: the tonnage is unknown, not 0
-        out.excluded["no_density"] += int(np.count_nonzero(lost))
-        rk.masked_sum(out.no_density_acc, lost, veff)
-        keep &= has
-        tonnes = np.where(keep, veff * np.where(keep, dens, 0.0), 0.0)
-        cut = cols[core.cutoff_field] if core.cutoff_field else None
-        bin_t = np.where(keep, rk.bins_of(core.edges, cut, n), -1).astype(np.int32)
-        bin_g = rk.bins_of(core.group_edges, cut, n)
-        gcode, bstride = group_codes(core, cols, n)
-        grades = (np.ascontiguousarray(np.stack([cols[x] for x in core.grades]), dtype=np.float64)
-                  if grades_n else np.zeros((0, n)))  # fmt: skip
-        if bench is None:
-            rk.accumulate(bin_t, bin_g, gcode, veff, tonnes, grades, out.s0, out.c0, out.n0, out.sg, out.cg, out.ng,
-                          nbg)  # fmt: skip
+        plain = _plain(model, ch)
+        frac = cols[core.frac] if core.frac else None
+        if plain:  # one volume for every row (the same bits as `row_volumes` of each row)
+            vol_c = float(geometry.row_volumes(model.grid, ch.p[:1], None, None, None)[0])
+            vol = dummy_f if frac is None else vol_c * np.asarray(frac, dtype=np.float64)
         else:
-            zc = geometry.centres(model.grid, ch.p, ch.s, ch.w)[:, 2]
-            dz = geometry.row_widths(model.grid, ch.p, ch.s, ch.w)[:, 2]
-            rk.accumulate_bench(bin_t, bin_g, gcode, bstride, bench.count, bench.first, bench.height, zc - dz * 0.5,
-                                zc + dz * 0.5, veff, tonnes, grades, out.s0, out.c0, out.n0, out.sg, out.cg, out.ng,
-                                nbg)  # fmt: skip
+            vol_c, vol = 0.0, geometry.row_volumes(model.grid, ch.p, ch.s, ch.w, frac)
+        dens = cols[core.density_field] if core.density_field else dummy_f
+        cut = cols[core.cutoff_field] if core.cutoff_field else dummy_f
+        rk.prepare(f, vol, vol_c, dens, float(core.density_value or 0.0), cut, edges, gedges, bin_t[:n], bin_g[:n],
+                   veff[:n], tonnes[:n], counts, out.no_density_acc)  # fmt: skip
+        for k, name in enumerate(core.grades):
+            gbuf[k, :n] = cols[name]
+        kcols, kmul, radix, bstride = _key_slots(core, cols, dummy_i[:n])
+        args = (out.s0, out.c0, out.n0, out.sg, out.cg, out.ng, nbg)
+        if bench is None:
+            rk.accumulate(bin_t[:n], bin_g[:n], kcols, kmul, radix, bool(core.keys), veff[:n], tonnes[:n], gbuf, *args)
+        else:
+            zlo = zhi = dummy_f
+            if not plain:
+                zc = geometry.centres(model.grid, ch.p, ch.s, ch.w)[:, 2]
+                dz = geometry.row_widths(model.grid, ch.p, ch.s, ch.w)[:, 2]
+                zlo, zhi = zc - dz * 0.5, zc + dz * 0.5
+            size = model.grid.size
+            rk.accumulate_bench(bin_t[:n], bin_g[:n], kcols, kmul, radix, bstride, bench.count, bench.first,
+                                bench.height, zlo, zhi, np.ascontiguousarray(ch.p, dtype=np.uint64), nxy,
+                                float(model.grid.corner[2]), float(size[2]) if size else 0.0, veff[:n], tonnes[:n],
+                                gbuf, *args)  # fmt: skip
+    for name, v in zip(("filtered", "no_volume", "no_density"), counts, strict=True):
+        out.excluded[name] += int(v)
     tick(0.97, None)
     return out
 

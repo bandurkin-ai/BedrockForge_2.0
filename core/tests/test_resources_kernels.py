@@ -321,6 +321,22 @@ def test_bench_key_in_any_position_gives_the_same_cells(rc) -> None:  # type: ig
     assert cp.group_label(a.core, cp.code_of(a.core, [2, 0, 3])) == ["B", None, "2"]
 
 
+def test_plain_and_general_paths_agree(rc, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """Whole parents on a regular grid take the fast path (one volume, the layer from P); the general path goes
+    through `geometry`: the same sums (the volumes bit for bit, the bench shares to rounding)."""
+    mid, _, _ = random_model(rc)
+    model, r = open_model(rc, mid)
+    plain = cp.run(model, random_core((-20.0, 7.0, 4)), r)
+    plain_nb = cp.run(model, random_core((-20.0, 7.0, 4), "dom,ox"), r)
+    monkeypatch.setattr(cp, "_plain", lambda *_: False)
+    general = cp.run(model, random_core((-20.0, 7.0, 4)), r)
+    general_nb = cp.run(model, random_core((-20.0, 7.0, 4), "dom,ox"), r)
+    for name in ("s0", "c0", "n0", "sg", "cg", "ng"):
+        assert getattr(plain_nb, name).tobytes() == getattr(general_nb, name).tobytes(), name
+    assert plain.n0.tobytes() == general.n0.tobytes() and plain.ng.tobytes() == general.ng.tobytes()
+    assert np.allclose(plain.sg + plain.cg, general.sg + general.cg, rtol=1e-12, atol=1e-9)
+
+
 # --- the same bits with any portion -----------------------------------------------------------------------------------
 
 
@@ -377,8 +393,9 @@ def test_neumaier_sums_do_not_drift() -> None:
     for lo in range(0, n, 3333):  # portions: the accumulators live between them
         part = x[lo : lo + 3333]
         k = len(part)
-        rk.accumulate(np.zeros(k, np.int32), np.zeros(k, np.int32), np.full(k, -1, np.int64), part, part,
-                      np.ones((1, k)), s0, c0, n0, sg, cg, ng, 1)  # fmt: skip
+        kc = (np.zeros(k, np.int32),) * 3
+        rk.accumulate(np.zeros(k, np.int32), np.zeros(k, np.int32), kc, np.zeros(3, np.int64), np.ones(3, np.int64),
+                      False, part, part, np.ones((1, k)), s0, c0, n0, sg, cg, ng, 1)  # fmt: skip
     want = math.fsum(x)
     assert abs((s0[0, 1] + c0[0, 1]) - want) <= 2e-16 * want
     assert abs(float(np.cumsum(x)[-1]) - want) > 1e-13 * want  # a plain running sum is off by more than that

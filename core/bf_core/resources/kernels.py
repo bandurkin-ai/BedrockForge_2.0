@@ -14,6 +14,9 @@ Bins of a cut-off field g (`edges` — sorted, unique; E = len(edges)): bin j �
   * a balance interval c₂ ≤ g < c₁: the bins [cutoff_bin(c₂); cutoff_bin(c₁)).
 `range_sums` adds the bins of a range from the top by Neumaier (the same order every time).
 
+Passes: `prepare` (the rows that count, their volume, tonnes and bins — one pass instead of a dozen numpy temporaries:
+on 20 million rows 1.8 s instead of 3.7 s, ADR 0027 decision 27) and `accumulate` / `accumulate_bench` (the sums).
+
 Group key. The code of a group is a mixed-radix number: the digit of a key is 0 for «(пусто)» and code + 1 for a
 category (radix = labels + 1); a bench key has the digit 0 for the part of a block outside the benches and j + 1 for the
 bench j (radix = benches + 1). `gcode[i] < 0` — the row has no group (no keys): only the total is kept.
@@ -56,7 +59,7 @@ def _add(s, c, n, r, vol, tonnes, grades, i, sh):  # type: ignore[no-untyped-def
     t = tonnes * sh
     _nadd(s, c, r, 0, vol * sh)
     _nadd(s, c, r, 1, t)
-    for k in range(grades.shape[0]):
+    for k in range(n.shape[1] - 1):
         v = grades[k, i]
         if np.isfinite(v):
             _nadd(s, c, r, 2 + 3 * k, t)
@@ -67,36 +70,132 @@ def _add(s, c, n, r, vol, tonnes, grades, i, sh):  # type: ignore[no-untyped-def
 
 
 @njit(cache=True, nogil=True)
-def accumulate(bin_t, bin_g, gcode, vol, tonnes, grades, s0, c0, n0, sg, cg, ng, nbg):  # type: ignore[no-untyped-def]
+def _bin(edges, g):  # type: ignore[no-untyped-def]
+    """`np.searchsorted(edges, g, "right")`: the number of edges ≤ g (g is finite)."""
+    lo, hi = 0, edges.shape[0]
+    while lo < hi:
+        mid = (lo + hi) >> 1
+        if edges[mid] <= g:
+            lo = mid + 1
+        else:
+            hi = mid
+    return lo
+
+
+@njit(cache=True, nogil=True)
+def prepare(f, vol, vol_c, dens, dens_c, cut, edges, gedges, bin_t, bin_g, veff, tonnes, counts, lost):  # type: ignore[no-untyped-def]
+    """One pass over a portion before the sums (what was numpy temporaries): which rows are counted, their volume and
+    tonnes, their bins. `f` — the share of the restrictor; `vol` — the volume of each row (length 0: all rows have
+    `vol_c`); `dens` — the density of each row (length 0: `dens_c`); `cut` — the cut-off field (length 0: none).
+    Out: `bin_t`, `bin_g` (−1 in `bin_t`: the row is not counted), `veff` = vol × f, `tonnes` = veff × density;
+    `counts` [3] += (f = 0, no volume, no density), `lost` [2] — the Neumaier sum and carry of the volume of the rows
+    with no density. A row with no cut-off value is in the last bin of both (E + 1)."""
+    e, eg = edges.shape[0], gedges.shape[0]
+    for i in range(f.shape[0]):
+        bin_t[i] = -1
+        if not f[i] > 0.0:
+            counts[0] += 1
+            continue
+        v = vol[i] if vol.shape[0] > 0 else vol_c
+        if np.isnan(v):
+            counts[1] += 1
+            continue
+        ve = v * f[i]
+        d = dens[i] if dens.shape[0] > 0 else dens_c
+        if not (np.isfinite(d) and d >= 0.0):
+            counts[2] += 1
+            x = lost[0] + ve
+            if abs(lost[0]) >= abs(ve):
+                lost[1] += (lost[0] - x) + ve
+            else:
+                lost[1] += (ve - x) + lost[0]
+            lost[0] = x
+            continue
+        veff[i] = ve
+        tonnes[i] = ve * d
+        if cut.shape[0] > 0 and np.isfinite(cut[i]):
+            bin_t[i] = _bin(edges, cut[i])
+            bin_g[i] = _bin(gedges, cut[i])
+        else:
+            bin_t[i] = e + 1
+            bin_g[i] = eg + 1
+
+
+@njit(cache=True, nogil=True)
+def _code(kcols, kmul, radix, i):  # type: ignore[no-untyped-def]
+    """The code of the field keys of the row i: Σ digit × stride; the digit is 0 for «(пусто)» (−1, or beyond the
+    labels) and code + 1 for a category. A slot with `kmul` 0 is a bench or unused."""
+    code = 0
+    for a in range(3):
+        if kmul[a] != 0:
+            d = kcols[a][i] + 1
+            if d < 0 or d >= radix[a]:
+                d = 0
+            code += d * kmul[a]
+    return code
+
+
+@njit(cache=True, nogil=True)
+def accumulate(bin_t, bin_g, kcols, kmul, radix, grouped, vol, tonnes, grades, s0, c0, n0, sg, cg, ng, nbg):  # type: ignore[no-untyped-def]
     """One portion, no benches. `bin_t[i]` — the bin of the row among the bins of the total (−1: the row is not
-    counted), `bin_g[i]` — its bin among the bins of a group (nbg of them), `gcode[i]` — its group (−1: none),
-    `vol`, `tonnes` — the counted volume and tonnes (volume × FRAC × f; × density), `grades` [k, n]."""
+    counted), `bin_g[i]` — its bin among the bins of a group (nbg of them), `kcols` — three int32 columns of the field
+    keys (a dummy where `kmul` is 0), `kmul` their strides in the code, `radix` their radixes, `grouped` — the report
+    has keys; `vol`, `tonnes` — the counted volume and tonnes; `grades` [k, ≥ n]."""
     for i in range(bin_t.shape[0]):
         b = bin_t[i]
         if b < 0:
             continue
         _add(s0, c0, n0, b, vol[i], tonnes[i], grades, i, 1.0)
-        g = gcode[i]
-        if g >= 0:
+        if grouped:
+            g = _code(kcols, kmul, radix, i)
             _add(sg, cg, ng, g * nbg + bin_g[i], vol[i], tonnes[i], grades, i, 1.0)
 
 
 @njit(cache=True, nogil=True)
 def accumulate_bench(  # type: ignore[no-untyped-def]
-    bin_t, bin_g, gcode, bstride, nb, r0, h, zlo, zhi, vol, tonnes, grades, s0, c0, n0, sg, cg, ng, nbg
+    bin_t,
+    bin_g,
+    kcols,
+    kmul,
+    radix,
+    bstride,
+    nb,
+    r0,
+    h,
+    zlo,
+    zhi,
+    p,
+    nxy,
+    cz,
+    dz,
+    vol,
+    tonnes,
+    grades,
+    s0,
+    c0,
+    n0,
+    sg,
+    cg,
+    ng,
+    nbg,
 ):
-    """One portion with a bench key. `gcode` — the code of the other keys (≥ 0: a bench is a key, so every counted row
-    has a group), `bstride` — the stride of the bench digit, `nb`, `r0`, `h` — the benches, `zlo`, `zhi` — the vertical
-    extent of the row (a NaN extent: the whole block in «(пусто)»). The total takes the whole block once."""
+    """One portion with a bench key (a bench is a key, so every counted row has a group). The vertical extent of a
+    row: `zlo[i]`, `zhi[i]` (a NaN extent: the whole block in «(пусто)»), or — `zlo` of length 0, a model of whole
+    parents on a regular grid — the layer k = P // nxy: [cz + k·dz; cz + (k+1)·dz]. `bstride`, `nb`, `r0`, `h` — the
+    bench digit and the benches. The total takes the whole block once."""
     r1 = r0 + nb * h
     for i in range(bin_t.shape[0]):
         b = bin_t[i]
         if b < 0:
             continue
         _add(s0, c0, n0, b, vol[i], tonnes[i], grades, i, 1.0)
-        a, e = zlo[i], zhi[i]
+        if zlo.shape[0] > 0:
+            a, e = zlo[i], zhi[i]
+        else:
+            k = p[i] // nxy
+            a, e = cz + k * dz, cz + (k + 1) * dz
         span = e - a
-        base = gcode[i]
+        base = _code(kcols, kmul, radix, i)
         if not (span > 0.0) or not np.isfinite(span):
             _add(sg, cg, ng, base * nbg + bin_g[i], vol[i], tonnes[i], grades, i, 1.0)
             continue
@@ -115,7 +214,7 @@ def accumulate_bench(  # type: ignore[no-untyped-def]
             ov = min(e, r0 + (j + 1) * h) - max(a, r0 + j * h)
             if ov > eps:
                 kept += ov
-        if kept <= 0.0:  # no piece left: the block is on no bench and not outside — keep it whole in «(пусто)»
+        if kept <= 0.0:  # no piece left: keep the block whole in «(пусто)»
             _add(sg, cg, ng, base * nbg + bin_g[i], vol[i], tonnes[i], grades, i, 1.0)
             continue
         if below + above > 0.0:
@@ -126,33 +225,12 @@ def accumulate_bench(  # type: ignore[no-untyped-def]
                 _add(sg, cg, ng, (base + (j + 1) * bstride) * nbg + bin_g[i], vol[i], tonnes[i], grades, i, ov / kept)
 
 
-@njit(cache=True, nogil=True)
-def masked_sum(acc, mask, x):  # type: ignore[no-untyped-def]
-    """Neumaier: acc[0] (sum) and acc[1] (carry) += x[i] where mask[i], in the order of the rows."""
-    for i in range(mask.shape[0]):
-        if mask[i]:
-            t = acc[0] + x[i]
-            if abs(acc[0]) >= abs(x[i]):
-                acc[1] += (acc[0] - t) + x[i]
-            else:
-                acc[1] += (x[i] - t) + acc[0]
-            acc[0] = t
-
-
 # --- the bins -------------------------------------------------------------------------------------------------------
 
 
 def cutoff_bin(edges: np.ndarray, c: float) -> int:
     """The first bin of the blocks with g ≥ c (`c` must be one of `edges`)."""
     return int(np.searchsorted(edges, c, side="left")) + 1
-
-
-def bins_of(edges: np.ndarray, g: np.ndarray | None, n: int) -> np.ndarray:
-    """int32 [n]: the bin of each value of g among `edges` (E + 1 — «нет g_б»: NaN, or `g` is None)."""
-    e = len(edges)
-    if g is None:
-        return np.full(n, e + 1, dtype=np.int32)
-    return np.where(np.isfinite(g), np.searchsorted(edges, g, side="right"), e + 1).astype(np.int32)
 
 
 def range_sums(s: np.ndarray, c: np.ndarray, n: np.ndarray, lo: int, hi: int) -> tuple[np.ndarray, np.ndarray]:
@@ -194,7 +272,14 @@ def warm() -> None:
     n = np.zeros((1, 2), dtype=np.int64)
     i32 = np.zeros(1, np.int32)
     i64 = np.zeros(1, np.int64)
+    u64 = np.zeros(1, np.uint64)
+    kc = (i32, i32, i32)
+    kmul, radix = np.zeros(3, np.int64), np.ones(3, np.int64)
+    prepare(one, np.empty(0), 1.0, np.empty(0), 2.5, one, one, one, i32.copy(), i32.copy(), one.copy(), one.copy(),
+            i64.copy(), np.zeros(2))  # fmt: skip
     args = (z.copy(), z.copy(), n.copy(), z.copy(), z.copy(), n.copy(), 1)
-    accumulate(i32, i32, i64, one, one, np.zeros((1, 1)), *args)
-    accumulate_bench(i32, i32, i64, 1, 1, 0.0, 1.0, one, one + 1.0, one, one, np.zeros((1, 1)), *args)
-    masked_sum(np.zeros(2), np.ones(1, np.bool_), one)
+    accumulate(i32, i32, kc, kmul, radix, True, one, one, np.zeros((1, 1)), *args)
+    accumulate_bench(i32, i32, kc, kmul, radix, 1, 1, 0.0, 1.0, np.empty(0), np.empty(0), u64, 1, 0.0, 1.0, one, one,
+                     np.zeros((1, 1)), *args)  # fmt: skip
+    accumulate_bench(i32, i32, kc, kmul, radix, 1, 1, 0.0, 1.0, one, one + 1.0, u64, 1, 0.0, 1.0, one, one,
+                     np.zeros((1, 1)), *args)  # fmt: skip
