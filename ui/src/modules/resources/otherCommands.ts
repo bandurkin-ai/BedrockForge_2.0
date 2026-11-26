@@ -64,6 +64,7 @@ export async function runExport(app: App, a: Args): Promise<string> {
   if (!body.path) throw refusal("bad_param", "Не задан путь файла.", "Укажите полный путь, например C:\\Отчёты\\resources.xlsx.");
   if (typeof a.template === "string" && a.template.trim()) body.template = a.template.trim();
   if (a.cutoff !== undefined) body.cutoff = a.cutoff as number | null;
+  if (a.what === "form" || a.what === "both") body.what = a.what;
   if (a.overwrite === true) body.overwrite = true;
   try {
     const started = await startExport(id, body);

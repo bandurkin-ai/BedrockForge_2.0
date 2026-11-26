@@ -159,6 +159,11 @@ export function ReportWindow({ winId }: { winId: string }) {
                   </>
                 )}
               </dl>
+              <div>
+                <button type="button" className={css.btn} title="Форма отчёта, таблица строк, кривая и контроль — в нижней панели «Ресурсы»" data-testid="res-show-panel" onClick={() => void app.run("resources.open", {})}>
+                  Показать в панели «Ресурсы»
+                </button>
+              </div>
               {!!warnings.length && (
                 <ul className={mod.warns} data-testid="res-warnings">
                   {warnings.map((w, i) => (

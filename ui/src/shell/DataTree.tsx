@@ -1,3 +1,4 @@
+import { ResourceReportsTree } from "../modules/resources/ReportsTree";
 import { ModelsTree } from "../modules/variography/ModelsTree";
 import { EstimationTree } from "../modules/estimation/EstimationTreeSection";
 import { SimulationTree } from "../modules/simulation/SimulationTreeSection";
@@ -35,7 +36,12 @@ function sectionMenu(s: TreeSection, reason: (id: string) => string | null, run:
 
 const CONTENT: Partial<Record<TreeSection, () => JSX.Element>> = {
   audit: AuditTree,
-  reports: ReportsTree,
+  reports: () => (
+    <>
+      <ReportsTree />
+      <ResourceReportsTree />
+    </>
+  ),
   trends: TrendsTree,
   variograms: ModelsTree,
   estimation: EstimationTree,

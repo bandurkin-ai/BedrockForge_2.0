@@ -11,17 +11,17 @@ describe("the result of the job", () => {
   it("the contract answer is a report: the model, the elements with their units, the rows, the total, the curve, the control", () => {
     const r = result();
     expect(r).not.toBeNull();
-    expect(r).toMatchObject({ report_id: 17, saved: true, algo: "resources-1", rows_total: 7, truncated: false, cutoff_field: "AU" });
-    expect(r.model).toMatchObject({ id: 12, name: "Рудное тело" });
+    expect(r).toMatchObject({ report_id: 2, saved: true, algo: "resources-1", rows_total: 8, truncated: false, cutoff_field: "AU" });
+    expect(r.model).toMatchObject({ id: 1, name: "Модель" });
     expect(r.elements[0]).toMatchObject({ field: "AU", unit: "g/t", unit_label: "г/т", metal_family: "g", metal_base: "г" });
-    expect(r.rows).toHaveLength(7);
+    expect(r.rows).toHaveLength(8);
     expect(r.keys[0]).toMatchObject({ kind: "field", field: "CLASS" });
     expect(r.totals).toMatchObject({ blocks: 5, tonnes: 12500 });
     expect(r.totals?.elements.AU).toMatchObject({ grade: 2.5, metal: 31250 });
     expect(r.curve?.cutoffs).toHaveLength(5);
     expect(r.control?.sum_groups?.ok).toBe(true);
     expect(r.excluded).toEqual({ filtered: 0, no_volume: 0, no_density: 0 });
-    expect(r.params).toMatchObject({ model_id: 12, cutoffs: [null, 1] });
+    expect(r.params).toMatchObject({ model_id: 1, cutoffs: [1, 2] });
   });
   it("the preview has no number; a gap of an element is null, never 0", () => {
     const base = answer("report_result").body as { rows: Record<string, unknown>[] };
@@ -58,7 +58,7 @@ describe("the result of the job", () => {
 describe("the list, the drill and the comparison", () => {
   it("the list of the reports: the state in the graph, the totals for the tree", () => {
     const rows = (answer("reports_list").body as { reports: unknown[] }).reports.map(readListRow);
-    expect(rows[0]).toMatchObject({ id: 17, state: "ready", model: { id: 12 }, graph: { stale: false, pinned: false } });
+    expect(rows[0]).toMatchObject({ id: 2, state: "ready", model: { id: 1 }, graph: { stale: false, pinned: false } });
     expect(rows[0]?.totals?.elements.AU.metal).toBe(31250);
     expect(readListRow({ name: "без номера" })).toBeNull();
     expect(readListRow({ id: 1, state: "bogus" })?.state).toBe("ready");
