@@ -118,6 +118,8 @@ def restrictor_of(conn: sa.Connection, store: BlobStore, model: Model, sp: sp_mo
     from bf_core.geo import dz_kernels
     from bf_core.wireframes import store as wf
 
+    from .econ_empty import BoundedRestrictor, relief_levels
+
     base = calc_job.rules_tree(conn, sp.filter_id, sp.restrict)  # 404 `filter_not_found`
     leaf = None
     relief = None
@@ -127,7 +129,10 @@ def restrictor_of(conn: sa.Connection, store: BlobStore, model: Model, sp: sp_mo
         relief = dz_kernels.surface_index(xyz, tri)
         leaf = {"surface": {"id": int(sp.terrain_id), "side": "below", "by": "frac"}}
     tree = restrict.combine(base, leaf)
-    return Restriction(tree, restrict.prepare(model, tree, conn=conn, store=store), relief)
+    rest = restrict.prepare(model, tree, conn=conn, store=store)
+    if relief is not None:  # the cells absent from a sparse model are walked only under the relief (`econ_empty`)
+        rest = BoundedRestrictor(rest.fields, rest.warnings, rest._fn, relief_levels(model, relief))
+    return Restriction(tree, rest, relief)
 
 
 # --- the rocks --------------------------------------------------------------------------------------------------------

@@ -102,7 +102,7 @@ def row_econ(
             continue
         d = dens[i] if dens.shape[0] > 0 else dens_c
         st = ST_OK
-        if not (np.isfinite(d) and d >= 0.0):
+        if not (np.isfinite(d) and d > 0.0):
             if np.isfinite(dens_def) and dens_def > 0.0:
                 d = dens_def
                 st = ST_DEFAULT

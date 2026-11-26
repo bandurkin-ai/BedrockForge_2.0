@@ -22,6 +22,7 @@ from bf_core.blocks.restrict import Restrictor
 from bf_core.db import dialect
 from bf_core.mine import econ, econ_table
 from bf_core.mine import econ_kernels as ek
+from bf_core.mine.econ_empty import BoundedRestrictor, relief_levels
 from bf_core.projects.service import projects_of
 from bf_core.storage.blobs import BlobStore
 from tests.test_blocks_report import put
@@ -261,6 +262,26 @@ def test_density_missing_is_an_error_or_the_default(rc) -> None:  # type: ignore
     assert [r.econ.t for r in econ.iter_rows(m, const, NONE)][0].tolist() == [2700.0] * 4
 
 
+def test_zero_density_is_a_gap_not_a_density(rc) -> None:  # type: ignore[no-untyped-def]
+    """ТЗ / ADR 0028 decision 3: the density is > 0, a zero is a skip — a block of t = 0 would be a block of no cost
+    and no revenue that nobody counts. Without a default it is 422 `pit_density_missing`, with one — the default,
+    counted in «Контроль» (review 21.21б, finding 3)."""
+    grid = grid_of((4, 1, 1))
+    sg = np.array([2.5, 0.0, 2.5, 0.0])
+    mid = put(rc, grid, GRADES[:1] + GRADES[2:], np.arange(4, dtype=np.uint64),
+              {"AU": np.full(4, 1.0), "SG": sg})  # fmt: skip
+    m = opened(rc, mid)
+    with pytest.raises(ApiError) as e:
+        econ_table.build_table(m, inputs(), NONE)
+    assert (e.value.status, e.value.code, e.value.extra["blocks"]) == (422, "pit_density_missing", 2)
+    assert e.value.hint
+    tab = econ_table.build_table(m, inputs(default_density=2.0), NONE)
+    assert tab.control.to_dict()["default_density"] == {"blocks": 2, "volume": 2000.0}
+    t = [r.econ.t for r in econ.iter_rows(m, inputs(default_density=2.0), NONE)][0]
+    assert t.tolist() == [2500.0, 2000.0, 2500.0, 2000.0]  # never a block with t = 0
+    assert tab.n_nodes == 4 and (tab.values(1.0) != 0.0).all()
+
+
 def test_no_volume_blocks_are_out_and_counted(rc) -> None:  # type: ignore[no-untyped-def]
     fields = [*GRADES[:1], *GRADES[2:], {"name": "FRAC", "dtype": "f8", "role": "frac"}]
     mid = put(rc, grid_of((3, 1, 1)), fields, np.arange(3, dtype=np.uint64),
@@ -433,6 +454,120 @@ def test_an_absent_cell_with_no_default_density_is_the_error(rc) -> None:  # typ
     with pytest.raises(ApiError) as e:
         econ_table.build_table(opened(rc, mid), inputs(fill_empty=True), NONE)
     assert e.value.code == "pit_density_missing" and e.value.extra["blocks"] == 1
+
+
+# --- the cells absent from a sparse model: the walk is bounded by the relief (review 21.21б, finding 4) --------------
+
+
+class SlopeRelief:
+    """The `dz` of a surface z = z0 + a·x + b·y (what `dz_kernels.SurfaceIndex.dz` gives): z of the point minus z of the
+    surface; NaN where `hole(x, y)`."""
+
+    def __init__(self, z0: float, a: float, b: float, hole: Any = None) -> None:
+        self.z0, self.a, self.b, self.hole = z0, a, b, hole
+
+    def dz(self, xyz: np.ndarray) -> np.ndarray:
+        out = xyz[:, 2] - (self.z0 + self.a * xyz[:, 0] + self.b * xyz[:, 1])
+        if self.hole is not None:
+            out[self.hole(xyz[:, 0], xyz[:, 1])] = np.nan
+        return out
+
+
+def relief_restrictor(m: Model, relief: SlopeRelief, bounded: bool) -> Restrictor:
+    """The share of the height below the relief by the centre, as the leaf «поверхность, ниже, по доле» gives it."""
+
+    def below(ch: Any) -> np.ndarray:
+        c = geometry.centres(m.grid, ch.p)
+        dz = relief.dz(c)
+        h = float(m.grid.size[2])
+        out = np.clip((h * 0.5 - dz) / h, 0.0, 1.0)
+        out[np.isnan(dz)] = 0.0
+        return out
+
+    plain = Restrictor([], [], below)
+    if not bounded:
+        return plain
+    return BoundedRestrictor(plain.fields, plain.warnings, plain._fn, relief_levels(m, relief))
+
+
+def sparse_with_relief(rc: Any, n: tuple[int, int, int], rows: int = 6) -> tuple[Model, Any]:
+    rng = np.random.default_rng(4)
+    total = n[0] * n[1] * n[2]
+    have = np.sort(rng.choice(total, rows, replace=False)).astype(np.uint64)
+    fields = [GRADES[0], GRADES[2], ROCKS]
+    mid = put(rc, grid_of(n), fields, have, {"AU": np.full(rows, 3.0), "SG": np.full(rows, 2.5),
+                                             "ROCK": np.zeros(rows, dtype=np.int32)})  # fmt: skip
+    return opened(rc, mid), have
+
+
+def test_the_walk_over_the_absent_cells_is_the_cells_under_the_relief_and_the_same_table(rc) -> None:  # type: ignore[no-untyped-def]
+    m, _ = sparse_with_relief(rc, (7, 6, 30))
+    relief = SlopeRelief(8.0, 2.2, 1.1, hole=lambda x, y: (x > 55.0) & (y < 12.0))  # rough, with a hole in its plan
+    rocks = [econ.Rock("Руда", 20.0, rec=[0.9]), econ.Rock("(пусто)", 5.0, rec=[0.0])]
+    kw = {"rocks": rocks, "rock_field": "ROCK", "rock_map": [1, 0, 0, 0], "default_density": 2.0, "c_gl": 0.0}
+    inp = inputs(fill_empty=True, **kw)
+    plain = relief_restrictor(m, relief, bounded=False)
+    bound = relief_restrictor(m, relief, bounded=True)
+    full = econ_table.build_table(m, inp, plain)
+    got = econ_table.build_table(m, inp, bound)
+    for name in ("p", "seg", "a", "d", "cm", "ore", "node_of_row", "ore_row"):
+        assert getattr(full, name).tobytes() == getattr(got, name).tobytes(), name
+    cf, cg = full.control.to_dict(), got.control.to_dict()
+    assert cf["empty_cells"] == cg["empty_cells"] and cg["empty_cells"]["blocks"] > 20
+    assert (
+        cf["default_density"] == cg["default_density"] and cf["rocks"] == cg["rocks"] and cf["tonnes"] == cg["tonnes"]
+    )
+    assert (
+        cg["rows"] < cf["rows"] and cg["air"] < cf["air"]
+    )  # the cells above the bound are not rows
+    # …and the same table with small portions (the order of P is kept between the levels)
+    for chunk in (1, 5, 64):
+        small = econ_table.build_table(m, inp, bound, chunk=chunk)
+        for name in ("p", "seg", "a", "d", "cm", "ore", "node_of_row"):
+            assert getattr(got, name).tobytes() == getattr(small, name).tobytes(), (chunk, name)
+        assert small.control.to_dict() == cg
+
+
+def test_the_walk_does_not_grow_with_the_height_of_the_grid(rc) -> None:  # type: ignore[no-untyped-def]
+    """The same relief over a grid of 20 and of 400 levels: the cells visited are the same (the cost is the relief, not
+    the grid), and the full grid of 10⁸ cells is never walked."""
+    import time
+
+    from bf_core.mine import econ_empty as ee
+
+    relief = SlopeRelief(5.0, 0.002, 0.001)  # 5…20 m over 5 km: a few levels of 10 m
+    counts, seconds = [], []
+    for nz in (20, 400):
+        m, _ = sparse_with_relief(rc, (500, 500, nz))
+        t0 = time.perf_counter()
+        kmax = ee.relief_levels(m, relief)
+        n = sum(len(ch.p) for _, ch in ee.empty_cells(m, ["AU", "SG", "ROCK"], 1 << 20, kmax))
+        seconds.append(time.perf_counter() - t0)
+        counts.append(n)
+        assert n < 500 * 500 * 8  # a few levels of 250 thousand columns, not 10⁸ cells
+    assert counts[0] == counts[1] and max(seconds) < 15.0, (counts, seconds)
+
+
+def test_too_many_absent_cells_below_the_relief_is_pit_too_large_before_any_portion(rc, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from bf_core.mine import econ_empty as ee
+
+    m, _ = sparse_with_relief(rc, (6, 5, 12))
+    relief = SlopeRelief(1000.0, 0.0, 0.0)  # the relief is above the whole model: every cell is below it
+    kmax = ee.relief_levels(m, relief)
+    assert kmax.tolist() == [11] * 30
+    monkeypatch.setattr(ee, "MAX_EMPTY_CELLS", 100)
+    seen = []
+    with pytest.raises(ApiError) as e:
+        for item in ee.empty_cells(m, ["AU", "SG", "ROCK"], 10, kmax):
+            seen.append(item)
+    assert (e.value.status, e.value.code) == (422, "pit_too_large") and e.value.hint and not seen
+    assert e.value.extra["empty_cells"] > 100 and "ниже рельефа" in e.value.message
+    # a relief below the model: nothing to walk; a hole in the plan: no levels there
+    assert ee.relief_levels(m, SlopeRelief(-1000.0, 0.0, 0.0)).max() == -1
+    assert list(ee.empty_cells(m, ["AU"], 10, ee.relief_levels(m, SlopeRelief(-1000.0, 0.0, 0.0)))) == []
+    holey = ee.relief_levels(m, SlopeRelief(1000.0, 0.0, 0.0, hole=lambda x, y: x < 20.0))
+    cols = holey.reshape(5, 6)  # (j, i)
+    assert (cols[:, :2] == -1).all() and (cols[:, 2:] == 11).all()  # the columns i = 0, 1 (x = 5, 15): no surface
 
 
 # --- the rock of a block --------------------------------------------------------------------------
