@@ -36,7 +36,8 @@ export function bindObjects(app: App): void {
     select(null);
   });
   // block models have their own list: `blocks/bind.ts` drops a selected one that is gone
-  const exists = (kind: ObjectKind, id: number) => kind === "blocks" || objectName(kind, id) !== null;
+  // implicit models have their own list too: `implicit/bind.ts` drops a selected one that is gone
+  const exists = (kind: ObjectKind, id: number) => kind === "blocks" || kind === "implicit" || objectName(kind, id) !== null;
   sceneObjects.subscribe(() => {
     const s = app.store.get().selected;
     // lists that are not read yet (the project is opening) say nothing about their objects

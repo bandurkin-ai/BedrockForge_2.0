@@ -10,6 +10,7 @@ import { PREP_BUTTONS, PREP_GROUP_TITLE } from "../modules/composites/commands";
 import { INTERCEPT_BUTTONS, INTERCEPT_GROUP_TITLE } from "../modules/intercepts/commands";
 import { VARIO_BUTTONS, VARIO_GROUP_TITLE, VARIO_TAB_TITLE } from "../modules/variography/commands";
 import { LINEAGE_BUTTONS, LINEAGE_GROUP_TITLE } from "../modules/lineage/commands";
+import { IMPLICIT_BUTTONS, IMPLICIT_GROUP_TITLE } from "../modules/implicit/commands";
 import { CHECK_BUTTONS, CHECK_GROUP_TITLE, ESTIMATE_BUTTONS, ESTIMATE_GROUP_TITLE, SIM_BUTTONS, SIM_GROUP_TITLE } from "../modules/estimation/commands";
 import { TREND_BUTTONS } from "../modules/trends/commands";
 import { FILTER_BUTTONS, FILTER_GROUP_TITLE } from "../modules/blocks/filters/commands";
@@ -182,6 +183,7 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState, series: Partial
       id: "model",
       title: "Моделирование",
       groups: [
+        { title: IMPLICIT_GROUP_TITLE, items: IMPLICIT_BUTTONS.map((b): RibbonItem => ({ ...b })) },
         {
           title: "Стринги",
           items: [

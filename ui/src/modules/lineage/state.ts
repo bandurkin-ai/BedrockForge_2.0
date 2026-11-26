@@ -166,6 +166,7 @@ export function nodeOfSelected(sel: Selected | null): LNode | null {
   if (!sel) return null;
   if (sel.kind === "wireframe") return { kind: "wireframe", id: sel.id };
   if (sel.kind === "blocks") return { kind: "object:block_model", id: sel.id };
+  if (sel.kind === "implicit") return { kind: "object:implicit_model", id: sel.id };
   return null;
 }
 

@@ -37,7 +37,7 @@ const PASS_INPUTS: [PassNum, string, string, string][] = [
 export function StepSearch() {
   const f = useSel(wizardStore, (s) => s.form);
   const data = useSel(wizardStore, (s) => s.defaults.data);
-  const trends = useLatest<Trend[]>(loadTrends, []);
+  const trends = useLatest<Trend[]>(async () => (await loadTrends()).filter((t) => t.kind === "global"), []);
   const hasModel = hasVariogram(f);
   const view = useSel(previewSceneStore, (x) => x);
   const shown = useSel(wizardStore, (x) => x.preview.data);

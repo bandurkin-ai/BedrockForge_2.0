@@ -4,12 +4,15 @@
  * sent), «Если не найдена — глобальная α, Aп». The lists (tables of the set with events, their fields, wireframes)
  * are read from the core; the newest read only is applied. `optional` — the block can be switched off (TT empty).
  * «Взять с каркаса» (desired, last) fills α and Aп of the global source from the mean plane of wireframes.
+ * «По тренду» (ТЗ 8.5.2, вопрос № 57; Э19) — a trend of the project of any kind: a global one gives the plane of its minor axis,
+ * a structural one the normal at the middle of the interval.
  */
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { errorText, toggleId } from "../../shell/props";
 import css from "../../shell/PropsParts.module.css";
 import { loadFields, loadWireframes, resolveTable, type FieldRow, type TableRow, type WireframeRow } from "../composites/api";
 import { rangeText, type ParamSpec } from "../composites/params";
+import { loadTrends, type Trend } from "../trends/api";
 import { loadCodes, loadOrientTables, type CodeList } from "./api";
 import { DomainGrid } from "./DomainGrid";
 import own from "./Intercepts.module.css";
@@ -141,6 +144,9 @@ export function OrientationForm({ setId, table, fields, value, errors, onChange,
   const wantWireframes = s.enabled && (s.source === "mesh" || (s.source === "domain" && s.domainBy === "wireframes"));
   const wireframes = useRead<WireframeRow[]>(wantWireframes ? loadWireframes : null, [wantWireframes], failOf("wireframes"));
 
+  const wantTrends = s.enabled && s.source === "trend";
+  const trends = useRead<Trend[]>(wantTrends ? loadTrends : null, [wantTrends], failOf("trends"));
+
   const codeField = (domainFields ?? []).find((f) => f.name === s.domainField);
   let loadDomainCodes: (() => Promise<CodeList>) | null = null;
   let fillReason = "Выберите поле кода домена";
@@ -240,6 +246,21 @@ export function OrientationForm({ setId, table, fields, value, errors, onChange,
               </Select>
               {errors.core && <p className={own.errText}>{errors.core}</p>}
               <NumberRow p={D_CORE} value={s.dCore} error={errors.d_core} onChange={(v) => set({ dCore: v })} />
+            </>
+          )}
+          {s.source === "trend" && (
+            <>
+              <Select label="Тренд" value={s.trendId === null ? "" : String(s.trendId)} onChange={(v) => set({ trendId: v ? Number(v) : null })}>
+                <option value="">{trends ? (trends.length ? "выберите тренд" : "в проекте нет трендов") : "чтение…"}</option>
+                {trends && s.trendId !== null && !trends.some((t) => t.id === s.trendId) && <option value={s.trendId}>{`№${s.trendId} (нет в проекте)`}</option>}
+                {(trends ?? []).map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} ({t.kind === "structural" ? "структурный" : "глобальный"})
+                  </option>
+                ))}
+              </Select>
+              <p className={css.note}>Глобальный тренд даёт плоскость, перпендикулярную малой оси a3; структурный — плоскость замера или каркаса в середине интервала.</p>
+              {errors.trend && <p className={own.errText}>{errors.trend}</p>}
             </>
           )}
           {s.source !== "global" && (

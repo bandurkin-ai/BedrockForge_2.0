@@ -18,8 +18,17 @@ export function searchPalette(query: string, items: FlatItem[], holes: HoleEntry
   const q = (holeOnly ? query.slice(HOLE_PREFIX.length) : query).trim();
   const out: PaletteRow[] = [];
   if (!holeOnly) {
+    const found: { item: FlatItem; rank: number }[] = [];
+    const needle = q.toLowerCase();
     for (const item of items) {
-      if (!q || matchesQuery(`${item.label} ${item.group} ${item.hint ?? ""}`, q)) out.push({ kind: "command", item });
+      if (q && !matchesQuery(`${item.label} ${item.group} ${item.hint ?? ""}`, q)) continue;
+      // the exact label first, then a label that starts with the query, then one that has it; the rest keep the order of the ribbon
+      const label = item.label.toLowerCase();
+      found.push({ item, rank: !q ? 3 : label === needle ? 0 : label.startsWith(needle) ? 1 : label.includes(needle) ? 2 : 3 });
+    }
+    found.sort((a, b) => a.rank - b.rank); // stable
+    for (const f of found) {
+      out.push({ kind: "command", item: f.item });
       if (out.length >= PALETTE_LIMIT) return out;
     }
   }

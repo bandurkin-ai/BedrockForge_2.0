@@ -11,13 +11,14 @@ import { checkParam, checkParams, numberText, parseIdList, parseNumber, type For
 
 export const INTERCEPTS_API = "/intercepts";
 
-export type OrientSource = "global" | "domain" | "mesh" | "core";
-export const ORIENT_SOURCES: readonly OrientSource[] = ["global", "domain", "mesh", "core"];
+export type OrientSource = "global" | "domain" | "mesh" | "core" | "trend";
+export const ORIENT_SOURCES: readonly OrientSource[] = ["global", "domain", "mesh", "core", "trend"];
 export const SOURCE_TITLES: Record<OrientSource, string> = {
   global: "Глобальная",
   domain: "По домену",
   mesh: "По каркасу",
   core: "Ориентированный керн",
+  trend: "По тренду",
 };
 
 // ---- the ranges of 8.5.4 ----
@@ -180,6 +181,8 @@ export interface OrientationState {
   coreBeta: string;
   coreLine: "boh" | "toh";
   dCore: string;
+  /** trend (ТЗ 8.5.2, вопрос № 57): a trend of the project, global or structural; null — not chosen */
+  trendId: number | null;
   /** «Если не найдена — глобальная α, Aп» */
   fallback: boolean;
   fallbackAlpha: string;
@@ -204,6 +207,7 @@ export const DEFAULT_ORIENTATION: OrientationState = {
   coreBeta: "",
   coreLine: "boh",
   dCore: numberText(10),
+  trendId: null,
   fallback: false,
   fallbackAlpha: "",
   fallbackDipdir: "",
@@ -273,6 +277,13 @@ function mainSource(s: OrientationState, errors: Record<string, string>): Record
     const rN = value(R_N, s.rN, "r_n", errors);
     return errors.wireframes || dMax === undefined || rN === undefined ? undefined : { source: "mesh", wireframe_ids: [...s.meshWireframes], d_max: dMax, r_n: rN };
   }
+  if (s.source === "trend") {
+    if (s.trendId === null) {
+      errors.trend = "Выберите тренд из списка трендов проекта";
+      return undefined;
+    }
+    return { source: "trend", trend_id: s.trendId };
+  }
   if (!s.coreTable.trim()) errors.core = "Выберите таблицу замеров керна";
   else if (!s.coreAlpha.trim() || !s.coreBeta.trim()) errors.core = "Выберите поля α_к и β_к";
   const dCore = value(D_CORE, s.dCore, "d_core", errors);
@@ -305,7 +316,7 @@ const text = (args: Record<string, unknown>, k: string): string => {
 /**
  * The block from the arguments of `intercept.tt` / `intercept.run` (ADR 0021 §9): `source`; `alpha, dipdir`;
  * `domain, domain_table?, domain_wireframes?, attitudes` («код=α/Aп; …»); `wireframe_ids, d_max?, r_n?`;
- * `core_table, core_alpha, core_beta, core_line?, d_core?`; `fallback_alpha?, fallback_dipdir?`. Without `source`
+ * `core_table, core_alpha, core_beta, core_line?, d_core?`; `trend_id`; `fallback_alpha?, fallback_dipdir?`. Without `source`
  * and for `intercept.run` — orientation off. A string — why the arguments cannot be read.
  */
 export function orientationFromArgs(args: Record<string, unknown>, optional = false): OrientationState | string {
@@ -343,6 +354,11 @@ export function orientationFromArgs(args: Record<string, unknown>, optional = fa
   s.coreBeta = text(args, "core_beta");
   if (text(args, "core_line") === "toh") s.coreLine = "toh";
   if (text(args, "d_core")) s.dCore = text(args, "d_core");
+  if (text(args, "trend_id")) {
+    const id = Number(text(args, "trend_id"));
+    if (!Number.isInteger(id) || id <= 0) return "«trend_id»: номер тренда из раздела «Тренды»";
+    s.trendId = id;
+  }
   s.fallbackAlpha = text(args, "fallback_alpha");
   s.fallbackDipdir = text(args, "fallback_dipdir");
   s.fallback = s.source !== "global" && Boolean(s.fallbackAlpha || s.fallbackDipdir);
@@ -365,6 +381,7 @@ export function argsFromOrientation(list: unknown): Record<string, unknown> {
       out.attitudes = attitudesText((main.attitudes as { code?: unknown; alpha?: unknown; dipdir?: unknown }[]).map((a) => ({ code: String(a.code ?? ""), alpha: typeof a.alpha === "number" ? numberText(a.alpha) : "", dipdir: typeof a.dipdir === "number" ? numberText(a.dipdir) : "" })));
   }
   if (src === "mesh") Object.assign(out, { wireframe_ids: Array.isArray(main.wireframe_ids) ? main.wireframe_ids.join(", ") : undefined, d_max: main.d_max, r_n: main.r_n });
+  if (src === "trend") out.trend_id = main.trend_id;
   if (src === "core") Object.assign(out, { core_table: main.table, core_alpha: main.alpha, core_beta: main.beta, core_line: main.line, d_core: main.d_core });
   if (next && next.source === "global" && src !== "global") Object.assign(out, { fallback_alpha: next.alpha, fallback_dipdir: next.dipdir });
   return Object.fromEntries(Object.entries(out).filter(([, v]) => v !== undefined && v !== null));
@@ -447,6 +464,7 @@ export function formKey(param: string, orient: OrientationState): string | null 
     return rest.startsWith("attitudes") ? "attitudes" : "domain";
   }
   if (src === "mesh") return rest === "d_max" || rest === "r_n" ? rest : "wireframes";
+  if (src === "trend") return "trend";
   return rest === "d_core" ? "d_core" : "core";
 }
 

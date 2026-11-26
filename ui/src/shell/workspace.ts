@@ -8,7 +8,7 @@ export type Theme = "dark" | "light";
 export type PanelId = "project" | "properties" | "assistant" | "bottom";
 export type RightTab = "properties" | "assistant";
 export type BottomTab = "table" | "audit" | "stats" | "qaqc" | "jobs" | "log";
-export type TreeSection = "views" | "series" | "holes" | "wireframes" | "dtm" | "lines" | "rasters" | "blocks" | "filters" | "audit" | "reports" | "trends" | "variograms" | "estimation" | "simulation";
+export type TreeSection = "views" | "series" | "holes" | "wireframes" | "dtm" | "lines" | "rasters" | "blocks" | "filters" | "audit" | "reports" | "trends" | "variograms" | "estimation" | "simulation" | "implicit";
 
 export const BOTTOM_TITLES: Record<BottomTab, string> = {
   table: "Таблица",
@@ -38,6 +38,8 @@ export const TREE_SECTIONS: Record<TreeSection, string> = {
   estimation: "Параметры оценки",
   /** Simulations (ADR 0024 §9, Э18б); a stored order without it gets it at the end (`normalizeOrder`). */
   simulation: "Моделирование",
+  /** Implicit models (ADR 0026, Э19): models with their data, surfaces and bodies; a stored order without it gets it at the end (`normalizeOrder`). */
+  implicit: "Неявные модели",
   audit: "Аудит и статистика",
   /** QAQC reports (ADR 0020 §11); a stored order without it gets it at the end (`normalizeOrder`). */
   reports: "Отчёты",

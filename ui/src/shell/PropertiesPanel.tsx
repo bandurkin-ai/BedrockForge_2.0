@@ -4,6 +4,7 @@
  * settings at the top, Д-07), a block model. The card of the selected hole stays below it; without an object it is alone.
  */
 import { BlockProps } from "../modules/blocks/BlockProps";
+import { ImplicitProps } from "../modules/implicit/ImplicitProps";
 import { LayerProps } from "../modules/lines/LayerProps";
 import { LineageProps } from "../modules/lineage/LineageProps";
 import { nodeOfSelected } from "../modules/lineage/state";
@@ -28,6 +29,7 @@ export function PropertiesPanel() {
       {selected.kind === "raster" && <RasterProps key={key} id={selected.id} />}
       {selected.kind === "wireframe" && <WireframeProps key={key} id={selected.id} />}
       {selected.kind === "blocks" && <BlockProps key={key} id={selected.id} />}
+      {selected.kind === "implicit" && <ImplicitProps key={key} id={selected.id} />}
       {node && <LineageProps key={`lin:${key}`} node={node} />}
       {hole && <HoleCard />}
     </div>

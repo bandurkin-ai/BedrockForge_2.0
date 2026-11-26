@@ -152,15 +152,16 @@ def run_intercepts(
     result_id, table_id, name, chart_id, rows, columns, replaced, fresh, summary (= report), journal, stages
     {read, trajectories, hash, kernel, write: s}, events}. `mesh(project, tick)` — the source «каркас» of the
     job (`jobs.job_mesh`); None — that one."""
-    from bf_core.composites import results, sink, source, strips
+    from bf_core.composites import sink, source, strips
 
     from . import display, jobs, table
+    from . import spec as sp
 
     t0 = time.perf_counter()
     body, rebuild = cj._body_of(params)
     with dialect.read_tx(engine) as conn:
         spec = parse(conn, body)
-        inputs = results.make_inputs(conn, spec.set_id, spec.tables(), trajectories=True, meshes=spec.mesh_ids())
+        inputs = sp.make_inputs(conn, spec)
     stages: dict[str, float] = {}
     tick(0.02, "Чтение таблицы")
     cache = folder / "cache" / "tables"

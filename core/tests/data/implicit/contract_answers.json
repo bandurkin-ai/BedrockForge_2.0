@@ -1,0 +1,2821 @@
+{
+ "_note": "ЧАСТЬ КЛЮЧЕЙ — ответы настоящего ядра (BF_REGEN_IMPLICIT=1 uv run pytest -q tests/test_implicit_contract.py, 19.16, фикстура tests/modapi_world.py), части ключей — ЧЕРНОВИК форм (docs/progress/e19-api.md §5–§10): trend_*, build_iso_error и ключи *_b пишут подшаги 19.8, 19.32+; defaults, bad_param, refusals пишет spec.py (BF_REGEN_IMPLICIT=1 uv run pytest -q tests/test_implicit_spec.py). Интерфейс принимается только на настоящих ответах.",
+ "defaults": {
+  "status": 200,
+  "body": {
+   "params": {
+    "h": null,
+    "h_divisor": 200.0,
+    "levels": 2,
+    "kernel": "linear",
+    "kernel_radius": null,
+    "smoothing": {
+     "mode": "manual",
+     "s": null,
+     "cond_target": 100000000.0,
+     "s_contact": 0.0,
+     "s_grade": 0.05
+    },
+    "pou": {
+     "n_patch": 1000,
+     "n_min": 100,
+     "delta": 0.25
+    },
+    "data": {
+     "d_max": 30.0,
+     "step": 5.0
+    },
+    "trend_radius": 200.0,
+    "shell": {
+     "source": "composites",
+     "transform": "linear",
+     "mode": "numeric",
+     "p": 0.5
+    },
+    "vein": {
+     "bound": "hull",
+     "offset": 0.0,
+     "t_min": 0.0
+    },
+    "post": {
+     "v_min": 0.0,
+     "simplify": false,
+     "clip": "boundary"
+    },
+    "support_factor": 2.0,
+    "choices": {
+     "kernels": [
+      "linear",
+      "cubic",
+      "wendland"
+     ],
+     "group_types": [
+      "domain",
+      "shell",
+      "vein",
+      "expand",
+      "fault",
+      "vein_system"
+     ],
+     "relations": [
+      "conformable",
+      "erode",
+      "onlap",
+      "intrusion"
+     ],
+     "roles": [
+      "contact",
+      "inside",
+      "outside"
+     ],
+     "transforms": [
+      "linear",
+      "log",
+      "nscore"
+     ],
+     "shell_modes": [
+      "numeric",
+      "indicator"
+     ],
+     "shell_sources": [
+      "composites",
+      "table"
+     ],
+     "vein_bounds": [
+      "hull",
+      "polygon"
+     ],
+     "clips": [
+      "none",
+      "boundary",
+      "wireframe",
+      "dtm"
+     ],
+     "point_types": [
+      "contact",
+      "inside",
+      "outside",
+      "manual",
+      "value"
+     ]
+    },
+    "limits": {
+     "groups": 50,
+     "codes": 1000,
+     "thresholds": 20,
+     "manual": 100,
+     "veins": 20,
+     "points": 2000000,
+     "preview": 2000000
+    }
+   },
+   "ranges": {
+    "h": {
+     "lo": 0.1,
+     "hi": 100.0,
+     "lo_open": false,
+     "integer": false,
+     "unit": "м"
+    },
+    "levels": {
+     "lo": 0,
+     "hi": 4,
+     "lo_open": false,
+     "integer": true,
+     "unit": ""
+    },
+    "n_patch": {
+     "lo": 300,
+     "hi": 4000,
+     "lo_open": false,
+     "integer": true,
+     "unit": ""
+    },
+    "n_min": {
+     "lo": 20,
+     "hi": 500,
+     "lo_open": false,
+     "integer": true,
+     "unit": ""
+    },
+    "delta": {
+     "lo": 0.1,
+     "hi": 1.0,
+     "lo_open": false,
+     "integer": false,
+     "unit": ""
+    },
+    "d_max": {
+     "lo": 1.0,
+     "hi": 500.0,
+     "lo_open": false,
+     "integer": false,
+     "unit": "м"
+    },
+    "step": {
+     "lo": 0.5,
+     "hi": 50.0,
+     "lo_open": false,
+     "integer": false,
+     "unit": "м"
+    },
+    "trend_radius": {
+     "lo": 10.0,
+     "hi": 5000.0,
+     "lo_open": false,
+     "integer": false,
+     "unit": "м"
+    },
+    "s": {
+     "lo": 0.0,
+     "hi": 10.0,
+     "lo_open": false,
+     "integer": false,
+     "unit": ""
+    },
+    "cond_target": {
+     "lo": 10000.0,
+     "hi": 1000000000000.0,
+     "lo_open": false,
+     "integer": false,
+     "unit": ""
+    },
+    "kernel_radius": {
+     "lo": 0.0,
+     "hi": 100000.0,
+     "lo_open": true,
+     "integer": false,
+     "unit": "м"
+    },
+    "ang1": {
+     "lo": 0.0,
+     "hi": 360.0,
+     "lo_open": false,
+     "integer": false,
+     "unit": "°"
+    },
+    "ang2": {
+     "lo": -90.0,
+     "hi": 90.0,
+     "lo_open": false,
+     "integer": false,
+     "unit": "°"
+    },
+    "ang3": {
+     "lo": -180.0,
+     "hi": 180.0,
+     "lo_open": false,
+     "integer": false,
+     "unit": "°"
+    },
+    "ratio": {
+     "lo": 0.0,
+     "hi": 1000000.0,
+     "lo_open": true,
+     "integer": false,
+     "unit": ""
+    },
+    "coord": {
+     "lo": null,
+     "hi": null,
+     "lo_open": false,
+     "integer": false,
+     "unit": ""
+    },
+    "threshold": {
+     "lo": null,
+     "hi": null,
+     "lo_open": false,
+     "integer": false,
+     "unit": ""
+    },
+    "p": {
+     "lo": 0.3,
+     "hi": 0.7,
+     "lo_open": false,
+     "integer": false,
+     "unit": ""
+    },
+    "t_min": {
+     "lo": 0.0,
+     "hi": 100.0,
+     "lo_open": false,
+     "integer": false,
+     "unit": "м"
+    },
+    "offset": {
+     "lo": 0.0,
+     "hi": 10000.0,
+     "lo_open": false,
+     "integer": false,
+     "unit": "м"
+    },
+    "expand": {
+     "lo": -1000.0,
+     "hi": 1000.0,
+     "lo_open": false,
+     "integer": false,
+     "unit": "м"
+    },
+    "v_min": {
+     "lo": 0.0,
+     "hi": null,
+     "lo_open": false,
+     "integer": false,
+     "unit": "м³"
+    },
+    "fault_radius": {
+     "lo": 0.0,
+     "hi": 100000.0,
+     "lo_open": true,
+     "integer": false,
+     "unit": "м"
+    },
+    "support": {
+     "lo": 0.0,
+     "hi": 100000.0,
+     "lo_open": true,
+     "integer": false,
+     "unit": "м"
+    },
+    "threads": {
+     "lo": 1,
+     "hi": 64,
+     "lo_open": false,
+     "integer": true,
+     "unit": ""
+    },
+    "limit": {
+     "lo": 1,
+     "hi": 2000000,
+     "lo_open": false,
+     "integer": true,
+     "unit": ""
+    },
+    "page": {
+     "lo": 1,
+     "hi": 1000000,
+     "lo_open": false,
+     "integer": true,
+     "unit": ""
+    },
+    "size": {
+     "lo": 1,
+     "hi": 5000,
+     "lo_open": false,
+     "integer": true,
+     "unit": ""
+    }
+   }
+  }
+ },
+ "bad_param": {
+  "status": 422,
+  "body": {
+   "param": "pou.n_min",
+   "code": "bad_param",
+   "message": "Наименьшее число точек участка N_min: значение вне диапазона от 20 до 500.",
+   "hint": "Задайте от 20 до 500."
+  }
+ },
+ "refusals": {
+  "rbf_singular": {
+   "status": 422,
+   "body": {
+    "code": "rbf_singular",
+    "message": "Система RBF участка вырождена: совпадающие точки с разными значениями или слишком густые данные.",
+    "hint": "Включите сглаживание «Авто» или задайте s > 0."
+   }
+  },
+  "too_many_points": {
+   "status": 422,
+   "body": {
+    "code": "too_many_points",
+    "message": "Точек данных больше 2 000 000.",
+    "hint": "Увеличьте шаг точек Δ_т или уменьшите D_max."
+   }
+  },
+  "wireframe_open": {
+   "status": 422,
+   "body": {
+    "code": "wireframe_open",
+    "message": "Каркас не замкнут: внутренность не определена.",
+    "hint": "Запустите «Исправить каркас» и повторите."
+   }
+  },
+  "trend_not_found": {
+   "status": 404,
+   "body": {
+    "code": "trend_not_found",
+    "message": "Тренд не найден.",
+    "hint": "Обновите раздел «Тренды» и выберите тренд заново."
+   }
+  },
+  "trend_structural": {
+   "status": 422,
+   "body": {
+    "code": "trend_structural",
+    "message": "Структурный тренд в оценке не применяется.",
+    "hint": "Выберите глобальный тренд или задайте углы поиска вручную."
+   }
+  },
+  "no_contacts": {
+   "status": 422,
+   "body": {
+    "code": "no_contacts",
+    "message": "В данных группы нет контактов: поверхность не определена.",
+    "hint": "Проверьте коды группы и таблицу или добавьте ручные точки и линии."
+   }
+  },
+  "boundary_empty": {
+   "status": 422,
+   "body": {
+    "code": "boundary_empty",
+    "message": "Граница модели пуста.",
+    "hint": "Задайте охват или выберите замкнутый каркас границы."
+   }
+  },
+  "model_not_found": {
+   "status": 404,
+   "body": {
+    "code": "model_not_found",
+    "message": "Неявная модель не найдена.",
+    "hint": "Обновите дерево «Неявные модели»."
+   }
+  },
+  "group_not_found": {
+   "status": 404,
+   "body": {
+    "code": "group_not_found",
+    "message": "Группа модели не найдена.",
+    "hint": "Обновите вкладку модели и выберите группу заново."
+   }
+  },
+  "model_building": {
+   "status": 409,
+   "body": {
+    "code": "model_building",
+    "message": "Модель сейчас строится.",
+    "hint": "Дождитесь окончания задания или отмените его."
+   }
+  },
+  "not_built": {
+   "status": 409,
+   "body": {
+    "code": "not_built",
+    "message": "Модель ещё не построена.",
+    "hint": "Выполните «Построить» или «Обновить»."
+   }
+  },
+  "iso_check": {
+   "status": 422,
+   "body": {
+    "code": "iso_check",
+    "message": "Поверхность не прошла проверки 8.9.3.",
+    "hint": "Уменьшите шаг h или проверьте данные группы."
+   }
+  }
+ },
+ "models": {
+  "status": 200,
+  "body": {
+   "models": [
+    {
+     "id": 6,
+     "name": "Литология",
+     "version": 7,
+     "state": "ready",
+     "stale": false,
+     "stale_reason": null,
+     "source_lost": false,
+     "groups": [
+      {
+       "id": 1,
+       "name": "INT",
+       "type": "domain"
+      },
+      {
+       "id": 3,
+       "name": "SS",
+       "type": "domain"
+      }
+     ],
+     "outputs": [
+      {
+       "wireframe_id": 7,
+       "kind": "surface",
+       "group": 1,
+       "wing": null,
+       "threshold": null,
+       "name": "Литология · INT · поверхность"
+      },
+      {
+       "wireframe_id": 8,
+       "kind": "body",
+       "group": 1,
+       "wing": null,
+       "threshold": null,
+       "name": "Литология · INT"
+      },
+      {
+       "wireframe_id": 9,
+       "kind": "surface",
+       "group": 3,
+       "wing": null,
+       "threshold": null,
+       "name": "Литология · SS · поверхность"
+      },
+      {
+       "wireframe_id": 10,
+       "kind": "body",
+       "group": 3,
+       "wing": null,
+       "threshold": null,
+       "name": "Литология · SS"
+      },
+      {
+       "wireframe_id": 11,
+       "kind": "body",
+       "group": null,
+       "wing": null,
+       "threshold": null,
+       "name": "Литология · Прочее"
+      }
+     ],
+     "stats": {
+      "points": 3316,
+      "patches": 16,
+      "seconds": 3.445
+     },
+     "created_at": "2026-11-25T22:27:12.701240Z",
+     "updated_at": "2026-11-25T22:27:13.377411Z"
+    }
+   ]
+  }
+ },
+ "model_post": {
+  "status": 200,
+  "body": {
+   "id": 6,
+   "name": "Литология",
+   "version": 1
+  }
+ },
+ "name_taken": {
+  "status": 409,
+  "body": {
+   "param": "name",
+   "code": "name_taken",
+   "message": "«Литология» уже есть.",
+   "hint": "Введите другое название."
+  }
+ },
+ "model_not_found": {
+  "status": 404,
+  "body": {
+   "code": "model_not_found",
+   "message": "Неявная модель не найдена.",
+   "hint": "Обновите дерево «Неявные модели»."
+  }
+ },
+ "model_put": {
+  "status": 200,
+  "body": {
+   "id": 6,
+   "name": "Литология",
+   "version": 2
+  }
+ },
+ "model_put_conflict": {
+  "status": 409,
+  "body": {
+   "version": 2,
+   "code": "version_conflict",
+   "message": "Неявная модель изменена в другом окне.",
+   "hint": "Перечитайте модель или сохраните свою как новую."
+  }
+ },
+ "group_post": {
+  "status": 200,
+  "body": {
+   "id": 6,
+   "version": 3,
+   "group": {
+    "id": 4,
+    "name": "Аллювий",
+    "type": "domain",
+    "codes": [
+     "ALV"
+    ],
+    "relation": "conformable",
+    "faults": [],
+    "params": {}
+   }
+  }
+ },
+ "group_put": {
+  "status": 200,
+  "body": {
+   "id": 6,
+   "version": 4,
+   "group": {
+    "id": 4,
+    "name": "Наносы",
+    "type": "domain",
+    "codes": [
+     "ALV",
+     "GR"
+    ],
+    "relation": "conformable",
+    "faults": [],
+    "params": {}
+   }
+  }
+ },
+ "group_delete": {
+  "status": 200,
+  "body": {
+   "id": 6,
+   "version": 5,
+   "deleted": 4
+  }
+ },
+ "group_not_found": {
+  "status": 404,
+  "body": {
+   "group": 99,
+   "code": "group_not_found",
+   "message": "Группа модели не найдена.",
+   "hint": "Обновите вкладку модели и выберите группу заново."
+  }
+ },
+ "preview": {
+  "status": 200,
+  "body": {
+   "group": 1,
+   "n": 1241,
+   "truncated": true,
+   "counts": {
+    "contact": 5,
+    "inside": 27,
+    "outside": 1209,
+    "manual": 0,
+    "value": 0,
+    "merged": 0,
+    "conflicts": 0,
+    "no_trajectory": 0,
+    "no_depth": 0
+   },
+   "notes": [],
+   "points": {
+    "x": [
+     -1.1662907095436754,
+     0.16295196085142472,
+     1.4921946312465266,
+     2.8214373016416285,
+     4.150679972036732,
+     5.479922642431834,
+     6.809165312826937,
+     8.138407983222038,
+     9.146789202056246,
+     9.467650653617142,
+     9.806246065891745,
+     10.465702929727247
+    ],
+    "y": [
+     373.4531663546049,
+     374.22680406290016,
+     375.00044177119537,
+     375.7740794794906,
+     376.5477171877858,
+     377.32135489608106,
+     378.0949926043763,
+     378.8686303126715,
+     238.1811459362596,
+     379.64226802096675,
+     236.99145426135883,
+     235.80176258645807
+    ],
+    "z": [
+     195.12245633264524,
+     204.41267752111088,
+     213.70289870957652,
+     222.99311989804215,
+     232.28334108650776,
+     241.5735622749734,
+     250.86378346343903,
+     260.15400465190464,
+     180.0107989967039,
+     269.4442258403703,
+     189.56833507696757,
+     199.12587115723127
+    ],
+    "f": [
+     30.0,
+     30.0,
+     30.0,
+     30.0,
+     30.0,
+     30.0,
+     30.0,
+     30.0,
+     30.0,
+     30.0,
+     30.0,
+     30.0
+    ],
+    "kind": [
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2,
+     2
+    ]
+   }
+  }
+ },
+ "preview_group": {
+  "status": 200,
+  "body": {
+   "group": 4,
+   "n": 1308,
+   "truncated": true,
+   "counts": {
+    "contact": 112,
+    "inside": 583,
+    "outside": 613,
+    "manual": 0,
+    "value": 0,
+    "merged": 0,
+    "conflicts": 0,
+    "no_trajectory": 0,
+    "no_depth": 0
+   },
+   "notes": [],
+   "points": {
+    "x": [
+     4.240315628217356,
+     4.946108196568739,
+     5.651900764920121,
+     6.357693333271502,
+     7.063485901622884
+    ],
+    "y": [
+     376.59988638546025,
+     377.0106674695108,
+     377.4214485535614,
+     377.83222963761193,
+     378.2430107216625
+    ],
+    "z": [
+     232.9098144091282,
+     237.84267521716305,
+     242.77553602519788,
+     247.70839683323274,
+     252.64125764126757
+    ],
+    "f": [
+     30.000000000000007,
+     25.000000000000007,
+     20.0,
+     15.0,
+     10.0
+    ],
+    "kind": [
+     2,
+     2,
+     2,
+     2,
+     2
+    ]
+   }
+  }
+ },
+ "preview_no_contacts": {
+  "status": 422,
+  "body": {
+   "group": 4,
+   "code": "no_contacts",
+   "message": "В данных группы нет контактов: поверхность не определена.",
+   "hint": "Проверьте коды группы и таблицу или добавьте ручные точки и линии."
+  }
+ },
+ "not_ready": {
+  "status": 422,
+  "body": {
+   "group": 4,
+   "code": "not_ready",
+   "message": "Группа «Разлом» (разлом) пока не строится.",
+   "hint": "Уберите эти группы и отношения или дождитесь следующего выпуска."
+  }
+ },
+ "build_submit": {
+  "status": 200,
+  "body": {
+   "source": "project",
+   "id": 1
+  }
+ },
+ "model_building": {
+  "status": 409,
+  "body": {
+   "code": "model_building",
+   "message": "Модель сейчас строится.",
+   "hint": "Дождитесь окончания задания или отмените его."
+  }
+ },
+ "build_result": {
+  "status": 200,
+  "body": {
+   "model_id": 6,
+   "version": 7,
+   "state": "ready",
+   "mode": "build",
+   "outputs": [
+    {
+     "wireframe_id": 7,
+     "kind": "surface",
+     "group": 1,
+     "wing": null,
+     "threshold": null,
+     "name": "Литология · INT · поверхность",
+     "volume": 404528.69131449674,
+     "area": 27711.09808325366,
+     "triangles": 1312
+    },
+    {
+     "wireframe_id": 8,
+     "kind": "body",
+     "group": 1,
+     "wing": null,
+     "threshold": null,
+     "name": "Литология · INT",
+     "volume": 404528.69131449674,
+     "area": 27711.09808325366,
+     "triangles": 1312
+    },
+    {
+     "wireframe_id": 9,
+     "kind": "surface",
+     "group": 3,
+     "wing": null,
+     "threshold": null,
+     "name": "Литология · SS · поверхность",
+     "volume": null,
+     "area": 360635.1874146686,
+     "triangles": 14530
+    },
+    {
+     "wireframe_id": 10,
+     "kind": "body",
+     "group": 3,
+     "wing": null,
+     "threshold": null,
+     "name": "Литология · SS",
+     "volume": 6451819.61235178,
+     "area": 381887.5377142993,
+     "triangles": 14942
+    },
+    {
+     "wireframe_id": 11,
+     "kind": "body",
+     "group": null,
+     "wing": null,
+     "threshold": null,
+     "name": "Литология · Прочее",
+     "volume": 30187651.696333725,
+     "area": 1072693.9351982917,
+     "triangles": 16162
+    }
+   ],
+   "stats": {
+    "points": 3316,
+    "patches": 16,
+    "max_residual": 2.653877118063974e-12,
+    "cond_max": 24344100.0,
+    "eta_max": 0.0,
+    "seconds": 3.445,
+    "reused": {
+     "patches": 0,
+     "bricks": 0
+    },
+    "by_group": [
+     {
+      "group": 1,
+      "wing": null,
+      "points": 1241,
+      "patches": 8,
+      "h_bar": 9.553846153846138,
+      "max_residual": 1.744382416291046e-12,
+      "cond_max": 113567.0,
+      "eta_min": 0.0,
+      "eta_max": 0.0,
+      "support_share": null
+     },
+     {
+      "group": 3,
+      "wing": null,
+      "points": 2075,
+      "patches": 8,
+      "h_bar": 4.999999999999988,
+      "max_residual": 2.653877118063974e-12,
+      "cond_max": 24344100.0,
+      "eta_min": 0.0,
+      "eta_max": 0.0,
+      "support_share": null
+     }
+    ],
+    "balance": 0.0
+   },
+   "reused": {
+    "patches": 0,
+    "bricks": 0
+   },
+   "journal": [
+    "Группа «INT»: точек 1241, участков 8, η = 0, наибольшая обусловленность 113567, наибольшая невязка в данных 1,74438e-12.",
+    "Группа «INT»: тело 404529 м³, контакт 27711,1 м².",
+    "Группа «SS»: точек 2075, участков 8, η = 0, наибольшая обусловленность 2,43441e+07, наибольшая невязка в данных 2,65388e-12.",
+    "Группа «SS»: тело 6,45182e+06 м³, контакт 360635 м².",
+    "«Прочее»: объём 3,01877e+07 м³.",
+    "Сумма объёмов доменов и «Прочее» отличается от объёма границы на 0 (доля)."
+   ],
+   "stages": {
+    "Данные": 0.805,
+    "Тела": 0.12,
+    "Участки": 0.202,
+    "Изоповерхности": 2.317,
+    "Проверки": 0.001,
+    "Запись": 0.092,
+    "total": 3.537
+   },
+   "events": [
+    [
+     "implicit.changed",
+     {
+      "kind": "implicit_model",
+      "id": 6
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 7
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 8
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 9
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 10
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 11
+     }
+    ]
+   ]
+  }
+ },
+ "model": {
+  "status": 200,
+  "body": {
+   "id": 6,
+   "name": "Литология",
+   "version": 7,
+   "meta": {
+    "v": 1,
+    "name": "Литология",
+    "boundary": {
+     "box": [
+      0.0,
+      0.0,
+      120.0,
+      420.0,
+      420.0,
+      330.0
+     ],
+     "wireframe_id": null,
+     "dtm_id": null
+    },
+    "h": 8.0,
+    "levels": 2,
+    "kernel": "linear",
+    "kernel_radius": null,
+    "smoothing": {
+     "mode": "manual",
+     "s": null
+    },
+    "trend_id": null,
+    "anisotropy": null,
+    "pou": {
+     "n_patch": 1000,
+     "n_min": 100,
+     "delta": 0.25
+    },
+    "data": {
+     "set_id": 1,
+     "table": "1",
+     "field": "CODE",
+     "d_max": 30.0,
+     "step": 5.0
+    },
+    "groups": [
+     {
+      "id": 1,
+      "name": "INT",
+      "type": "domain",
+      "codes": [
+       "INT"
+      ],
+      "relation": "conformable",
+      "faults": [],
+      "params": {}
+     },
+     {
+      "id": 3,
+      "name": "SS",
+      "type": "domain",
+      "codes": [
+       "SS"
+      ],
+      "relation": "conformable",
+      "faults": [],
+      "params": {}
+     }
+    ],
+    "manual": [],
+    "post": {
+     "v_min": 0.0,
+     "simplify": false,
+     "clip": "boundary",
+     "clip_id": null
+    },
+    "h_used": 8.0,
+    "algo": "rbf-1",
+    "created_at": "2026-11-25T22:27:12.701240+00:00",
+    "extent": [
+     0.0,
+     0.0,
+     120.0,
+     420.0,
+     420.0,
+     330.0
+    ],
+    "inputs": [
+     {
+      "kind": "dh_set",
+      "id": 1,
+      "fp": "traj:1:2:2:minimum_curvature",
+      "name": "Скважины"
+     },
+     {
+      "kind": "dh_table",
+      "id": 1,
+      "fp": "66121540e8336:1",
+      "name": "Литология"
+     }
+    ],
+    "state": "ready",
+    "error": null,
+    "outputs": [
+     {
+      "wireframe_id": 7,
+      "kind": "surface",
+      "group": 1,
+      "wing": null,
+      "name": "Литология · INT · поверхность"
+     },
+     {
+      "wireframe_id": 8,
+      "kind": "body",
+      "group": 1,
+      "wing": null,
+      "name": "Литология · INT"
+     },
+     {
+      "wireframe_id": 9,
+      "kind": "surface",
+      "group": 3,
+      "wing": null,
+      "name": "Литология · SS · поверхность"
+     },
+     {
+      "wireframe_id": 10,
+      "kind": "body",
+      "group": 3,
+      "wing": null,
+      "name": "Литология · SS"
+     },
+     {
+      "wireframe_id": 11,
+      "kind": "body",
+      "group": null,
+      "wing": null,
+      "name": "Литология · Прочее"
+     }
+    ],
+    "stats": {
+     "points": 3316,
+     "patches": 16,
+     "max_residual": 2.653877118063974e-12,
+     "cond_max": 24344100.0,
+     "eta_max": 0.0,
+     "seconds": 3.445,
+     "reused": {
+      "patches": 0,
+      "bricks": 0
+     },
+     "by_group": [
+      {
+       "group": 1,
+       "wing": null,
+       "points": 1241,
+       "patches": 8,
+       "h_bar": 9.553846153846138,
+       "max_residual": 1.744382416291046e-12,
+       "cond_max": 113567.0,
+       "eta_min": 0.0,
+       "eta_max": 0.0,
+       "support_share": null
+      },
+      {
+       "group": 3,
+       "wing": null,
+       "points": 2075,
+       "patches": 8,
+       "h_bar": 4.999999999999988,
+       "max_residual": 2.653877118063974e-12,
+       "cond_max": 24344100.0,
+       "eta_min": 0.0,
+       "eta_max": 0.0,
+       "support_share": null
+      }
+     ],
+     "balance": 0.0
+    },
+    "last_run": {
+     "at": "2026-11-25T22:27:17.101056+00:00",
+     "job": 1,
+     "mode": "build",
+     "seconds": 3.445,
+     "params": "09b8f78b26a604fd97eba4730219c0da3a1b99b01469750db71c94af2518d9de"
+    },
+    "versions": {
+     "numpy": "2.3.5",
+     "scipy": "1.18.1",
+     "numba": "0.68.1",
+     "skimage": "0.26.0",
+     "manifold3d": "3.5.4"
+    }
+   },
+   "state": "ready",
+   "error": null,
+   "stale": false,
+   "stale_reason": null,
+   "source_lost": false,
+   "outputs": [
+    {
+     "wireframe_id": 7,
+     "kind": "surface",
+     "group": 1,
+     "wing": null,
+     "threshold": null,
+     "name": "Литология · INT · поверхность",
+     "volume": 404528.69131449674,
+     "area": 27711.09808325366,
+     "triangles": 1312
+    },
+    {
+     "wireframe_id": 8,
+     "kind": "body",
+     "group": 1,
+     "wing": null,
+     "threshold": null,
+     "name": "Литология · INT",
+     "volume": 404528.69131449674,
+     "area": 27711.09808325366,
+     "triangles": 1312
+    },
+    {
+     "wireframe_id": 9,
+     "kind": "surface",
+     "group": 3,
+     "wing": null,
+     "threshold": null,
+     "name": "Литология · SS · поверхность",
+     "volume": null,
+     "area": 360635.1874146686,
+     "triangles": 14530
+    },
+    {
+     "wireframe_id": 10,
+     "kind": "body",
+     "group": 3,
+     "wing": null,
+     "threshold": null,
+     "name": "Литология · SS",
+     "volume": 6451819.61235178,
+     "area": 381887.5377142993,
+     "triangles": 14942
+    },
+    {
+     "wireframe_id": 11,
+     "kind": "body",
+     "group": null,
+     "wing": null,
+     "threshold": null,
+     "name": "Литология · Прочее",
+     "volume": 30187651.696333725,
+     "area": 1072693.9351982917,
+     "triangles": 16162
+    }
+   ],
+   "created_at": "2026-11-25T22:27:12.701240Z",
+   "updated_at": "2026-11-25T22:27:13.377411Z"
+  }
+ },
+ "outputs": {
+  "status": 200,
+  "body": {
+   "outputs": [
+    {
+     "wireframe_id": 7,
+     "kind": "surface",
+     "group": 1,
+     "wing": null,
+     "threshold": null,
+     "name": "Литология · INT · поверхность",
+     "volume": 404528.69131449674,
+     "area": 27711.09808325366,
+     "triangles": 1312
+    },
+    {
+     "wireframe_id": 8,
+     "kind": "body",
+     "group": 1,
+     "wing": null,
+     "threshold": null,
+     "name": "Литология · INT",
+     "volume": 404528.69131449674,
+     "area": 27711.09808325366,
+     "triangles": 1312
+    },
+    {
+     "wireframe_id": 9,
+     "kind": "surface",
+     "group": 3,
+     "wing": null,
+     "threshold": null,
+     "name": "Литология · SS · поверхность",
+     "volume": null,
+     "area": 360635.1874146686,
+     "triangles": 14530
+    },
+    {
+     "wireframe_id": 10,
+     "kind": "body",
+     "group": 3,
+     "wing": null,
+     "threshold": null,
+     "name": "Литология · SS",
+     "volume": 6451819.61235178,
+     "area": 381887.5377142993,
+     "triangles": 14942
+    },
+    {
+     "wireframe_id": 11,
+     "kind": "body",
+     "group": null,
+     "wing": null,
+     "threshold": null,
+     "name": "Литология · Прочее",
+     "volume": 30187651.696333725,
+     "area": 1072693.9351982917,
+     "triangles": 16162
+    }
+   ]
+  }
+ },
+ "model_stale": {
+  "status": 200,
+  "body": {
+   "id": 6,
+   "name": "Литология",
+   "version": 8,
+   "meta": {
+    "v": 1,
+    "name": "Литология",
+    "boundary": {
+     "box": [
+      0.0,
+      0.0,
+      120.0,
+      420.0,
+      420.0,
+      330.0
+     ],
+     "wireframe_id": null,
+     "dtm_id": null
+    },
+    "h": 8.0,
+    "levels": 2,
+    "kernel": "linear",
+    "kernel_radius": null,
+    "smoothing": {
+     "mode": "manual",
+     "s": null
+    },
+    "trend_id": null,
+    "anisotropy": null,
+    "pou": {
+     "n_patch": 1000,
+     "n_min": 100,
+     "delta": 0.25
+    },
+    "data": {
+     "set_id": 1,
+     "table": "1",
+     "field": "CODE",
+     "d_max": 30.0,
+     "step": 5.0
+    },
+    "groups": [
+     {
+      "id": 1,
+      "name": "INT",
+      "type": "domain",
+      "codes": [
+       "INT"
+      ],
+      "relation": "conformable",
+      "faults": [],
+      "params": {}
+     },
+     {
+      "id": 3,
+      "name": "SS",
+      "type": "domain",
+      "codes": [
+       "SS"
+      ],
+      "relation": "conformable",
+      "faults": [],
+      "params": {}
+     }
+    ],
+    "manual": [],
+    "post": {
+     "v_min": 1.0,
+     "simplify": false,
+     "clip": "boundary",
+     "clip_id": null
+    },
+    "h_used": 8.0,
+    "algo": "rbf-1",
+    "created_at": "2026-11-25T22:27:12.701240+00:00",
+    "extent": [
+     0.0,
+     0.0,
+     120.0,
+     420.0,
+     420.0,
+     330.0
+    ],
+    "inputs": [
+     {
+      "kind": "dh_set",
+      "id": 1,
+      "fp": "traj:1:2:2:minimum_curvature",
+      "name": "Скважины"
+     },
+     {
+      "kind": "dh_table",
+      "id": 1,
+      "fp": "66121540e8336:1",
+      "name": "Литология"
+     }
+    ],
+    "state": "ready",
+    "error": null,
+    "outputs": [
+     {
+      "wireframe_id": 7,
+      "kind": "surface",
+      "group": 1,
+      "wing": null,
+      "name": "Литология · INT · поверхность"
+     },
+     {
+      "wireframe_id": 8,
+      "kind": "body",
+      "group": 1,
+      "wing": null,
+      "name": "Литология · INT"
+     },
+     {
+      "wireframe_id": 9,
+      "kind": "surface",
+      "group": 3,
+      "wing": null,
+      "name": "Литология · SS · поверхность"
+     },
+     {
+      "wireframe_id": 10,
+      "kind": "body",
+      "group": 3,
+      "wing": null,
+      "name": "Литология · SS"
+     },
+     {
+      "wireframe_id": 11,
+      "kind": "body",
+      "group": null,
+      "wing": null,
+      "name": "Литология · Прочее"
+     }
+    ],
+    "stats": {
+     "points": 3316,
+     "patches": 16,
+     "max_residual": 2.653877118063974e-12,
+     "cond_max": 24344100.0,
+     "eta_max": 0.0,
+     "seconds": 3.445,
+     "reused": {
+      "patches": 0,
+      "bricks": 0
+     },
+     "by_group": [
+      {
+       "group": 1,
+       "wing": null,
+       "points": 1241,
+       "patches": 8,
+       "h_bar": 9.553846153846138,
+       "max_residual": 1.744382416291046e-12,
+       "cond_max": 113567.0,
+       "eta_min": 0.0,
+       "eta_max": 0.0,
+       "support_share": null
+      },
+      {
+       "group": 3,
+       "wing": null,
+       "points": 2075,
+       "patches": 8,
+       "h_bar": 4.999999999999988,
+       "max_residual": 2.653877118063974e-12,
+       "cond_max": 24344100.0,
+       "eta_min": 0.0,
+       "eta_max": 0.0,
+       "support_share": null
+      }
+     ],
+     "balance": 0.0
+    },
+    "last_run": {
+     "at": "2026-11-25T22:27:17.101056+00:00",
+     "job": 1,
+     "mode": "build",
+     "seconds": 3.445,
+     "params": "09b8f78b26a604fd97eba4730219c0da3a1b99b01469750db71c94af2518d9de"
+    },
+    "versions": {
+     "numpy": "2.3.5",
+     "scipy": "1.18.1",
+     "numba": "0.68.1",
+     "skimage": "0.26.0",
+     "manifold3d": "3.5.4"
+    }
+   },
+   "state": "ready",
+   "error": null,
+   "stale": true,
+   "stale_reason": "изменены параметры",
+   "source_lost": false,
+   "outputs": [
+    {
+     "wireframe_id": 7,
+     "kind": "surface",
+     "group": 1,
+     "wing": null,
+     "threshold": null,
+     "name": "Литология · INT · поверхность",
+     "volume": 404528.69131449674,
+     "area": 27711.09808325366,
+     "triangles": 1312
+    },
+    {
+     "wireframe_id": 8,
+     "kind": "body",
+     "group": 1,
+     "wing": null,
+     "threshold": null,
+     "name": "Литология · INT",
+     "volume": 404528.69131449674,
+     "area": 27711.09808325366,
+     "triangles": 1312
+    },
+    {
+     "wireframe_id": 9,
+     "kind": "surface",
+     "group": 3,
+     "wing": null,
+     "threshold": null,
+     "name": "Литология · SS · поверхность",
+     "volume": null,
+     "area": 360635.1874146686,
+     "triangles": 14530
+    },
+    {
+     "wireframe_id": 10,
+     "kind": "body",
+     "group": 3,
+     "wing": null,
+     "threshold": null,
+     "name": "Литология · SS",
+     "volume": 6451819.61235178,
+     "area": 381887.5377142993,
+     "triangles": 14942
+    },
+    {
+     "wireframe_id": 11,
+     "kind": "body",
+     "group": null,
+     "wing": null,
+     "threshold": null,
+     "name": "Литология · Прочее",
+     "volume": 30187651.696333725,
+     "area": 1072693.9351982917,
+     "triangles": 16162
+    }
+   ],
+   "created_at": "2026-11-25T22:27:12.701240Z",
+   "updated_at": "2026-11-25T22:27:17.239450Z"
+  }
+ },
+ "update_submit": {
+  "status": 200,
+  "body": {
+   "source": "project",
+   "id": 2
+  }
+ },
+ "update_result": {
+  "status": 200,
+  "body": {
+   "model_id": 6,
+   "version": 8,
+   "state": "ready",
+   "mode": "update",
+   "outputs": [
+    {
+     "wireframe_id": 7,
+     "kind": "surface",
+     "group": 1,
+     "wing": null,
+     "threshold": null,
+     "name": "Литология · INT · поверхность",
+     "volume": 404528.69131449674,
+     "area": 27711.09808325366,
+     "triangles": 1312
+    },
+    {
+     "wireframe_id": 8,
+     "kind": "body",
+     "group": 1,
+     "wing": null,
+     "threshold": null,
+     "name": "Литология · INT",
+     "volume": 404528.69131449674,
+     "area": 27711.09808325366,
+     "triangles": 1312
+    },
+    {
+     "wireframe_id": 9,
+     "kind": "surface",
+     "group": 3,
+     "wing": null,
+     "threshold": null,
+     "name": "Литология · SS · поверхность",
+     "volume": null,
+     "area": 360635.056095558,
+     "triangles": 14522
+    },
+    {
+     "wireframe_id": 10,
+     "kind": "body",
+     "group": 3,
+     "wing": null,
+     "threshold": null,
+     "name": "Литология · SS",
+     "volume": 6451819.615191477,
+     "area": 381887.40639518865,
+     "triangles": 14934
+    },
+    {
+     "wireframe_id": 11,
+     "kind": "body",
+     "group": null,
+     "wing": null,
+     "threshold": null,
+     "name": "Литология · Прочее",
+     "volume": 30187651.693494033,
+     "area": 1072693.8038791812,
+     "triangles": 16154
+    }
+   ],
+   "stats": {
+    "points": 3316,
+    "patches": 16,
+    "max_residual": 2.653877118063974e-12,
+    "cond_max": 24344100.0,
+    "eta_max": 0.0,
+    "seconds": 0.405,
+    "reused": {
+     "patches": 16,
+     "bricks": 4608
+    },
+    "by_group": [
+     {
+      "group": 1,
+      "wing": null,
+      "points": 1241,
+      "patches": 8,
+      "h_bar": 9.553846153846138,
+      "max_residual": 1.744382416291046e-12,
+      "cond_max": 113567.0,
+      "eta_min": 0.0,
+      "eta_max": 0.0,
+      "support_share": null
+     },
+     {
+      "group": 3,
+      "wing": null,
+      "points": 2075,
+      "patches": 8,
+      "h_bar": 4.999999999999988,
+      "max_residual": 2.653877118063974e-12,
+      "cond_max": 24344100.0,
+      "eta_min": 0.0,
+      "eta_max": 0.0,
+      "support_share": null
+     }
+    ],
+    "balance": 0.0
+   },
+   "reused": {
+    "patches": 16,
+    "bricks": 4608
+   },
+   "journal": [
+    "Группа «INT»: точек 1241, участков 8, η = 0, наибольшая обусловленность 113567, наибольшая невязка в данных 1,74438e-12.",
+    "Группа «INT»: тело 404529 м³, контакт 27711,1 м².",
+    "Группа «SS»: точек 2075, участков 8, η = 0, наибольшая обусловленность 2,43441e+07, наибольшая невязка в данных 2,65388e-12.",
+    "Группа «SS»: Удалены части меньше V_min = 1 м³: полостей — 1 (суммарно 0,003 м³).",
+    "Группа «SS»: тело 6,45182e+06 м³, контакт 360635 м².",
+    "«Прочее»: объём 3,01877e+07 м³.",
+    "Сумма объёмов доменов и «Прочее» отличается от объёма границы на 0 (доля).",
+    "Обновление: из кеша взято участков 16 из 16, кирпичей 4608."
+   ],
+   "stages": {
+    "Данные": 0.036,
+    "Тела": 0.083,
+    "Участки": 0.029,
+    "Изоповерхности": 0.257,
+    "Проверки": 0.001,
+    "Запись": 0.115,
+    "total": 0.52
+   },
+   "events": [
+    [
+     "implicit.changed",
+     {
+      "kind": "implicit_model",
+      "id": 6
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 7
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 8
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 9
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 10
+     }
+    ],
+    [
+     "objects.changed",
+     {
+      "kind": "wireframe",
+      "id": 11
+     }
+    ]
+   ]
+  }
+ },
+ "to_wireframe": {
+  "status": 200,
+  "body": {
+   "wireframe_id": 12,
+   "name": "Литология · INT (копия)"
+  }
+ },
+ "check": {
+  "status": 200,
+  "body": {
+   "model": {
+    "id": 6,
+    "name": "Литология",
+    "version": 8,
+    "state": "ready",
+    "stale": false,
+    "stale_reason": null,
+    "source_lost": false
+   },
+   "warnings": [],
+   "group": null,
+   "n": 3316,
+   "total": 3316,
+   "max_abs_residual": 2.653877118063974e-12,
+   "highlight": 0.5,
+   "over": 0,
+   "page": 1,
+   "size": 6,
+   "sort": "source",
+   "groups": [
+    {
+     "group": 1,
+     "name": "INT",
+     "type": "domain",
+     "wing": null,
+     "threshold": null,
+     "points": 1241,
+     "method": "field",
+     "max_abs_residual": 1.744382416291046e-12,
+     "wireframes": [
+      8
+     ]
+    },
+    {
+     "group": 3,
+     "name": "SS",
+     "type": "domain",
+     "wing": null,
+     "threshold": null,
+     "points": 2075,
+     "method": "field",
+     "max_abs_residual": 2.653877118063974e-12,
+     "wireframes": [
+      10
+     ]
+    }
+   ],
+   "rows": [
+    {
+     "i": 50,
+     "group": 1,
+     "group_name": "INT",
+     "wing": null,
+     "threshold": null,
+     "type": "снаружи",
+     "source": "H001",
+     "from": 0.0,
+     "to": 35.11,
+     "vertex": null,
+     "x": 17.60373529939,
+     "y": 16.542919789194446,
+     "z": 296.2102298922072,
+     "f_model": 30.00000000000048,
+     "f_data": 30.0,
+     "residual": 4.796163466380676e-13,
+     "distance": 224.6974085959539,
+     "over": false
+    },
+    {
+     "i": 68,
+     "group": 1,
+     "group_name": "INT",
+     "wing": null,
+     "threshold": null,
+     "type": "снаружи",
+     "source": "H001",
+     "from": 0.0,
+     "to": 35.11,
+     "vertex": null,
+     "x": 19.35120589817,
+     "y": 17.58875936758334,
+     "z": 286.71068967662166,
+     "f_model": 30.000000000000274,
+     "f_data": 30.0,
+     "residual": 2.7355895326763857e-13,
+     "distance": 219.28849929785758,
+     "over": false
+    },
+    {
+     "i": 73,
+     "group": 1,
+     "group_name": "INT",
+     "wing": null,
+     "threshold": null,
+     "type": "снаружи",
+     "source": "H001",
+     "from": 0.0,
+     "to": 35.11,
+     "vertex": null,
+     "x": 21.098676496950002,
+     "y": 18.634598945972233,
+     "z": 277.21114946103614,
+     "f_model": 30.00000000000018,
+     "f_data": 30.0,
+     "residual": 1.8118839761882555e-13,
+     "distance": 214.1839018584862,
+     "over": false
+    },
+    {
+     "i": 80,
+     "group": 1,
+     "group_name": "INT",
+     "wing": null,
+     "threshold": null,
+     "type": "снаружи",
+     "source": "H001",
+     "from": 0.0,
+     "to": 35.11,
+     "vertex": null,
+     "x": 22.846147095730004,
+     "y": 19.680438524361126,
+     "z": 267.71160924545063,
+     "f_model": 29.999999999999993,
+     "f_data": 30.0,
+     "residual": -7.105427357601002e-15,
+     "distance": 209.29014662748708,
+     "over": false
+    },
+    {
+     "i": 1323,
+     "group": 3,
+     "group_name": "SS",
+     "wing": null,
+     "threshold": null,
+     "type": "снаружи",
+     "source": "H001",
+     "from": 0.0,
+     "to": 35.11,
+     "vertex": null,
+     "x": 17.649116958645727,
+     "y": 16.570080151958624,
+     "z": 295.9635276601635,
+     "f_model": 30.000000000001386,
+     "f_data": 30.0,
+     "residual": 1.3855583347321954e-12,
+     "distance": 29.362454546171264,
+     "over": false
+    },
+    {
+     "i": 1343,
+     "group": 3,
+     "group_name": "SS",
+     "wing": null,
+     "threshold": null,
+     "type": "снаружи",
+     "source": "H001",
+     "from": 0.0,
+     "to": 35.11,
+     "vertex": null,
+     "x": 18.548448620725697,
+     "y": 17.108319048199938,
+     "z": 291.0746114763705,
+     "f_model": 25.000000000000608,
+     "f_data": 25.0,
+     "residual": 6.075140390748857e-13,
+     "distance": 24.44560079992229,
+     "over": false
+    }
+   ]
+  }
+ },
+ "check_csv": {
+  "status": 200,
+  "body": {
+   "type": "text/csv; charset=utf-8",
+   "bom": true,
+   "lines": 3317,
+   "head": [
+    "№;Группа;Порог;Тип;Источник;От, м;До, м;Вершина;X;Y;Z;f модели;f данных;Невязка;Расстояние до каркаса, м;Выше порога",
+    "50;INT;;снаружи;H001;0;35,11;;17,60373529939;16,542919789194446;296,2102298922072;30,00000000000048;30;4,796163466380676e-13;224,6974085959539;",
+    "68;INT;;снаружи;H001;0;35,11;;19,35120589817;17,58875936758334;286,71068967662166;30,000000000000274;30;2,7355895326763857e-13;219,28849929785758;"
+   ]
+  }
+ },
+ "check_bad": {
+  "status": 422,
+  "body": {
+   "param": "sort",
+   "code": "bad_param",
+   "message": "Сортировка: неизвестное значение «no».",
+   "hint": "Допустимо: residual, source."
+  }
+ },
+ "support": {
+  "status": 200,
+  "body": {
+   "model": {
+    "id": 6,
+    "name": "Литология",
+    "version": 8,
+    "state": "ready",
+    "stale": false,
+    "stale_reason": null,
+    "source_lost": false
+   },
+   "warnings": [],
+   "threshold": 60.0,
+   "d_max": 30.0,
+   "recorded": true,
+   "surfaces": [
+    {
+     "wireframe_id": 7,
+     "name": "Литология · INT · поверхность",
+     "group": 1,
+     "wing": null,
+     "kind": "surface",
+     "vertices": 658,
+     "area": 27711.098083253655,
+     "area_beyond": 133.29814719000106,
+     "share_beyond": 0.004810280227421073,
+     "max_distance": 61.259282860666076
+    },
+    {
+     "wireframe_id": 9,
+     "name": "Литология · SS · поверхность",
+     "group": 3,
+     "wing": null,
+     "kind": "surface",
+     "vertices": 7433,
+     "area": 360635.056095558,
+     "area_beyond": 0.0,
+     "share_beyond": 0.0,
+     "max_distance": 46.8669820009984
+    }
+   ]
+  }
+ },
+ "support_one": {
+  "status": 200,
+  "body": {
+   "model": {
+    "id": 6,
+    "name": "Литология",
+    "version": 8,
+    "state": "ready",
+    "stale": false,
+    "stale_reason": null,
+    "source_lost": false
+   },
+   "warnings": [],
+   "threshold": 60.0,
+   "d_max": 30.0,
+   "recorded": true,
+   "surfaces": [
+    {
+     "wireframe_id": 7,
+     "name": "Литология · INT · поверхность",
+     "group": 1,
+     "wing": null,
+     "kind": "surface",
+     "vertices": 658,
+     "area": 27711.098083253655,
+     "area_beyond": 133.29814719000106,
+     "share_beyond": 0.004810280227421073,
+     "max_distance": 61.259282860666076
+    }
+   ],
+   "values": [
+    35.90011933802379,
+    33.707878236273096,
+    35.37197152517701,
+    35.6995016968515,
+    40.01111436634153,
+    33.196671693977926,
+    39.70724470659007,
+    30.524843355302853,
+    32.527345949040075,
+    41.426858982800915,
+    29.7545356922311,
+    33.2000276699662
+   ],
+   "values_n": 658
+  }
+ },
+ "support_f4": {
+  "status": 200,
+  "body": {
+   "type": "application/octet-stream",
+   "bytes": 2632,
+   "head": {
+    "threshold": 60.0,
+    "surface": {
+     "wireframe_id": 7,
+     "name": "Литология · INT · поверхность",
+     "group": 1,
+     "wing": null,
+     "kind": "surface",
+     "vertices": 658,
+     "area": 27711.098083253655,
+     "area_beyond": 133.29814719000106,
+     "share_beyond": 0.004810280227421073,
+     "max_distance": 61.259282860666076
+    },
+    "warnings": [],
+    "recorded": true
+   }
+  }
+ },
+ "support_mesh": {
+  "status": 200,
+  "body": {
+   "type": "application/octet-stream",
+   "bytes": 26272,
+   "head": {
+    "threshold": 60.0,
+    "surface": {
+     "wireframe_id": 7,
+     "name": "Литология · INT · поверхность",
+     "group": 1,
+     "wing": null,
+     "kind": "surface",
+     "vertices": 658,
+     "area": 27711.098083253655,
+     "area_beyond": 133.29814719000106,
+     "share_beyond": 0.004810280227421073,
+     "max_distance": 61.259282860666076
+    },
+    "warnings": [],
+    "recorded": true,
+    "mesh": {
+     "origin": [
+      197.0,
+      188.0,
+      199.0
+     ],
+     "vertices": 658,
+     "triangles": 1312
+    }
+   }
+  }
+ },
+ "support_bad": {
+  "status": 422,
+  "body": {
+   "param": "threshold",
+   "code": "bad_param",
+   "message": "Порог опоры D_оп: значение вне диапазона больше 0 до 100000 м.",
+   "hint": "Задайте больше 0 до 100000 м."
+  }
+ },
+ "compare_holes": {
+  "status": 200,
+  "body": {
+   "model": {
+    "id": 6,
+    "name": "Литология",
+    "stale_reason": null
+   },
+   "table": {
+    "id": 1,
+    "name": "Литология",
+    "field": "CODE"
+   },
+   "model_codes": [
+    "INT",
+    "SS",
+    "Прочее",
+    "Вне модели"
+   ],
+   "other_col": 2,
+   "outside_col": 3,
+   "data_codes": [
+    "ALV",
+    "GR",
+    "INT",
+    "SH",
+    "SS",
+    "VN"
+   ],
+   "no_code_row": null,
+   "length": [
+    [
+     0.0,
+     0.0,
+     4097.699999999998,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     240.26000000000008,
+     1.1299999999999955
+    ],
+    [
+     265.41,
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     3166.5900000000006,
+     40.41999999999999
+    ],
+    [
+     0.0,
+     4011.739999999999,
+     0.0,
+     40.7
+    ],
+    [
+     0.0,
+     12.670000000000002,
+     45.080000000000005,
+     0.0
+    ]
+   ],
+   "count": [
+    [
+     0,
+     0,
+     106,
+     0
+    ],
+    [
+     0,
+     0,
+     30,
+     1
+    ],
+    [
+     5,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     98,
+     1
+    ],
+    [
+     0,
+     102,
+     0,
+     1
+    ],
+    [
+     0,
+     3,
+     10,
+     0
+    ]
+   ],
+   "agree": [
+    [
+     false,
+     false,
+     false,
+     false
+    ],
+    [
+     false,
+     false,
+     false,
+     false
+    ],
+    [
+     true,
+     false,
+     false,
+     false
+    ],
+    [
+     false,
+     false,
+     false,
+     false
+    ],
+    [
+     false,
+     true,
+     false,
+     false
+    ],
+    [
+     false,
+     false,
+     false,
+     false
+    ]
+   ],
+   "agree_length": 4277.149999999999,
+   "total_length": 11921.699999999997,
+   "coded_length": 11921.699999999997,
+   "agree_share": 0.3587701418421869,
+   "no_code": {
+    "count": 0,
+    "length": 0.0
+   },
+   "no_trajectory": {
+    "holes": 0,
+    "intervals": 0,
+    "length": 0.0
+   },
+   "intervals": 357,
+   "holes": 100,
+   "notes": [],
+   "mismatches": {
+    "page": 1,
+    "size": 6,
+    "total": 250,
+    "rows": [
+     {
+      "hole": "H096",
+      "hole_id": 96,
+      "from": 0.0,
+      "to": 59.33,
+      "depth": 29.665,
+      "data_code": "ALV",
+      "model_code": "Прочее",
+      "length": 59.33
+     },
+     {
+      "hole": "H059",
+      "hole_id": 59,
+      "from": 0.0,
+      "to": 57.48,
+      "depth": 28.74,
+      "data_code": "ALV",
+      "model_code": "Прочее",
+      "length": 57.48
+     },
+     {
+      "hole": "H040",
+      "hole_id": 40,
+      "from": 0.0,
+      "to": 57.3,
+      "depth": 28.65,
+      "data_code": "ALV",
+      "model_code": "Прочее",
+      "length": 57.3
+     },
+     {
+      "hole": "H005",
+      "hole_id": 5,
+      "from": 0.0,
+      "to": 56.91,
+      "depth": 28.455,
+      "data_code": "ALV",
+      "model_code": "Прочее",
+      "length": 56.91
+     },
+     {
+      "hole": "H043",
+      "hole_id": 43,
+      "from": 0.0,
+      "to": 56.42,
+      "depth": 28.21,
+      "data_code": "ALV",
+      "model_code": "Прочее",
+      "length": 56.42
+     },
+     {
+      "hole": "H050",
+      "hole_id": 50,
+      "from": 0.0,
+      "to": 56.23,
+      "depth": 28.115,
+      "data_code": "ALV",
+      "model_code": "Прочее",
+      "length": 56.23
+     }
+    ]
+   }
+  }
+ },
+ "compare_bad": {
+  "status": 404,
+  "body": {
+   "code": "table_not_found",
+   "message": "Таблица не найдена.",
+   "hint": "Выберите интервальную таблицу набора."
+  }
+ },
+ "from_model_submit": {
+  "status": 200,
+  "body": {
+   "source": "project",
+   "id": 3
+  }
+ },
+ "from_model_result": {
+  "status": 200,
+  "body": {
+   "set_id": 1,
+   "table_id": 3,
+   "name": "Модель на скважины",
+   "rows": 306,
+   "holes": 100,
+   "no_trajectory": 0,
+   "report": {
+    "mode": "bodies",
+    "model": {
+     "id": 6,
+     "name": "Литология",
+     "stale_reason": null
+    },
+    "bodies": [
+     {
+      "name": "Литология · INT",
+      "triangles": 1312,
+      "holes": 5,
+      "inside": 0,
+      "length": 252.71329477682286,
+      "code": "INT"
+     },
+     {
+      "name": "Литология · SS",
+      "triangles": 14934,
+      "holes": 100,
+      "inside": 0,
+      "length": 4067.5797003762136,
+      "code": "SS"
+     }
+    ],
+    "codes": [
+     {
+      "code": "INT",
+      "rows": 5,
+      "length": 252.71329477682286
+     },
+     {
+      "code": "SS",
+      "rows": 100,
+      "length": 4067.5797003762136
+     }
+    ],
+    "holes": 100,
+    "no_trajectory": 0,
+    "stretches": 105,
+    "length_inside": 4320.292995153036,
+    "length": 11921.7,
+    "rows": 306,
+    "journal": [],
+    "seconds": 0.104
+   },
+   "journal": [],
+   "events": [
+    [
+     "drillholes.changed",
+     {
+      "set_id": 1,
+      "table": "3",
+      "rev": 1
+     }
+    ]
+   ]
+  }
+ },
+ "from_model_exists": {
+  "status": 409,
+  "body": {
+   "name": "Модель на скважины",
+   "suggested": "Модель на скважины (2)",
+   "code": "table_exists",
+   "message": "В наборе уже есть таблица «Модель на скважины».",
+   "hint": "Задайте другое название."
+  }
+ },
+ "from_model_bad": {
+  "status": 422,
+  "body": {
+   "param": "model_id",
+   "code": "bad_param",
+   "message": "Выберите одно: модель, каркасы или поле блочной модели.",
+   "hint": "Задайте ровно одно из model_id, mesh_ids, block_model_id."
+  }
+ },
+ "build_failed": {
+  "status": 200,
+  "body": {
+   "status": "failed",
+   "error": {
+    "code": "no_contacts",
+    "message": "В данных группы нет контактов: поверхность не определена.",
+    "hint": "Проверьте коды группы и таблицу или добавьте ручные точки и линии."
+   }
+  }
+ },
+ "model_error": {
+  "status": 200,
+  "body": {
+   "id": 13,
+   "name": "Не построится",
+   "version": 1,
+   "meta": {
+    "v": 1,
+    "name": "Не построится",
+    "boundary": {
+     "box": [
+      0.0,
+      0.0,
+      120.0,
+      420.0,
+      420.0,
+      330.0
+     ],
+     "wireframe_id": null,
+     "dtm_id": null
+    },
+    "h": 8.0,
+    "levels": 2,
+    "kernel": "linear",
+    "kernel_radius": null,
+    "smoothing": {
+     "mode": "manual",
+     "s": null
+    },
+    "trend_id": null,
+    "anisotropy": null,
+    "pou": {
+     "n_patch": 1000,
+     "n_min": 100,
+     "delta": 0.25
+    },
+    "data": {
+     "set_id": 1,
+     "table": "1",
+     "field": "CODE",
+     "d_max": 30.0,
+     "step": 5.0
+    },
+    "groups": [
+     {
+      "id": 1,
+      "name": "INT",
+      "type": "domain",
+      "codes": [
+       "INT"
+      ],
+      "relation": "conformable",
+      "faults": [],
+      "params": {}
+     },
+     {
+      "id": 2,
+      "name": "Призрак",
+      "type": "domain",
+      "codes": [
+       "НЕТ"
+      ],
+      "relation": "conformable",
+      "faults": [],
+      "params": {}
+     }
+    ],
+    "manual": [],
+    "post": {
+     "v_min": 0.0,
+     "simplify": false,
+     "clip": "boundary",
+     "clip_id": null
+    },
+    "h_used": 8.0,
+    "algo": "rbf-1",
+    "created_at": "2026-11-25T22:27:18.442736+00:00",
+    "extent": [
+     0.0,
+     0.0,
+     120.0,
+     420.0,
+     420.0,
+     330.0
+    ],
+    "inputs": [
+     {
+      "kind": "dh_set",
+      "id": 1,
+      "fp": "traj:1:3:3:minimum_curvature",
+      "name": "Скважины"
+     },
+     {
+      "kind": "dh_table",
+      "id": 1,
+      "fp": "66121540e8336:1",
+      "name": "Литология"
+     }
+    ],
+    "state": "error",
+    "error": {
+     "code": "no_contacts",
+     "message": "В данных группы нет контактов: поверхность не определена.",
+     "hint": "Проверьте коды группы и таблицу или добавьте ручные точки и линии.",
+     "group": 2
+    },
+    "outputs": [],
+    "stats": null,
+    "last_run": null,
+    "versions": {
+     "numpy": "2.3.5",
+     "scipy": "1.18.1",
+     "numba": "0.68.1",
+     "skimage": "0.26.0",
+     "manifold3d": "3.5.4"
+    }
+   },
+   "state": "error",
+   "error": {
+    "code": "no_contacts",
+    "message": "В данных группы нет контактов: поверхность не определена.",
+    "hint": "Проверьте коды группы и таблицу или добавьте ручные точки и линии.",
+    "group": 2
+   },
+   "stale": false,
+   "stale_reason": null,
+   "source_lost": false,
+   "outputs": [],
+   "created_at": "2026-11-25T22:27:18.442736Z",
+   "updated_at": "2026-11-25T22:27:18.442736Z"
+  }
+ },
+ "delete_conflict": {
+  "status": 409,
+  "body": {
+   "usage": [
+    {
+     "id": 13,
+     "kind": "implicit_model",
+     "name": "Ссылается на выход",
+     "role": "output"
+    }
+   ],
+   "code": "in_use",
+   "message": "Выходы модели используются: «Ссылается на выход».",
+   "hint": "Удалите или измените эти объекты, затем удалите модель."
+  }
+ },
+ "delete": {
+  "status": 200,
+  "body": {
+   "deleted": 6,
+   "wireframes": [
+    7,
+    8,
+    9,
+    10,
+    11
+   ]
+  }
+ },
+ "read_only": {
+  "status": 423,
+  "body": {
+   "code": "project_read_only",
+   "message": "Проект открыт только для чтения: он уже открыт в другом окне BedrockForge.",
+   "hint": "Закройте проект в другом окне и откройте его заново."
+  }
+ },
+ "build_iso_error": {
+  "status": 200,
+  "body": {
+   "model_id": 7,
+   "version": 4,
+   "state": "error",
+   "outputs": [
+    {
+     "wireframe_id": 301,
+     "kind": "surface",
+     "group": 1,
+     "wing": null,
+     "threshold": null,
+     "name": "Литология · Дайка · поверхность",
+     "volume": null,
+     "area": 81234.5,
+     "triangles": 162004
+    },
+    {
+     "wireframe_id": 302,
+     "kind": "body",
+     "group": 1,
+     "wing": null,
+     "threshold": null,
+     "name": "Литология · Дайка",
+     "volume": 1250000.0,
+     "area": 80911.2,
+     "triangles": 160220
+    },
+    {
+     "wireframe_id": 305,
+     "kind": "body",
+     "group": null,
+     "wing": null,
+     "threshold": null,
+     "name": "Литология · Прочее",
+     "volume": 310000000.0,
+     "area": 2900000.0,
+     "triangles": 410332
+    }
+   ],
+   "stats": {
+    "points": 41230,
+    "patches": 57,
+    "max_residual": 3.2e-09,
+    "cond_max": 24000000.0,
+    "eta_max": 0.0,
+    "seconds": 41.7,
+    "reused": {
+     "patches": 0,
+     "bricks": 0
+    },
+    "by_group": [
+     {
+      "group": 1,
+      "wing": null,
+      "points": 8120,
+      "patches": 12,
+      "h_bar": 1.9,
+      "max_residual": 3.2e-09,
+      "cond_max": 24000000.0,
+      "eta_min": 0.0,
+      "eta_max": 0.0,
+      "support_share": 0.12
+     }
+    ]
+   },
+   "error": {
+    "code": "iso_check",
+    "group": 3,
+    "message": "Поверхность группы «Алевролит» не прошла проверки: самопересечения.",
+    "hint": "Уменьшите шаг h или проверьте данные группы."
+   }
+  }
+ },
+ "trend_structural_post": {
+  "status": 200,
+  "body": {
+   "id": 9,
+   "name": "Структурный тренд",
+   "version": 1
+  }
+ },
+ "trend_discs": {
+  "status": 200,
+  "body": {
+   "radius": 200.0,
+   "discs": {
+    "x": [
+     10.0
+    ],
+    "y": [
+     5.0
+    ],
+    "z": [
+     -12.0
+    ],
+    "nx": [
+     0.0
+    ],
+    "ny": [
+     0.5
+    ],
+    "nz": [
+     0.866025
+    ]
+   }
+  }
+ },
+ "relations_b": {
+  "status": 200,
+  "body": {
+   "id": 7,
+   "version": 5
+  }
+ },
+ "fault_post_b": {
+  "status": 200,
+  "body": {
+   "id": 7,
+   "version": 6,
+   "group": {
+    "id": 6,
+    "name": "Разлом 2",
+    "type": "fault",
+    "codes": [
+     "F2"
+    ],
+    "relation": "conformable",
+    "faults": [],
+    "params": {
+     "radius": null
+    }
+   }
+  }
+ },
+ "vein_system_result_b": {
+  "status": 200,
+  "body": {
+   "model_id": 7,
+   "version": 7,
+   "state": "ready",
+   "outputs": [
+    {
+     "line_layer_id": 501,
+     "kind": "line",
+     "group": 5,
+     "wing": null,
+     "threshold": null,
+     "name": "Жилы · пересечение V2 × V1"
+    }
+   ],
+   "stats": {
+    "vein_pairs": [
+     {
+      "a": "V2",
+      "b": "V1",
+      "line_length": 182.4,
+      "volume_common": 731.2
+     }
+    ]
+   }
+  }
+ },
+ "planned_hole_b": {
+  "status": 200,
+  "body": {
+   "id": 15,
+   "name": "ПС-1",
+   "version": 1,
+   "meta": {
+    "v": 1,
+    "collar": [
+     100.0,
+     200.0,
+     50.0
+    ],
+    "azimuth": 90.0,
+    "dip": -60.0,
+    "length": 250.0,
+    "change": null,
+    "target": [
+     300.0,
+     200.0,
+     -150.0
+    ],
+    "method": "minimum_curvature",
+    "set_id": 3
+   },
+   "trajectory": {
+    "depth": [
+     0.0,
+     1.0
+    ],
+    "x": [
+     100.0,
+     100.5
+    ],
+    "y": [
+     200.0,
+     200.0
+    ],
+    "z": [
+     50.0,
+     49.134
+    ]
+   }
+  }
+ },
+ "planned_evaluate_b": {
+  "status": 200,
+  "body": {
+   "intervals": [
+    {
+     "from": 0.0,
+     "to": 120.5,
+     "code": "Песчаник"
+    },
+    {
+     "from": 120.5,
+     "to": 131.0,
+     "code": "Дайка"
+    }
+   ],
+   "nearest": [
+    {
+     "hole": "B-7",
+     "hole_id": 207,
+     "distance": 38.2,
+     "depth": 212.0
+    }
+   ]
+  }
+ },
+ "planned_compare_b": {
+  "status": 200,
+  "body": {
+   "rows": [
+    {
+     "depth": 0.0,
+     "dx": 0.0,
+     "dy": 0.0,
+     "dz": 0.0,
+     "d": 0.0
+    }
+   ],
+   "max": 0.0
+  }
+ }
+}

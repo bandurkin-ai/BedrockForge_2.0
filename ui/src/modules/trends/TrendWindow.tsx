@@ -6,6 +6,8 @@
  * a drag fills the form. «Сохранить» — `trend.save` through the registry (`bind.saveWindow`); «Где используется»,
  * «Удалить…» — `trend.usage`, `trend.delete`. Floating, not modal; a window with changes asks before it closes.
  * `SaveAsTrendButton` — «Сохранить как тренд» of the window «Вариография» (its working model, `trendArgsOfWork`).
+ * A structural trend (Д-15, Э19; `StructuralForm`): the kind is chosen when the trend is new; the source (measurements
+ * or a wireframe), R_тр, the ratios, the size (the diameter of a disc), the colour; «Диски в 3D» — `trend.show`.
  */
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useApp } from "../../shell/AppContext";
@@ -14,11 +16,14 @@ import css from "../../shell/PropsParts.module.css";
 import { errorText } from "../../shell/props";
 import type { Store } from "../../shell/store";
 import { closeWindow, setCloseGuard } from "../../shell/windows";
+import { viewStore } from "../scene/bind";
 import { loadModel, loadModels } from "../variography/api";
 import { effectiveStructures, type Structure } from "../variography/model";
 import { chosenStructure, setModels, variographyStore, workOf } from "../variography/state";
 import { saveAsTrend, saveWindow } from "./bind";
-import { checkValues, editOf, findTrend, originText, setEdit, trendArgsOfWork, trendsStore, valuesOfStructure, type TrendParam, type TrendValues } from "./state";
+import { StructuralForm } from "./StructuralForm";
+import { checkSource } from "./structural";
+import { checkValues, discInfoText, editOf, ELLIPSOIDS_KEY, findTrend, originText, setEdit, shownObjects, trendArgsOfWork, trendsStore, valuesOfStructure, type TrendParam, type TrendValues } from "./state";
 
 /** A value of a store (with the server snapshot: the window renders on the server in the tests too). */
 function useSel<T, R>(store: Store<T>, select: (s: T) => R): R {
@@ -45,6 +50,8 @@ const RATIOS: FieldDef[] = [
   { key: "r3", label: "a3 / a1", param: "r3", hint: "Отношение малой оси к большой, больше 0" },
   { key: "size", label: "Размер показа a1, м", param: "size", hint: "Длина большой оси эллипсоида в 3D, м (на матрицу A не влияет)" },
 ];
+/** The shape of a structural trend: no angles; the size is the diameter of a disc in 3D. */
+const RATIOS_STRUCTURAL: FieldDef[] = [RATIOS[0], RATIOS[1], { key: "size", label: "Диаметр диска в 3D, м", param: "size", hint: "Диаметр диска замера в 3D, м (на оси в точках не влияет)" }];
 const CENTRE: FieldDef[] = [
   { key: "cx", label: "X, м", param: "centre", hint: "Центр эллипсоида в 3D; пусто — центр вида" },
   { key: "cy", label: "Y, м", param: "centre", hint: "Центр эллипсоида в 3D; пусто — центр вида" },
@@ -140,7 +147,11 @@ export function TrendWindow({ winId }: { winId: string }) {
   const models = useSel(variographyStore, (s) => s.models);
   const [note, setNote] = useState<{ text: string; error: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
-  const checked = useMemo(() => (edit ? checkValues(edit.values) : null), [edit]);
+  const structural = edit?.kind === "structural";
+  const checked = useMemo(() => (edit ? checkValues(structural ? { ...edit.values, ang1: "0", ang2: "0", ang3: "0", cx: "", cy: "", cz: "" } : edit.values) : null), [edit, structural]);
+  const source = useMemo(() => (edit && structural ? checkSource(edit.structural) : null), [edit, structural]);
+  const discInfo = useSel(trendsStore, (s) => (edit?.trendId != null ? s.discs?.[edit.trendId] : undefined));
+  const viewKey = useSyncExternalStore(viewStore.subscribe, () => viewStore.get()[ELLIPSOIDS_KEY], () => viewStore.get()[ELLIPSOIDS_KEY]);
   const reason = app.registry.reason("trend.save");
 
   useEffect(() => {
@@ -151,6 +162,7 @@ export function TrendWindow({ winId }: { winId: string }) {
   if (!edit) return <div className={css.panel}>Окно тренда не готово.</div>;
   const stored = edit.trendId !== null ? findTrend(edit.trendId) : undefined;
   const bad = checked && !checked.ok ? checked.param : null;
+  const problem = checked && !checked.ok ? checked.error : source && !source.ok ? source.error : null;
   const change = (k: keyof TrendValues, v: string) => setEdit(winId, (e) => ({ values: { ...e.values, [k]: v }, dirty: true, fromModel: SHAPE_KEYS.includes(k) ? null : e.fromModel }));
   const act = async (fn: () => Promise<string | null>) => {
     setBusy(true);
@@ -181,9 +193,9 @@ export function TrendWindow({ winId }: { winId: string }) {
       setEdit(winId, (e) => ({ values: valuesOfStructure(e.values, s), origin: { type: "model", model_id: model, structure }, fromModel: { model_id: model, structure }, dirty: true }));
       return null;
     });
-  const run = (id: string) => act(async () => {
+  const run = (id: string, extra: Record<string, unknown> = {}) => act(async () => {
     if (edit.trendId === null) return null;
-    const r = await app.registry.execute(id, { trend_id: edit.trendId }, "user");
+    const r = await app.registry.execute(id, { trend_id: edit.trendId, ...extra }, "user");
     return r.ok ? null : r.result;
   });
   const modelName = (id: number) => models.find((m) => m.id === id)?.name ?? null;
@@ -192,20 +204,49 @@ export function TrendWindow({ winId }: { winId: string }) {
     <div className={css.panel} style={{ padding: 10 }} data-testid={`trend-window-${winId}`}>
       <label className={css.field}>
         <span>Имя</span>
-        <input className={css.input} value={edit.values.name} placeholder={edit.fromModel ? "Тренд · ‹модель›" : "Тренд"} data-testid={`trend-name-${winId}`} onChange={(e) => change("name", e.target.value)} />
+        <input className={css.input} value={edit.values.name} placeholder={structural ? "Структурный тренд" : edit.fromModel ? "Тренд · ‹модель›" : "Тренд"} data-testid={`trend-name-${winId}`} onChange={(e) => change("name", e.target.value)} />
       </label>
-      <p className={css.note} data-testid={`trend-origin-${winId}`}>
-        Происхождение: {originText(edit.origin, modelName)}
-        {stored?.used ? " · используется" : ""}
-      </p>
+      <div className={css.row} role="radiogroup" aria-label="Вид тренда" data-testid={`trend-kind-${winId}`}>
+        {(["global", "structural"] as const).map((k) => (
+          <label key={k} className={css.check} title={k === "global" ? "Одни оси на всё месторождение: углы и отношения" : "Оси меняются от точки к точке по замерам α, Aп или опорному каркасу (8.9.2)"}>
+            <input type="radio" name={`trend-kind-${winId}`} checked={edit.kind === k} disabled={edit.trendId !== null} data-testid={`trend-kind-${k}-${winId}`} onChange={() => setEdit(winId, { kind: k, dirty: true })} />
+            {k === "global" ? "Глобальный" : "Структурный"}
+          </label>
+        ))}
+      </div>
+      {!structural && (
+        <p className={css.note} data-testid={`trend-origin-${winId}`}>
+          Происхождение: {originText(edit.origin, modelName)}
+          {stored?.used ? " · используется" : ""}
+        </p>
+      )}
+      {structural && stored?.used && <p className={css.note}>Используется: изменение источника пересчитает оси и в зависимых объектах.</p>}
+      {!structural && (
       <fieldset className={css.group}>
         <legend>Углы осей (8.6.3)</legend>
         <Inputs defs={ANGLES} values={edit.values} bad={bad} onChange={change} winId={winId} />
       </fieldset>
+      )}
+      {structural && source && (
+        <StructuralForm
+          winId={winId}
+          value={edit.structural}
+          checked={source}
+          stored={stored?.kind === "structural" ? stored : null}
+          onChange={(patch) => setEdit(winId, (e) => ({ structural: { ...e.structural, ...patch }, dirty: true }))}
+          discs={{
+            shown: edit.trendId !== null && shownObjects(viewKey).includes(edit.trendId),
+            reason: edit.trendId === null ? "Сначала сохраните тренд" : app.registry.reason("trend.show") ?? (stored?.sourceLost ? "Источник тренда удалён" : null),
+            info: discInfo ? discInfoText(discInfo) : null,
+            onToggle: (on) => void run("trend.show", { visible: on }),
+          }}
+        />
+      )}
       <fieldset className={css.group}>
         <legend>Отношения a1 : a2 : a3 = 1 : a2/a1 : a3/a1</legend>
-        <Inputs defs={RATIOS} values={edit.values} bad={bad} onChange={change} winId={winId} />
+        <Inputs defs={structural ? RATIOS_STRUCTURAL : RATIOS} values={edit.values} bad={bad} onChange={change} winId={winId} />
       </fieldset>
+      {!structural && (
       <fieldset className={css.group}>
         <legend>Показ в 3D</legend>
         <Inputs defs={CENTRE} values={edit.values} bad={bad} onChange={change} winId={winId} />
@@ -220,11 +261,20 @@ export function TrendWindow({ winId }: { winId: string }) {
           </label>
         </div>
       </fieldset>
-      <FromModel winId={winId} stored={edit.trendId !== null} busy={busy || !!reason} run={fromModel} />
-      {checked && !checked.ok && <p className={css.error} data-testid={`trend-error-${winId}`}>{checked.error}</p>}
+      )}
+      {structural && (
+        <div className={css.row}>
+          <label className={css.check}>
+            Цвет дисков
+            <input type="color" className={css.color} value={/^#[0-9a-f]{6}$/i.test(edit.values.color) ? edit.values.color : "#f46a1a"} data-testid={`trend-color-${winId}`} onChange={(e) => change("color", e.target.value)} />
+          </label>
+        </div>
+      )}
+      {!structural && <FromModel winId={winId} stored={edit.trendId !== null} busy={busy || !!reason} run={fromModel} />}
+      {problem && <p className={css.error} data-testid={`trend-error-${winId}`}>{problem}</p>}
       {note && <p className={note.error ? css.error : css.note} data-testid={`trend-note-${winId}`}>{note.text}</p>}
       <div className={css.row}>
-        <button type="button" className={css.primary} disabled={busy || !!bad || !!reason} title={reason ?? "Сохранить тренд в разделе «Тренды»"} data-testid={`trend-save-${winId}`} onClick={() => void save()}>
+        <button type="button" className={css.primary} disabled={busy || !!problem || !!reason} title={reason ?? "Сохранить тренд в разделе «Тренды»"} data-testid={`trend-save-${winId}`} onClick={() => void save()}>
           Сохранить
         </button>
         {edit.trendId !== null && (

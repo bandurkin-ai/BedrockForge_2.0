@@ -1,0 +1,686 @@
+{
+ "_note": "Примеры параметров неявной модели (19.1): body — тело POST /implicit/models; canonical — spec.parse_model(body).canonical() (часть meta модели, docs/progress/e19-api.md §3–4). Перегенерация: BF_REGEN_IMPLICIT=1 uv run pytest -q tests/test_implicit_spec.py",
+ "cases": {
+  "domains": {
+   "body": {
+    "name": "Литология",
+    "boundary": {
+     "box": [
+      0,
+      0,
+      -300,
+      1000,
+      800,
+      100
+     ],
+     "dtm_id": 41
+    },
+    "data": {
+     "set_id": 3,
+     "table": "12",
+     "field": "LITH"
+    },
+    "groups": [
+     {
+      "id": 1,
+      "name": "Дайка",
+      "type": "domain",
+      "codes": [
+       "DY"
+      ]
+     },
+     {
+      "id": 2,
+      "name": "Песчаник",
+      "type": "domain",
+      "codes": [
+       "SS",
+       "SSc"
+      ]
+     },
+     {
+      "name": "Алевролит",
+      "type": "domain",
+      "codes": [
+       12,
+       "AL"
+      ]
+     }
+    ],
+    "manual": [
+     {
+      "layer_id": 77,
+      "group": 2
+     },
+     {
+      "layer_id": 78,
+      "role": "inside",
+      "group": 2
+     }
+    ]
+   },
+   "canonical": {
+    "name": "Литология",
+    "boundary": {
+     "box": [
+      0.0,
+      0.0,
+      -300.0,
+      1000.0,
+      800.0,
+      100.0
+     ],
+     "wireframe_id": null,
+     "dtm_id": 41
+    },
+    "h": null,
+    "levels": 2,
+    "kernel": "linear",
+    "kernel_radius": null,
+    "smoothing": {
+     "mode": "manual",
+     "s": null
+    },
+    "trend_id": null,
+    "anisotropy": null,
+    "pou": {
+     "n_patch": 1000,
+     "n_min": 100,
+     "delta": 0.25
+    },
+    "data": {
+     "set_id": 3,
+     "table": "12",
+     "field": "LITH",
+     "d_max": 30.0,
+     "step": 5.0
+    },
+    "groups": [
+     {
+      "id": 1,
+      "name": "Дайка",
+      "type": "domain",
+      "codes": [
+       "DY"
+      ],
+      "relation": "conformable",
+      "faults": [],
+      "params": {}
+     },
+     {
+      "id": 2,
+      "name": "Песчаник",
+      "type": "domain",
+      "codes": [
+       "SS",
+       "SSc"
+      ],
+      "relation": "conformable",
+      "faults": [],
+      "params": {}
+     },
+     {
+      "id": 3,
+      "name": "Алевролит",
+      "type": "domain",
+      "codes": [
+       "12",
+       "AL"
+      ],
+      "relation": "conformable",
+      "faults": [],
+      "params": {}
+     }
+    ],
+    "manual": [
+     {
+      "layer_id": 77,
+      "role": "contact",
+      "group": 2
+     },
+     {
+      "layer_id": 78,
+      "role": "inside",
+      "group": 2
+     }
+    ],
+    "post": {
+     "v_min": 0.0,
+     "simplify": false,
+     "clip": "boundary",
+     "clip_id": null
+    }
+   }
+  },
+  "shells_auto": {
+   "body": {
+    "name": "Оболочки Au",
+    "boundary": {
+     "wireframe_id": 50
+    },
+    "trend_id": 9,
+    "smoothing": {
+     "mode": "auto"
+    },
+    "groups": [
+     {
+      "name": "Au индикатор",
+      "type": "shell",
+      "params": {
+       "result_id": 31,
+       "field": "AU",
+       "mode": "indicator",
+       "thresholds": [
+        0.5,
+        1
+       ]
+      }
+     },
+     {
+      "name": "Au числовая",
+      "type": "shell",
+      "params": {
+       "source": "table",
+       "table": "14",
+       "field": "AU",
+       "transform": "nscore",
+       "thresholds": [
+        "0,5",
+        1,
+        2.5
+       ]
+      }
+     }
+    ]
+   },
+   "canonical": {
+    "name": "Оболочки Au",
+    "boundary": {
+     "box": null,
+     "wireframe_id": 50,
+     "dtm_id": null
+    },
+    "h": null,
+    "levels": 2,
+    "kernel": "linear",
+    "kernel_radius": null,
+    "smoothing": {
+     "mode": "auto",
+     "s": null,
+     "cond_target": 100000000.0
+    },
+    "trend_id": 9,
+    "anisotropy": null,
+    "pou": {
+     "n_patch": 1000,
+     "n_min": 100,
+     "delta": 0.25
+    },
+    "data": null,
+    "groups": [
+     {
+      "id": 1,
+      "name": "Au индикатор",
+      "type": "shell",
+      "codes": [],
+      "relation": "conformable",
+      "faults": [],
+      "params": {
+       "source": "composites",
+       "result_id": 31,
+       "set_id": null,
+       "table": null,
+       "field": "AU",
+       "transform": "linear",
+       "mode": "indicator",
+       "thresholds": [
+        0.5,
+        1.0
+       ],
+       "p": 0.5
+      }
+     },
+     {
+      "id": 2,
+      "name": "Au числовая",
+      "type": "shell",
+      "codes": [],
+      "relation": "conformable",
+      "faults": [],
+      "params": {
+       "source": "table",
+       "result_id": null,
+       "set_id": null,
+       "table": "14",
+       "field": "AU",
+       "transform": "nscore",
+       "mode": "numeric",
+       "thresholds": [
+        0.5,
+        1.0,
+        2.5
+       ],
+       "p": null
+      }
+     }
+    ],
+    "manual": [],
+    "post": {
+     "v_min": 0.0,
+     "simplify": false,
+     "clip": "boundary",
+     "clip_id": null
+    }
+   }
+  },
+  "vein_expand": {
+   "body": {
+    "name": "Жила и расширение",
+    "boundary": {
+     "box": [
+      0,
+      0,
+      0,
+      500,
+      500,
+      200
+     ]
+    },
+    "h": "2,5",
+    "levels": 3,
+    "kernel": "cubic",
+    "anisotropy": {
+     "ang1": 45,
+     "ang2": -30,
+     "ratios": [
+      1,
+      "0,5",
+      0.25
+     ]
+    },
+    "pou": {
+     "n_patch": 2000,
+     "n_min": 50,
+     "delta": 0.5
+    },
+    "smoothing": {
+     "mode": "manual",
+     "s": 0.01
+    },
+    "data": {
+     "set_id": 3,
+     "table": "12",
+     "field": "LITH",
+     "d_max": 20,
+     "step": 2
+    },
+    "groups": [
+     {
+      "id": 1,
+      "name": "Жила 1",
+      "type": "vein",
+      "codes": [
+       "Q1"
+      ],
+      "params": {
+       "bound": "polygon",
+       "polygon": [
+        [
+         0,
+         0
+        ],
+        [
+         400,
+         0
+        ],
+        [
+         400,
+         150
+        ],
+        [
+         0,
+         150
+        ]
+       ],
+       "t_min": 0.3
+      }
+     },
+     {
+      "id": 2,
+      "name": "Рудное тело +5",
+      "type": "expand",
+      "params": {
+       "wireframe_id": 60,
+       "delta": 5
+      }
+     }
+    ],
+    "post": {
+     "v_min": 100,
+     "simplify": true,
+     "clip": "wireframe",
+     "clip_id": 55
+    }
+   },
+   "canonical": {
+    "name": "Жила и расширение",
+    "boundary": {
+     "box": [
+      0.0,
+      0.0,
+      0.0,
+      500.0,
+      500.0,
+      200.0
+     ],
+     "wireframe_id": null,
+     "dtm_id": null
+    },
+    "h": 2.5,
+    "levels": 3,
+    "kernel": "cubic",
+    "kernel_radius": null,
+    "smoothing": {
+     "mode": "manual",
+     "s": 0.01
+    },
+    "trend_id": null,
+    "anisotropy": {
+     "ang1": 45.0,
+     "ang2": -30.0,
+     "ang3": 0.0,
+     "ratios": [
+      1.0,
+      0.5,
+      0.25
+     ]
+    },
+    "pou": {
+     "n_patch": 2000,
+     "n_min": 50,
+     "delta": 0.5
+    },
+    "data": {
+     "set_id": 3,
+     "table": "12",
+     "field": "LITH",
+     "d_max": 20.0,
+     "step": 2.0
+    },
+    "groups": [
+     {
+      "id": 1,
+      "name": "Жила 1",
+      "type": "vein",
+      "codes": [
+       "Q1"
+      ],
+      "relation": "conformable",
+      "faults": [],
+      "params": {
+       "bound": "polygon",
+       "polygon": [
+        [
+         0.0,
+         0.0
+        ],
+        [
+         400.0,
+         0.0
+        ],
+        [
+         400.0,
+         150.0
+        ],
+        [
+         0.0,
+         150.0
+        ]
+       ],
+       "offset": 0.0,
+       "t_min": 0.3
+      }
+     },
+     {
+      "id": 2,
+      "name": "Рудное тело +5",
+      "type": "expand",
+      "codes": [],
+      "relation": "conformable",
+      "faults": [],
+      "params": {
+       "wireframe_id": 60,
+       "delta": 5.0
+      }
+     }
+    ],
+    "manual": [],
+    "post": {
+     "v_min": 100.0,
+     "simplify": true,
+     "clip": "wireframe",
+     "clip_id": 55
+    }
+   }
+  },
+  "stack_b": {
+   "body": {
+    "name": "Стек (Э19б)",
+    "boundary": {
+     "box": [
+      -500,
+      -500,
+      -200,
+      500,
+      500,
+      100
+     ]
+    },
+    "kernel": "wendland",
+    "kernel_radius": 150,
+    "data": {
+     "set_id": 3,
+     "table": "12",
+     "field": "LITH"
+    },
+    "groups": [
+     {
+      "id": 2,
+      "name": "Шток",
+      "type": "domain",
+      "codes": [
+       "GR"
+      ],
+      "relation": "intrusion"
+     },
+     {
+      "id": 3,
+      "name": "Чехол",
+      "type": "domain",
+      "codes": [
+       "CV"
+      ],
+      "relation": "erode"
+     },
+     {
+      "id": 4,
+      "name": "Песчаник",
+      "type": "domain",
+      "codes": [
+       "SS"
+      ],
+      "faults": [
+       1
+      ]
+     },
+     {
+      "id": 5,
+      "name": "Жилы",
+      "type": "vein_system",
+      "params": {
+       "veins": [
+        {
+         "code": "V2",
+         "name": "Молодая"
+        },
+        {
+         "code": "V1",
+         "t_min": 0.2
+        }
+       ]
+      }
+     },
+     {
+      "id": 1,
+      "name": "Разлом 1",
+      "type": "fault",
+      "codes": [
+       "FLT"
+      ],
+      "params": {
+       "radius": 300
+      }
+     }
+    ],
+    "manual": [
+     {
+      "layer_id": 90,
+      "role": "contact",
+      "group": 1
+     }
+    ]
+   },
+   "canonical": {
+    "name": "Стек (Э19б)",
+    "boundary": {
+     "box": [
+      -500.0,
+      -500.0,
+      -200.0,
+      500.0,
+      500.0,
+      100.0
+     ],
+     "wireframe_id": null,
+     "dtm_id": null
+    },
+    "h": null,
+    "levels": 2,
+    "kernel": "wendland",
+    "kernel_radius": 150.0,
+    "smoothing": {
+     "mode": "manual",
+     "s": null
+    },
+    "trend_id": null,
+    "anisotropy": null,
+    "pou": {
+     "n_patch": 1000,
+     "n_min": 100,
+     "delta": 0.25
+    },
+    "data": {
+     "set_id": 3,
+     "table": "12",
+     "field": "LITH",
+     "d_max": 30.0,
+     "step": 5.0
+    },
+    "groups": [
+     {
+      "id": 2,
+      "name": "Шток",
+      "type": "domain",
+      "codes": [
+       "GR"
+      ],
+      "relation": "intrusion",
+      "faults": [],
+      "params": {}
+     },
+     {
+      "id": 3,
+      "name": "Чехол",
+      "type": "domain",
+      "codes": [
+       "CV"
+      ],
+      "relation": "erode",
+      "faults": [],
+      "params": {}
+     },
+     {
+      "id": 4,
+      "name": "Песчаник",
+      "type": "domain",
+      "codes": [
+       "SS"
+      ],
+      "relation": "conformable",
+      "faults": [
+       1
+      ],
+      "params": {}
+     },
+     {
+      "id": 5,
+      "name": "Жилы",
+      "type": "vein_system",
+      "codes": [
+       "V2",
+       "V1"
+      ],
+      "relation": "conformable",
+      "faults": [],
+      "params": {
+       "veins": [
+        {
+         "code": "V2",
+         "name": "Молодая",
+         "bound": "hull",
+         "polygon": null,
+         "offset": 0.0,
+         "t_min": 0.0
+        },
+        {
+         "code": "V1",
+         "name": "V1",
+         "bound": "hull",
+         "polygon": null,
+         "offset": 0.0,
+         "t_min": 0.2
+        }
+       ]
+      }
+     },
+     {
+      "id": 1,
+      "name": "Разлом 1",
+      "type": "fault",
+      "codes": [
+       "FLT"
+      ],
+      "relation": "conformable",
+      "faults": [],
+      "params": {
+       "radius": 300.0
+      }
+     }
+    ],
+    "manual": [
+     {
+      "layer_id": 90,
+      "role": "contact",
+      "group": 1
+     }
+    ],
+    "post": {
+     "v_min": 0.0,
+     "simplify": false,
+     "clip": "boundary",
+     "clip_id": null
+    }
+   }
+  }
+ }
+}

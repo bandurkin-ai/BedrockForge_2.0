@@ -496,6 +496,9 @@ BLOB_ROLES: frozenset[str] = frozenset(
         "nscore",  # variogram models: the table of the normal scores (Parquet: value, score, weight)
         "xval",  # estimation rows: the table of the cross validation (Parquet, ADR 0024 §2, geostat/estimate/xval.py)
         "real",  # simulations: the realisations (Parquet, ADR 0024 §2, Э18б)
+        "implicit_points",  # implicit model: data points (Parquet, ADR 0026 §23)
+        "implicit_patches",  # implicit model: patches table (Parquet)
+        "implicit_solution",  # implicit model: lambda and c of all patches (.npy)
     }  # fmt: skip
 )
 BLOB_ROLE_PREFIXES: tuple[str, ...] = ("sidecar:", "pack:", "fld:")

@@ -1,6 +1,7 @@
 import { ModelsTree } from "../modules/variography/ModelsTree";
 import { EstimationTree } from "../modules/estimation/EstimationTreeSection";
 import { SimulationTree } from "../modules/simulation/SimulationTreeSection";
+import { ImplicitTree } from "../modules/implicit/ImplicitTree";
 import { TrendsTree } from "../modules/trends/TrendsTree";
 import { useState, type DragEvent } from "react";
 import { useApp } from "./AppContext";
@@ -38,6 +39,7 @@ const CONTENT: Partial<Record<TreeSection, () => JSX.Element>> = {
   variograms: ModelsTree,
   estimation: EstimationTree,
   simulation: SimulationTree,
+  implicit: ImplicitTree,
   views: ViewsTree,
   series: SeriesTree,
   blocks: BlocksTree,

@@ -13,7 +13,7 @@ import type { Model } from "../../viz/ellipsoid/drag";
 import type { Vec3 } from "../../viz/core/vec3";
 import { effectiveStructures } from "../variography/model";
 import { chosenStructure, ellipsoidCentre, type Work } from "../variography/state";
-import type { Trend, TrendBody, TrendOrigin } from "./api";
+import type { Trend, TrendBody, TrendKind, TrendOrigin } from "./api";
 
 export const TREND_WINDOW = "trend";
 export const DEFAULT_COLOR = "#f46a1a"; // Copper Orange (docs/brand, ADR 0006): the trends apart from the models (Cobalt)
@@ -34,10 +34,35 @@ export interface TrendValues {
   color: string;
 }
 
+export const RADIUS_RANGE = { lo: 10, hi: 5000, dflt: 200 } as const;
+
+export type SourceType = "measurements" | "mesh";
+
+/** The source of a structural trend as typed in the form (`structural.ts`). */
+export interface StructuralValues {
+  type: SourceType;
+  setId: number | null;
+  /** the key of the table (the id as text) */
+  table: string;
+  alpha: string;
+  dipdir: string;
+  /** empty — the middle of FROM–TO of the row */
+  depth: string;
+  wireframeId: number | null;
+  rN: string;
+  radius: string;
+}
+
+export const EMPTY_STRUCTURAL: StructuralValues = { type: "measurements", setId: null, table: "", alpha: "", dipdir: "", depth: "", wireframeId: null, rN: "0", radius: String(RADIUS_RANGE.dflt) };
+
 /** The edit of a window «Тренд». */
 export interface TrendEdit {
   /** the trend edited; null — a new one */
   trendId: number | null;
+  /** global (angles, ratios) or structural (the source, R_тр, ratios); of a stored trend — its own, never changed */
+  kind: TrendKind;
+  /** the source and R_тр of a structural trend */
+  structural: StructuralValues;
   /** the version of that trend read or saved (`expected_version` of `trend.save`); absent — unknown */
   version?: number | null;
   values: TrendValues;
@@ -58,9 +83,19 @@ export interface TrendsState {
   edits: Record<string, TrendEdit>;
   /** a handle of a trend's ellipsoid dragged (its window id); null — none */
   dragging: string | null;
+  /** structural trend id → the discs in 3D now («Показано N из M»); written by `discScene.ts` */
+  discs: Record<number, DiscInfo>;
 }
 
-export const trendsStore = new Store<TrendsState>({ trends: [], loaded: false, selected: null, edits: {}, dragging: null });
+/** The discs of a structural trend drawn: shown / of all (thinned: ≤ 50 000 measurements, ≤ 10 000 faces), left out as not a number. */
+export interface DiscInfo {
+  n: number;
+  total: number;
+  thinned: boolean;
+  skipped: number;
+}
+
+export const trendsStore = new Store<TrendsState>({ trends: [], loaded: false, selected: null, edits: {}, dragging: null, discs: {} });
 
 export const trendsByName = (rows: readonly Trend[]): Trend[] => [...rows].sort((a, b) => a.name.localeCompare(b.name, "ru") || a.id - b.id);
 export const findTrend = (id: number): Trend | undefined => trendsStore.get().trends.find((t) => t.id === id);
@@ -79,8 +114,19 @@ export function dropTrend(id: number): void {
 }
 
 export function resetTrends(): void {
-  trendsStore.set({ trends: [], loaded: false, selected: null, edits: {}, dragging: null });
+  trendsStore.set({ trends: [], loaded: false, selected: null, edits: {}, dragging: null, discs: {} });
 }
+
+export function setDiscInfo(id: number, info: DiscInfo | null): void {
+  if (info === null && !trendsStore.get().discs?.[id]) return; // nothing to forget: no event of the store
+  trendsStore.set((s) => {
+    const { [id]: _old, ...rest } = s.discs ?? {}; // a store set without `discs` (an older reset) reads as none
+    return { discs: info ? { ...rest, [id]: info } : rest };
+  });
+}
+
+/** «Показано 4 120 дисков из 52 300 (прорежено)». */
+export const discInfoText = (i: DiscInfo): string => `Показано дисков: ${i.n.toLocaleString("ru-RU")} из ${i.total.toLocaleString("ru-RU")}${i.thinned ? " (прорежено для 3D)" : ""}${i.skipped ? `; без положения или нормали: ${i.skipped.toLocaleString("ru-RU")}` : ""}`;
 
 export const selectTrend = (id: number | null): void => trendsStore.set({ selected: id });
 
@@ -122,7 +168,7 @@ export function parseNum(text: string): number | null {
 
 export const EMPTY_VALUES: TrendValues = { name: "", ang1: "0", ang2: "0", ang3: "0", r2: "1", r3: "1", size: String(DEFAULT_SIZE), cx: "", cy: "", cz: "", color: DEFAULT_COLOR };
 
-export const newEdit = (patch: Partial<TrendEdit> = {}): TrendEdit => ({ trendId: null, values: { ...EMPTY_VALUES }, origin: { type: "manual" }, fromModel: null, show: true, dirty: false, ...patch });
+export const newEdit = (patch: Partial<TrendEdit> = {}): TrendEdit => ({ trendId: null, kind: "global", structural: { ...EMPTY_STRUCTURAL }, values: { ...EMPTY_VALUES }, origin: { type: "manual" }, fromModel: null, show: true, dirty: false, ...patch });
 
 export function valuesOf(t: Trend): TrendValues {
   return {
@@ -255,7 +301,7 @@ export function centreArg(raw: unknown): Vec3 | null | undefined | string {
 export function bodyOfArgs(a: Record<string, unknown>): { body: TrendBody } | { param: string; error: string } {
   const body: TrendBody = {};
   if (given(a, "kind") && a.kind !== "global") {
-    if (a.kind === "structural") return { param: "kind", error: "Структурный тренд (по замерам или опорному каркасу) будет доступен позже — создайте глобальный: углы и отношения осей" };
+    if (a.kind === "structural") return { param: "kind", error: "Структурный тренд задаётся источником (замеры или каркас): см. описание trend.save" };
     return { param: "kind", error: `Вид тренда «${String(a.kind)}» неизвестен: global` };
   }
   if (given(a, "name")) body.name = String(a.name).trim();
