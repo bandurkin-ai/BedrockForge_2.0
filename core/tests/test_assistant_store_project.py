@@ -187,9 +187,6 @@ def test_dialogs_are_not_data_not_in_the_graph_and_counted_as_chats(
         assert conn.execute(sa.select(sa.func.count()).select_from(lineage)).scalar_one() == 0
     assert dlg.list()["total"] == 3  # the sweep of the graph left the dialogs alone
     with dialect.read_tx(proj.engine) as conn:
-        assert projects_store.summary(conn)["chats"] == 0  # until the orchestrator adds the line
-    monkeypatch.setitem(projects_store.OBJECT_KIND_KEYS, "assistant_dialog", "chats")
-    with dialect.read_tx(proj.engine) as conn:
         assert projects_store.summary(conn)["chats"] == 3  # the summary of the project: «диалоги Claude»
 
 
