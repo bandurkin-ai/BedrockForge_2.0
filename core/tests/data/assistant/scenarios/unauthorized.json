@@ -1,0 +1,11 @@
+{
+  "steps": [
+    {
+      "match": {},
+      "reply": {
+        "status": 401,
+        "message": "invalid x-api-key"
+      }
+    }
+  ]
+}

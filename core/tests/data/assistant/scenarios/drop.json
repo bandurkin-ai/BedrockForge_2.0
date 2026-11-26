@@ -1,0 +1,26 @@
+{
+  "steps": [
+    {
+      "match": {
+        "last_user_text": "Расскажи подробно про бурение"
+      },
+      "reply": {
+        "stream": true,
+        "drop_after_events": 3,
+        "content": [
+          {
+            "type": "text",
+            "text": "Бурение ведётся двумя станками, глубина скважин от 20 до 120 метров, керн описывается на месте."
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 2400,
+          "output_tokens": 90,
+          "cache_read_input_tokens": 0,
+          "cache_creation_input_tokens": 0
+        }
+      }
+    }
+  ]
+}

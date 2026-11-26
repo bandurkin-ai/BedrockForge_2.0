@@ -1,0 +1,25 @@
+{
+  "steps": [
+    {
+      "match": {
+        "last_user_text": "Сводка по проекту"
+      },
+      "reply": {
+        "stream": true,
+        "content": [
+          {
+            "type": "text",
+            "text": "В проекте «Демо» 48 скважин, 1 240 м бурения и 960 проб. Аудит не запускался: запустите его на вкладке «Данные», чтобы увидеть замечания к скважинам."
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 2400,
+          "output_tokens": 85,
+          "cache_read_input_tokens": 0,
+          "cache_creation_input_tokens": 1800
+        }
+      }
+    }
+  ]
+}

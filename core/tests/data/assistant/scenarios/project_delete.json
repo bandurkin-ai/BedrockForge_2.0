@@ -1,0 +1,74 @@
+{
+  "steps": [
+    {
+      "match": {
+        "tool_result_for": "ui_project_delete",
+        "tool_result_error": true
+      },
+      "reply": {
+        "stream": true,
+        "content": [
+          {
+            "type": "text",
+            "text": "Хорошо, проект не удалён."
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 2700,
+          "output_tokens": 12,
+          "cache_read_input_tokens": 2400,
+          "cache_creation_input_tokens": 0
+        }
+      }
+    },
+    {
+      "match": {
+        "tool_result_for": "ui_project_delete"
+      },
+      "reply": {
+        "stream": true,
+        "content": [
+          {
+            "type": "text",
+            "text": "Проект удалён."
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 2700,
+          "output_tokens": 10,
+          "cache_read_input_tokens": 2400,
+          "cache_creation_input_tokens": 0
+        }
+      }
+    },
+    {
+      "match": {
+        "last_user_text": "Удали проект"
+      },
+      "reply": {
+        "stream": true,
+        "content": [
+          {
+            "type": "text",
+            "text": "Удаляю проект."
+          },
+          {
+            "type": "tool_use",
+            "id": "toolu_mock_delete",
+            "name": "ui_project_delete",
+            "input": {}
+          }
+        ],
+        "stop_reason": "tool_use",
+        "usage": {
+          "input_tokens": 2400,
+          "output_tokens": 25,
+          "cache_read_input_tokens": 0,
+          "cache_creation_input_tokens": 2400
+        }
+      }
+    }
+  ]
+}
