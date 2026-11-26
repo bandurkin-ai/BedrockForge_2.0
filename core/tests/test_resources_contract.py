@@ -7,7 +7,8 @@ samples of the contract (`{status, body}`), read by vitest (`ui/test/resources/*
 Regenerate: `BF_REGEN_RESOURCES=1 uv run pytest -q tests/test_resources_contract.py` — the keys of this test replace
 the samples, the others stay as they are: `defaults`, `bad_param`, `group_numeric`, `refusals` are written by `spec.py`
 (`test_resources_spec.py`); `export_*`, `files_exist` (20.5) are samples of the contract until their routes write them;
-`drill`, `drill_rows` (20.9), `compare_reports`, `compare_post`, `compare_result` and `estimate_compare` (20.10) are real.
+`drill`, `drill_rows` (20.9), `compare_reports`, `compare_post`, `compare_result`
+and `estimate_compare` (20.10) are real.
 Without the variable the test checks that the core still answers what the file
 holds; the times, the fingerprints, the versions of the libraries and the numbers of the jobs are left out, the floats
 are compared to 9 digits."""

@@ -362,7 +362,7 @@ def warm(order: Iterable[str] = QUICK, *, busy: Callable[[], bool] | None = None
 
                     warm_implicit()
                 elif name == "resources":
-                    from bf_core.resources.kernels import warm as warm_resources
+                    from bf_core.resources.warm import warm as warm_resources
 
                     warm_resources()
                 elif name == "stats":
