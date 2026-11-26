@@ -389,7 +389,7 @@ export interface RunSummary {
   name: string;
   version: number;
   solver: string;
-  shells: { k: number; rf: number; blocks: number; ore_t: number | null; waste_t: number | null; value: number | null }[];
+  shells: { k: number; rf: number; blocks: number | null; ore_t: number | null; waste_t: number | null; value: number | null }[];
   totals: { ore_t: number | null; waste_t: number | null; strip: number | null; cf: number | null };
   q: number | null;
   objective_error: number | null;
@@ -411,7 +411,7 @@ export function readRunSummary(raw: unknown): RunSummary | null {
     solver: str(r.solver) ?? "",
     shells: list(r.shells).flatMap((x) => {
       const s = obj(x);
-      return isNum(s.k) ? [{ k: s.k, rf: num(s.rf) ?? NaN, blocks: num(s.blocks) ?? 0, ore_t: num(s.ore_t), waste_t: num(s.waste_t), value: num(s.value) }] : [];
+      return isNum(s.k) ? [{ k: s.k, rf: num(s.rf) ?? NaN, blocks: num(s.blocks), ore_t: num(s.ore_t), waste_t: num(s.waste_t), value: num(s.value) }] : [];
     }),
     totals: { ore_t: num(t.ore_t), waste_t: num(t.waste_t), strip: num(t.strip), cf: num(t.cf) },
     q: num(r.q),

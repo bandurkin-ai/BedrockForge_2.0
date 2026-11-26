@@ -12,6 +12,7 @@ import { windowOfCompare, windowOfSolid, windowOfSurfaces } from "../../src/modu
 import { commands, PIT_GROUPS } from "../../src/modules/pit/commands";
 import { CompareWindow } from "../../src/modules/pit/CompareWindow";
 import { PIT_COMPARE_WINDOW, PIT_SOLID_WINDOW, PIT_SURFACES_WINDOW, pickShells, resultsStore } from "../../src/modules/pit/resultsState";
+import { fmt } from "../../src/modules/pit/format";
 import { val } from "../../src/modules/pit/resultsModel";
 import { SolidWindow } from "../../src/modules/pit/SolidWindow";
 import { SurfacesWindow } from "../../src/modules/pit/SurfacesWindow";
@@ -199,7 +200,7 @@ describe("`pit.solid`", () => {
     expect(r.ok).toBe(true);
     expect(sentTo("/solid").map((x) => [x.path, x.body])).toEqual([[`/pit/scenarios/${ID.scenario}/solid`, { shell: 2, name: "Мой каркас" }]]);
     expect(r.result).toContain(`объём ${val(41000000)} м³, замкнут`);
-    expect(r.result).toContain(`объём блоков оболочки ${val(41200000)} м³, расхождение ${val(0.49)} %`);
+    expect(r.result).toContain(`объём блоков оболочки ${val(41200000)} м³, расхождение ${fmt(0.49)} %`);
     expect(r.result).toContain("тело между рельефом и поверхностью оболочки");
     expect(resultsStore.get().solid.result?.parts).toBe(1);
   });

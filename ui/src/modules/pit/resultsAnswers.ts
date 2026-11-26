@@ -67,7 +67,8 @@ export interface SolidResult {
   /** the difference of the two, % */
   volume_diff_pct: number | null;
   parts: number | null;
-  closed: boolean;
+  /** null — the answer does not say (not «yes»): the window shows «—» */
+  closed: boolean | null;
   /** `between` (the solid between the relief and the surface) or `difference` (the reserve way) */
   method: string;
   /** the folder of the scenario in the tree (`folder` of the core; the sample has none) */
@@ -91,7 +92,7 @@ export function readSolid(raw: unknown): SolidResult | null {
     volume_blocks: num(r.volume_blocks),
     volume_diff_pct: num(r.volume_diff_pct),
     parts: num(r.parts),
-    closed: r.closed !== false,
+    closed: typeof r.closed === "boolean" ? r.closed : null,
     method: str(r.method) ?? "",
     folder: str(r.folder),
     replaced: flag(r.replaced),

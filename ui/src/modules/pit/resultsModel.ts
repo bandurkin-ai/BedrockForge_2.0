@@ -3,16 +3,15 @@
  * surfaces, the numbers of the command `pit.surfaces`, the texts of the three commands for the log and for the assistant, the rows of the comparison and
  * the curves of its chart. A value that is not known is «—» — never 0 (a shell that only one scenario has has no numbers on the other side). Pure, no React.
  */
-import { fmt, fmtCount } from "../blocks/report/format";
 import type { ScenarioDetail } from "./answers";
 import { list, num, obj } from "./answers";
-import { warningText } from "./format";
+import { fmt, fmtCount, warningText, whole } from "./format";
 import type { CompareAnswer, CompareShell, ShellKey, ShellNumbers, SolidResult, SurfacesResult } from "./resultsAnswers";
 
 export const DASH = "—";
 
-/** A number for a table of the results: not known — «—». */
-export const val = (v: number | null | undefined): string => (v === null || v === undefined || !Number.isFinite(v) ? DASH : fmt(v));
+/** A number of the results (tonnes, money, volumes) as the panel writes it (`format.whole`): not known — «—». */
+export const val = whole;
 
 /** RF as the people write it: 0,8; 1,05. */
 export const rfText = (rf: number | null | undefined): string => (rf === null || rf === undefined || !Number.isFinite(rf) ? DASH : rf.toLocaleString("ru-RU", { maximumFractionDigits: 6 }));
@@ -87,8 +86,8 @@ const METHODS: Record<string, string> = { between: "тело между рель
 export const methodText = (m: string): string => METHODS[m] ?? (m || DASH);
 
 export function solidText(r: SolidResult): string {
-  const lines = [`Каркас карьера «${r.name}» построен по оболочке ${r.shell ?? DASH} (RF ${rfText(r.rf)}): объём ${val(r.volume)} м³, замкнут${r.parts !== null && r.parts > 1 ? `, частей ${fmtCount(r.parts)}` : ""}.`];
-  lines.push(`Сверка: объём блоков оболочки ${val(r.volume_blocks)} м³, расхождение ${val(r.volume_diff_pct)} %. Метод: ${methodText(r.method)}.`);
+  const lines = [`Каркас карьера «${r.name}» построен по оболочке ${r.shell ?? DASH} (RF ${rfText(r.rf)}): объём ${val(r.volume)} м³${r.closed === true ? ", замкнут" : r.closed === false ? ", не замкнут" : ""}${r.parts !== null && r.parts > 1 ? `, частей ${fmtCount(r.parts)}` : ""}.`];
+  lines.push(`Сверка: объём блоков оболочки ${val(r.volume_blocks)} м³, расхождение ${fmt(r.volume_diff_pct)} %. Метод: ${methodText(r.method)}.`);
   for (const x of r.warnings.slice(0, 5)) lines.push(`Предупреждение: ${warningText(x)}`);
   return lines.join("\n");
 }
@@ -130,7 +129,7 @@ export function paramLabel(path: string): string {
 /** The value of a parameter in words; not set — «—». */
 export function paramValue(v: unknown): string {
   if (v === null || v === undefined) return DASH;
-  if (typeof v === "number") return val(v);
+  if (typeof v === "number") return Number.isInteger(v) ? whole(v) : String(v).replace(".", ","); // as it is in the scenario: a price 0,5 and a recovery 0,85 keep their digits
   if (typeof v === "boolean") return v ? "да" : "нет";
   if (typeof v === "string") return v === "" ? "(пусто)" : v;
   return JSON.stringify(v);

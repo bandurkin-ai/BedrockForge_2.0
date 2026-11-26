@@ -1,5 +1,5 @@
 // The check of the template of the pit (Э21, 21.17; ТЗ 8.11.2, 8.11.5; ADR 0028 решения 4, 9–12, 29; docs/progress/e21-api.md §4, §13): the window «Проверка шаблона» is drawn from the answer of
-// `pit.check` (`check_result` of `core/tests/data/pit/contract_answers.json` — a sample of the form until 21.11 writes the real answer: the tests read the form, not the numbers): K,
+// `pit.check` (`check_result` of `core/tests/data/pit/contract_answers.json`: the tests read the form, not the numbers): K,
 // the offsets, the angle error (max, mean), the warning «увеличьте K», the table of the sectors and the chart of φ_эфф(az) at 360 azimuths; a frame of the chart is drawn in 16 ms.
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -136,7 +136,7 @@ describe("`pit.check` and the window", () => {
   it("the command checks the scenario and opens the window with the result: the text of the answer is as before, the window shows the table and the chart", async () => {
     const r = await run();
     expect(r.ok).toBe(true);
-    expect(r.result).toContain("Шаблон проверен: K = 8 (подобран автоматически), допуск 2,5°.");
+    expect(r.result).toContain("Шаблон проверен: K = 8 (подобран автоматически), допуск 2,50°.");
     expect(core.sent.filter((s) => s.path === "/pit/check")[0].body).toEqual({ params: caseParams("t8117") });
     const wins = windowStore.get().windows.filter((w) => w.kind === PIT_CHECK_WINDOW);
     expect(wins).toHaveLength(1);
@@ -200,9 +200,9 @@ describe("`pit.check` and the window", () => {
     expect(html()).toContain("Шаблон ещё не проверялся");
   });
   it("the summary line: the model, K (auto or set), the levels when they differ, the tolerance, the time", () => {
-    expect(summaryLine(real())).toBe("модель «Рудное тело» · K = 8 (подобран автоматически) · допуск 2,5° · 0,0041 с");
-    expect(summaryLine({ ...real(), seconds: null })).toBe("модель «Рудное тело» · K = 8 (подобран автоматически) · допуск 2,5°");
-    expect(summaryLine({ ...real(), kAuto: false, k: 10, levels: 12, seconds: 0.02 })).toBe("модель «Рудное тело» · K = 10 · уровней в шаблоне 12 · допуск 2,5° · 0,02 с");
+    expect(summaryLine(real())).toBe("модель «Рудное тело» · K = 8 (подобран автоматически) · допуск 2,50° · 0,004 с");
+    expect(summaryLine({ ...real(), seconds: null })).toBe("модель «Рудное тело» · K = 8 (подобран автоматически) · допуск 2,50°");
+    expect(summaryLine({ ...real(), kAuto: false, k: 10, levels: 12, seconds: 0.02 })).toBe("модель «Рудное тело» · K = 10 · уровней в шаблоне 12 · допуск 2,50° · 0,020 с");
   });
   it("the project open for reading cannot check (the core has no planner there); the check is the one request `POST /pit/check`", async () => {
     app.store.set({ projectReadOnly: true });
