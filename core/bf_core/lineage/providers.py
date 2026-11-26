@@ -132,6 +132,7 @@ from . import (  # noqa: E402, F401
     adapt_estimate,
     adapt_implicit,
     adapt_objects,
+    adapt_pit,
     adapt_planned,
     adapt_resources,
     adapt_simulate,

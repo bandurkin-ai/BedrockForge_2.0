@@ -28,6 +28,9 @@ from bf_core.api.errors import ApiError
 from bf_core.db.schema import dh_results, objects
 
 from . import graph, store
+from .adapt_pit import owner as pit_owner
+from .adapt_pit import pit_field_owner
+from .adapt_pit import prepare_rebuild as pit_rebuild
 from .adapt_resources import owner as resource_owner
 from .adapt_resources import prepare_rebuild as resource_rebuild
 from .providers import Ctx, label_of
@@ -113,7 +116,7 @@ def _field_owner(conn: sa.Connection, node: Node) -> Node | None:
     for f in (meta or {}).get("fields") or []:
         if str(f.get("name", "")).casefold() == node.sub and (f.get("source") or {}).get("op") in MODEL_MAKERS:
             return Node("object:block_model", node.id)
-    return None
+    return pit_field_owner(meta or {}, node.sub)  # op = "pit": the field is made by the scenario (ADR 0028 §23)
 
 
 def _result(svc: Any, cap: Capture, node: Node, body: dict[str, Any]) -> None:
@@ -162,6 +165,7 @@ register("object:qaqc_report", _self, _qaqc_report)
 register("object:block_model", _self, _block_model)
 register("bm_field", _field_owner, _block_model)
 register("object:resource_report", resource_owner, resource_rebuild)  # ADR 0027 §21
+register("object:pit_scenario", pit_owner, pit_rebuild)  # ADR 0028 §23
 
 
 def prepare_step(svc: Any, node: Node, body: dict[str, Any]) -> Step:
