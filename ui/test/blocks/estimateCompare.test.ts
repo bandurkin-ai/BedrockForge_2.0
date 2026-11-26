@@ -24,6 +24,7 @@ import { jobsStore } from "../../src/modules/jobs/state";
 import { projectStore } from "../../src/modules/projects/state";
 import { viewStore } from "../../src/modules/scene/bind";
 import { answer } from "../resources/harness";
+import { answerDialog } from "../blocks-fields-kit";
 
 const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status, headers: { "Content-Type": "application/json" } });
 const REAL = answer("estimate_compare").body as Record<string, unknown>;
@@ -118,6 +119,8 @@ describe("the declaration", () => {
     expect(Object.keys(c.params ?? {})).toEqual(["model_id", "field_a", "field_b", "domain", "out"]);
     expect(c.required).toBeUndefined();
     expect(c.uiOnly).toBeUndefined();
+    // Δ is written into the model (a field that is there is replaced): the call of the assistant is asked first, as `blocks.calc`
+    expect(c.confirm).toBe(true);
     expect(JSON.stringify(commands)).not.toMatch(/"key"/);
     expect(commandTools(commands).map((t) => t.name)).toEqual(["ui_estimate_compare"]);
     expect(app.registry.get("estimate.compare")?.run).toBeTypeOf("function");
@@ -188,8 +191,21 @@ describe("`estimate.compare`", () => {
     expect(h).toContain('placeholder="OK_EST_ID_EST_D"');
   });
 
+  it("a call of the assistant is asked first (Δ is written into the model): «Нет» — nothing is sent, «Разрешить» — the job runs", async () => {
+    const no = app.registry.execute("estimate.compare", ARGS, "claude");
+    expect(await answerDialog(false)).toContain("Сравнить оценки");
+    expect((await no).ok).toBe(false);
+    expect(posts()).toHaveLength(0);
+    const yes = app.registry.execute("estimate.compare", ARGS, "claude");
+    await answerDialog(true);
+    expect((await yes).ok).toBe(true);
+    expect(posts()).toHaveLength(1);
+  });
+
   it("the request is the body of the form (the domain and the name only when given); the job is followed; the answer is the text of the result", async () => {
-    const r = await app.registry.execute("estimate.compare", { ...ARGS, domain: "DOM", out: "DELTA" }, "claude");
+    const run = app.registry.execute("estimate.compare", { ...ARGS, domain: "DOM", out: "DELTA" }, "claude");
+    await answerDialog(true);
+    const r = await run;
     expect(r.ok).toBe(true);
     expect(posts()[0].body).toEqual({ field_a: "OK_EST", field_b: "ID_EST", domain: "DOM", out: "DELTA" });
     expect(r.result).toContain("Сравнение оценок «OK_EST» и «ID_EST» модели «Оценка»");
@@ -198,12 +214,12 @@ describe("`estimate.compare`", () => {
     expect(compareStore.get().run).toMatchObject({ phase: "done", modelId: 1 });
     expect(windows(), "the assistant does not open a window").toHaveLength(0);
     sent.length = 0;
-    await app.registry.execute("estimate.compare", ARGS, "claude");
+    await app.registry.execute("estimate.compare", ARGS, "user");
     expect(posts()[0].body).toEqual({ field_a: "OK_EST", field_b: "ID_EST" }); // nothing but the fields
   });
 
   it("the field Δ is in the list of the fields of the model after the run (the list is read again)", async () => {
-    await app.registry.execute("estimate.compare", ARGS, "claude");
+    await app.registry.execute("estimate.compare", ARGS, "user");
     expect(blocksStore.get().list[0].fields.map((f) => f.name)).toContain("OK_EST_ID_EST_D");
   });
 
@@ -245,7 +261,7 @@ describe("`estimate.compare`", () => {
     const one = await app.registry.execute("estimate.compare", { model_id: 1, field_a: "OK_EST" }, "user");
     expect(one.ok).toBe(false);
     expect(one.result).toContain("Нужны оба поля");
-    const miss = await app.registry.execute("estimate.compare", { model_id: 9, field_a: "OK_EST", field_b: "ID_EST" }, "claude");
+    const miss = await app.registry.execute("estimate.compare", { model_id: 9, field_a: "OK_EST", field_b: "ID_EST" }, "user");
     expect(miss.result).toContain("Блочная модель №9 не найдена");
     app.store.set({ projectReadOnly: true });
     const ro = await app.registry.execute("estimate.compare", ARGS, "user");
@@ -282,7 +298,7 @@ describe("`estimate.compare`", () => {
     setForm({ domain: "DOM", out: "Д1" });
     await app.registry.execute("estimate.compare", { model_id: 1, field_a: "OK_EST", field_b: "ID_EST", domain: "DOM", out: "Д1" }, "user");
     expect(currentForm()).toMatchObject({ a: "OK_EST", b: "ID_EST", domain: "DOM", out: "Д1" });
-    await app.registry.execute("estimate.compare", { model_id: 1, field_a: "ID_EST", field_b: "OK_EST" }, "claude");
+    await app.registry.execute("estimate.compare", { model_id: 1, field_a: "ID_EST", field_b: "OK_EST" }, "user");
     expect(currentForm()).toMatchObject({ a: "ID_EST", b: "OK_EST", domain: "", out: "" });
     expect(windows()).toHaveLength(1);
   });

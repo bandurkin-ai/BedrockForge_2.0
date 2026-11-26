@@ -76,6 +76,18 @@ describe("`resources.open`", () => {
     expect(gets()).toHaveLength(0);
   });
 
+  it("a template or a cut-off asked of a preview is a refusal in Russian with the way out, not ignored", async () => {
+    await app.registry.execute("resources.report", { model_id: ID.model, curve: 0 }, "user");
+    expect(resourcesStore.get().run.result?.saved).toBe(false);
+    for (const args of [{ template: "gkz" }, { cutoff: 1 }]) {
+      const r = await app.registry.execute("resources.open", args, "claude");
+      expect(r.ok).toBe(false);
+      expect(r.result).toMatch(/Предпросмотр не записан в проект/);
+      expect(r.result).toMatch(/Сохраните отчёт/);
+    }
+    expect(gets()).toHaveLength(0);
+  });
+
   it("the saved result of the window with a template asked is the saved report: the core makes the form", async () => {
     await app.registry.execute("resources.report", { model_id: ID.model, curve: 0, save: true }, "user");
     expect(resourcesStore.get().run.result?.saved).toBe(true);

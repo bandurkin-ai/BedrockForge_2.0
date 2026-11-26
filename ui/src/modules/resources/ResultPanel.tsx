@@ -61,13 +61,18 @@ export interface ResultViewProps {
   onCell?: CellHandler;
 }
 
-/** The cut-offs the form and the table can show: those of the form, else the distinct ones of the rows. */
+/**
+ * The cut-offs the form and the table can show: those of the form, else the distinct ones of the rows. The core lists only the numeric cut-offs of the form
+ * (`kind` cutoff): «без борта» (the rows of kind `all`, or a form that is built without a cut-off) is `null`, first — else a form on «без борта» could not be left back.
+ */
 export function cutoffOptions(result: ReportResult): (number | null)[] {
   const fromForm = result.form?.cutoffs ?? [];
-  if (fromForm.length) return fromForm;
   const set = new Map<string, number | null>();
-  for (const r of result.rows) if (r.kind === "cutoff" || r.kind === "all") set.set(String(r.cutoff), r.cutoff);
-  return [...set.values()];
+  for (const c of fromForm) set.set(String(c), c);
+  if (!set.size) for (const r of result.rows) if (r.kind === "cutoff" || r.kind === "all") set.set(String(r.cutoff), r.cutoff);
+  const none = result.form?.cutoff === null || result.rows.some((r) => r.kind === "all");
+  const list = [...set.values()].filter((c) => c !== null);
+  return none || set.has("null") ? [null, ...list] : list;
 }
 
 const cutoffLabel = (c: number | null): string => (c === null ? "без борта" : `≥ ${fmtCutoff(c)}`);

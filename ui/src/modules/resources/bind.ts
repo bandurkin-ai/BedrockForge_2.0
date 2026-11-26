@@ -152,7 +152,7 @@ export function bindResources(app: App): () => void {
     noted(app, (a, source) => runReport(app, a, source)),
     (ctx) => needProject(ctx) ?? (blocksStore.get().loaded && !blocksStore.get().list.length ? "В проекте нет блочных моделей" : null),
   );
-  bindOtherCommands(app);
+  const offOther = bindOtherCommands(app);
   bindTemplates(app);
   const offPanel = bindPanel(app);
   // the report belongs to the project: another project — a clean window and the lists read again
@@ -171,13 +171,19 @@ export function bindResources(app: App): () => void {
       const id = currentForm().modelId;
       if (id !== null && blocksStore.get().loaded && !blockById(id)) setForm({ modelId: null, elements: [], groups: [], cutoffField: "", densityField: "" });
     }),
+    // a report that is gone (deleted here or in another window) is not selected any more: the tree and `selectedReport()` must not keep a dead id
+    resourcesStore.subscribe(() => {
+      const s = app.store.get().selected;
+      const st = resourcesStore.get();
+      if (s?.kind === "resource_report" && st.reportsLoaded && !st.reports.some((r) => r.id === s.id)) app.store.set({ selected: null });
+    }),
     onCoreEvent((event, data) => {
       if (event !== "resources.changed" || !projectStore.get().current) return;
       if (resourcesEvent(data) === "template") void loadTemplates();
       else void loadReports();
     }),
   ];
-  return () => [...offs, offPanel].forEach((off) => off());
+  return () => [...offs, offPanel, offOther].forEach((off) => off());
 }
 
 /** The window for the shell's window layer (`shell/Shell.tsx`); null — not this window. */

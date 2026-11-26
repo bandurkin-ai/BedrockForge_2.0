@@ -3,17 +3,19 @@
 // report and a double click shows it in the panel, the properties tell what the report was made of; every action is a command and an unavailable one says why.
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppContext } from "../../src/shell/AppContext";
 import type { App } from "../../src/shell/app";
 import { openMenu, menuStore } from "../../src/shell/ContextMenu";
 import { readListRow, readReportResult, type ReportListRow } from "../../src/modules/resources/answers";
+import { dateText } from "../../src/modules/resources/compareModel";
 import { panelStore, RESOURCES_TAB } from "../../src/modules/resources/panelState";
 import { askRename, NODE_KIND, readyReason, rebuildReason, reportActions, reportLabel, reportsByName, selectReport, stateTitle } from "../../src/modules/resources/reportActions";
 import { cutoffsText, densityText, keysText, reportFacts } from "../../src/modules/resources/reportFacts";
 import { ReportProps } from "../../src/modules/resources/ReportProps";
 import { ResourceReportRows, ResourceReportsTree, rowTitle } from "../../src/modules/resources/ReportsTree";
-import { resourcesStore } from "../../src/modules/resources/state";
+import { loadReports, resourcesStore } from "../../src/modules/resources/state";
+import { projectStore } from "../../src/modules/projects/state";
 import { dialogStore } from "../../src/shell/dialogs";
 import { answer, ID, installCore, newApp, teardown, waitFor, type Core } from "./harness";
 
@@ -79,11 +81,49 @@ describe("the rows of the tree", () => {
   });
 });
 
+describe("the lists are read in turns", () => {
+  it("an older answer of the list of the reports does not cover a newer one (a series of `resources.changed`); another project drops it", async () => {
+    const waits: ((r: Response) => void)[] = [];
+    const base = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => (new URL(url).pathname === "/api/v1/resources/reports" ? new Promise<Response>((res) => waits.push(res)) : base(url, init))),
+    );
+    const body = answer("reports_list").body as { reports: unknown[] };
+    const reply = (reports: unknown[]) => new Response(JSON.stringify({ ...body, reports }), { status: 200, headers: { "Content-Type": "application/json" } });
+    resourcesStore.set({ reports: [], reportsLoaded: false });
+    const first = loadReports();
+    const second = loadReports();
+    waits[1](reply(body.reports)); // the newer answer comes first …
+    await second;
+    expect(resourcesStore.get().reports).toHaveLength(body.reports.length);
+    waits[0](reply([])); // … the older one is late and is dropped
+    await first;
+    expect(resourcesStore.get().reports).toHaveLength(body.reports.length);
+    // another project opened while the answer is on its way: the answer is of the old one
+    const third = loadReports();
+    projectStore.set({ current: { uid: "p2", name: "Другой" } as never, version: 2 });
+    resourcesStore.set({ reports: [], reportsLoaded: false });
+    waits[2](reply(body.reports));
+    await third;
+    expect(resourcesStore.get()).toMatchObject({ reports: [], reportsLoaded: false });
+  });
+});
+
 describe("a click and the menu", () => {
   it("a click chooses the report: its «Свойства» open; the kind is the tree's own", () => {
     selectReport(app, ID.report);
     expect(app.store.get().selected).toEqual({ kind: "resource_report", id: ID.report });
     expect(app.store.get().workspace).toMatchObject({ right: true, rightTab: "properties" });
+  });
+
+  it("a report that is gone from the list is not selected any more (deleted here or elsewhere); a report that is there stays", () => {
+    resourcesStore.set({ reports: LIST, reportsLoaded: true });
+    selectReport(app, ID.report);
+    resourcesStore.set({ reports: [...LIST] });
+    expect(app.store.get().selected).toEqual({ kind: "resource_report", id: ID.report });
+    resourcesStore.set({ reports: LIST.filter((r) => r.id !== ID.report) });
+    expect(app.store.get().selected).toBeNull();
   });
 
   it("the menu: the commands of the registry; every item runs one; the PDF waits for Э22", async () => {
@@ -151,7 +191,7 @@ describe("«Свойства» of a report", () => {
       total: "блоков 5, тоннаж 12 500 т",
       "total-AU": "2,5 г/т, металл 31 250 г",
     });
-    expect(reportFacts(SAVED).find((f) => f.key === "created")?.value).toMatch(/^2026-11-26 \d\d:\d\d$/);
+    expect(reportFacts(SAVED).find((f) => f.key === "created")?.value).toBe(dateText(String(answer("report_get").body.created_at))); // the local time in words, not the UTC text of the core
   });
 
   it("the cut-offs «без борта» and the density of a field, the groups with the bench, the files written", () => {

@@ -3,10 +3,12 @@
  * versions of the inputs of both reports (name, fingerprint, date — Д-35), the table «A | B | разность» of T, ḡ and M of one element. A row that is only in
  * one report is marked and has no difference («—»); a value no block has is «нет значения»; nothing is 0 that is not. Presentation only.
  */
+import { useState } from "react";
 import type { CompareAnswer, CompareSide } from "./answers";
 import { dateText, fpText, headLines, kindText, notes, sideState, tableRows, GAP, type CompareCell, type Trio } from "./compareModel";
 import mod from "./Compare.module.css";
 import panel from "./Panel.module.css";
+import { PAGE_SIZE, pageCount } from "./panelState";
 
 /** The words of the core and the one banner of the window: «Сетки различаются». */
 export function Notes({ answer }: { answer: CompareAnswer }) {
@@ -128,7 +130,12 @@ function Cells({ t }: { t: Trio }) {
 
 /** The table of the comparison: the group and the cut-off, then T, ḡ and M of the element — A, B and the difference. */
 export function CompareTable({ answer, element, onlyDiff }: { answer: CompareAnswer; element: string | null; onlyDiff: boolean }) {
-  const rows = tableRows(answer, element, onlyDiff);
+  const all = tableRows(answer, element, onlyDiff);
+  // the table of a big pair of reports is up to tens of thousands of rows: the pages of the panel «Ресурсы» (a row is 9 cells)
+  const [wanted, setPage] = useState(1);
+  const pages = pageCount(all.length);
+  const page = Math.min(Math.max(1, wanted), pages);
+  const rows = pages > 1 ? all.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE) : all;
   const key = answer.keys.length ? answer.keys.join(" / ") : "Группа";
   const span = (title: string) => (
     <th className={panel.span} colSpan={3}>
@@ -138,7 +145,18 @@ export function CompareTable({ answer, element, onlyDiff }: { answer: CompareAns
   const sub = () => ["A", "B", "Разность"].map((x, i) => <th key={x} className={i === 0 ? panel.sep : undefined}>{x}</th>);
   return (
     <div className={panel.tableWrap} data-testid="cmp-table-wrap">
-      <table className={panel.table} data-testid="cmp-table" data-rows={rows.length}>
+      {pages > 1 && (
+        <span className={panel.pager} data-testid="cmp-pager">
+          <button type="button" className={panel.btn} disabled={page <= 1} aria-label="Предыдущая страница" onClick={() => setPage(page - 1)}>
+            ‹
+          </button>
+          Страница {page} из {pages} (по {PAGE_SIZE}; строк {all.length})
+          <button type="button" className={panel.btn} disabled={page >= pages} aria-label="Следующая страница" onClick={() => setPage(page + 1)}>
+            ›
+          </button>
+        </span>
+      )}
+      <table className={panel.table} data-testid="cmp-table" data-rows={rows.length} data-total={all.length}>
         <thead>
           <tr>
             <th className={panel.left} rowSpan={2}>
@@ -174,7 +192,7 @@ export function CompareTable({ answer, element, onlyDiff }: { answer: CompareAns
               <Cells t={r.metal} />
             </tr>
           ))}
-          {!rows.length && (
+          {!all.length && (
             <tr>
               <td className={panel.left} colSpan={11} data-testid="cmp-no-rows">
                 {onlyDiff ? "Различий нет: во всех строках разность равна нулю." : "В отчётах нет строк."}

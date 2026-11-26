@@ -121,6 +121,10 @@ describe("the words", () => {
     expect(text).toMatch(/металл 31\s250 г/);
     expect(summaryText({ ...r, saved: false, report_id: null, truncated: true })).toContain("Предпросмотр");
     expect(summaryText({ ...r, warnings: [{ code: "unit_unknown", message: "Единица не распознана.", hint: "Металл не считается.", param: null }] })).toContain("Предупреждение: Единица не распознана. Металл не считается.");
+    // the norm of the control is the core's own (`control.tolerance`), not a number written into the text
+    const bad = { ...r, control: { ...r.control!, tolerance: 1e-9, sum_groups: { ...r.control!.sum_groups!, ok: false } } };
+    expect(summaryText(bad)).toContain("отклонение больше нормы 1,00e-9");
+    expect(summaryText({ ...bad, control: { ...bad.control, tolerance: null } })).toContain("отклонение больше допустимого");
     const c = curveText(r, r.curve!, 3);
     expect(c).toContain("5 бортов по полю AU");
     expect(c.split("\n")).toHaveLength(4);

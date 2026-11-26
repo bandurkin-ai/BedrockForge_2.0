@@ -8,6 +8,7 @@
 import { Store } from "../../shell/store";
 import { blockById, blocksStore } from "../blocks/state";
 import { fieldsOf, type FieldInfo } from "../blocks/report/state";
+import { projectStore } from "../projects/state";
 import { listReports, listTemplates, loadDefaults, type Defaults, type Refusal, type Started } from "./api";
 import type { ReportListRow, ReportResult, TemplateRow } from "./answers";
 import { EMPTY_FORM, type FormIssue, type ResourceForm } from "./form";
@@ -113,21 +114,32 @@ export async function ensureDefaults(): Promise<Defaults | null> {
   }
 }
 
+let templatesSeq = 0;
+let reportsSeq = 0;
+const projectUid = (): string | null => projectStore.get().current?.uid ?? null;
+
+// every read is numbered: a series of `resources.changed` or another project must not let an older answer cover a newer one
 export async function loadTemplates(): Promise<void> {
+  const mine = ++templatesSeq;
+  const uid = projectUid();
+  const fresh = () => mine === templatesSeq && uid === projectUid();
   try {
     const rows = await listTemplates();
-    resourcesStore.set({ templates: rows, templatesLoaded: true });
+    if (fresh()) resourcesStore.set({ templates: rows, templatesLoaded: true });
   } catch {
-    resourcesStore.set({ templatesLoaded: true });
+    if (fresh()) resourcesStore.set({ templatesLoaded: true });
   }
 }
 
 export async function loadReports(): Promise<void> {
+  const mine = ++reportsSeq;
+  const uid = projectUid();
+  const fresh = () => mine === reportsSeq && uid === projectUid();
   try {
     const rows = await listReports();
-    resourcesStore.set({ reports: rows, reportsLoaded: true });
+    if (fresh()) resourcesStore.set({ reports: rows, reportsLoaded: true });
   } catch {
-    resourcesStore.set({ reportsLoaded: true });
+    if (fresh()) resourcesStore.set({ reportsLoaded: true });
   }
 }
 

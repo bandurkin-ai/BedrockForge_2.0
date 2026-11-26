@@ -32,6 +32,13 @@ const metalText = (r: ReportResult, field: string, metal: number | null): string
 
 export const warningText = (w: Warning): string => (w.hint ? `${w.message} ${w.hint}` : w.message);
 
+/** The relative difference as the norm is told: 0 — «0», else a power («3,2e-13»). */
+export function relText(rel: number | null): string {
+  if (rel === null) return "нет значения";
+  if (rel === 0) return "0";
+  return rel.toExponential(2).replace(".", ",");
+}
+
 /** The text of a finished run for the log and for the assistant. */
 export function summaryText(r: ReportResult): string {
   const head = r.saved ? `Отчёт «${r.name}» №${r.report_id ?? "?"} записан в проект` : `Предпросмотр отчёта по ресурсам (не записан в проект)`;
@@ -46,7 +53,7 @@ export function summaryText(r: ReportResult): string {
   }
   const ex = r.excluded;
   if (ex.filtered || ex.no_volume || ex.no_density) lines.push(`Не вошли: по ограничителю ${fmtCount(ex.filtered)}, без объёма ${fmtCount(ex.no_volume)}, без плотности ${fmtCount(ex.no_density)}.`);
-  if (r.control?.sum_groups && !r.control.sum_groups.ok) lines.push("Контроль: сумма групп не равна итогу (отклонение больше 1e-12).");
+  if (r.control?.sum_groups && !r.control.sum_groups.ok) lines.push(`Контроль: сумма групп не равна итогу (отклонение больше ${r.control.tolerance === null ? "допустимого" : `нормы ${relText(r.control.tolerance)}`}).`);
   const all = [...r.warnings, ...(r.control?.warnings ?? []), ...(r.form?.warnings ?? [])];
   for (const w of all.slice(0, 5)) lines.push(`Предупреждение: ${warningText(w)}`);
   if (all.length > 5) lines.push(`…и ещё предупреждений: ${all.length - 5}.`);
