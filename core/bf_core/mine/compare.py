@@ -92,10 +92,6 @@ def _report(conn: sa.Connection, store: BlobStore, scenario_id: int) -> Report:
     benches = st.read_benches(conn, store, scenario_id)
     elements = sd.elements_of(table)
     cols = table.to_pydict()
-    for e in elements:  # the stored file names a cumulative column `<e>:cum_<p>`, `Report` — `cum_<e>:<p>`
-        for p in sd.ELEMENT_PARTS:
-            if f"{e}:cum_{p}" in cols:
-                cols.setdefault(f"cum_{e}:{p}", cols[f"{e}:cum_{p}"])
     return Report.from_columns(elements, cols, benches.to_pydict() if benches is not None else {})
 
 

@@ -66,7 +66,7 @@ def test_the_columns_are_those_of_the_adr() -> None:
                                                          "cost_process", "cost_sales", "royalty", "cf"]  # fmt: skip
     assert names[11:17] == ["AU:grade", "AU:metal", "AU:rec_metal", "CU:grade", "CU:metal", "CU:rec_metal"]
     assert names[17:26] == [f"cum_{p}" for p in sd.SHELL_PARTS] and names[26:] == [
-        f"{e}:cum_{p}" for e in ("AU", "CU") for p in sd.ELEMENT_PARTS]  # fmt: skip
+        f"cum_{e}:{p}" for e in ("AU", "CU") for p in sd.ELEMENT_PARTS]  # fmt: skip
     assert len(names) == 2 + 9 + 6 + 9 + 6 and [n for n, _ in sd.data_columns([])][-1] == "cum_cf"
 
 

@@ -15,7 +15,7 @@ Columns of `data` (a gap is a null, never 0, 8.0.1: NaN and ±inf of an array be
     revenue, cost_mine, cost_process, cost_sales, royalty, cf         the sums of the increment (`cf` — the identity)
     <e>:grade, <e>:metal, <e>:rec_metal          per element e (the grade — by the tonnes of the blocks with a value)
     cum_blocks, cum_ore_t, …, cum_cf             the same, accumulated over C_k
-    <e>:cum_grade, <e>:cum_metal, <e>:cum_rec_metal
+    cum_<e>:grade, cum_<e>:metal, cum_<e>:rec_metal
 
 `strip` (W/O) is not stored: it is waste_t / ore_t, null at ore_t = 0 (`table_shells`). `value` (Σ v of the closure) and
 the NPV (a view of the calendar, решение 19) are not in the file either: `meta.shells` and the report have them. The
@@ -66,7 +66,7 @@ def data_columns(elements: Sequence[str]) -> list[tuple[str, str]]:
     cols = [("k", "i8"), ("rf", "f8")] + [(p, _kind(p)) for p in SHELL_PARTS]
     cols += [(f"{e}:{p}", "f8") for e in elements for p in ELEMENT_PARTS]
     cols += [(f"cum_{p}", _kind(p)) for p in SHELL_PARTS]
-    cols += [(f"{e}:cum_{p}", "f8") for e in elements for p in ELEMENT_PARTS]
+    cols += [(f"cum_{e}:{p}", "f8") for e in elements for p in ELEMENT_PARTS]
     return cols
 
 
@@ -74,7 +74,7 @@ def elements_of(table: pa.Table) -> list[str]:
     """The elements of a table `data` in their order."""
     out: list[str] = []
     for n in table.schema.names:
-        if ":" in n:
+        if ":" in n and not n.startswith("cum_"):
             e, part = n.rsplit(":", 1)
             if part == "grade" and e not in out:
                 out.append(e)
@@ -125,7 +125,7 @@ def shells_table(shells: Sequence[Mapping[str, Any]], elements: Sequence[str]) -
             part, cpart = (s.get("elements") or {}).get(e) or {}, (cum.get("elements") or {}).get(e) or {}
             for p in ELEMENT_PARTS:
                 cols[f"{e}:{p}"].append(part.get(p))
-                cols[f"{e}:cum_{p}"].append(cpart.get(p))
+                cols[f"cum_{e}:{p}"].append(cpart.get(p))
     return data_table(cols, elements)
 
 
@@ -140,7 +140,7 @@ def table_shells(table: pa.Table, elements: Sequence[str] | None = None) -> list
     for r in table.to_pylist():
         cum = {p: r[f"cum_{p}"] for p in SHELL_PARTS}
         cum["strip"] = _strip(cum["ore_t"], cum["waste_t"])
-        cum["elements"] = {e: {p: r[f"{e}:cum_{p}"] for p in ELEMENT_PARTS} for e in names}
+        cum["elements"] = {e: {p: r[f"cum_{e}:{p}"] for p in ELEMENT_PARTS} for e in names}
         out.append({
             "k": r["k"], "rf": r["rf"], **{p: r[p] for p in SHELL_PARTS}, "strip": _strip(r["ore_t"], r["waste_t"]),
             "elements": {e: {p: r[f"{e}:{p}"] for p in ELEMENT_PARTS} for e in names}, "cum": cum,
