@@ -3,7 +3,7 @@
  * модели». The ribbon, Ctrl+K and the assistant run the same commands; no keys. A command without arguments opens its window (ADR 0021
  * п. 9), with them it executes. The pure declarations are here (the catalog reads them first); the handlers — `bind.ts` as the windows get
  * ready: `implicit.new`, `implicit.domains`, `implicit.save`, `implicit.update` (19.22); the groups, «В каркас», «Удалить» (19.24); the check, the support, the comparison with the holes and «Модель на скважины» (19.25); `implicit.structural` (19.26, `structuralCommand.ts`). The parameters are flat (`ParamSchema` has no objects): the box is text «x; y; z; x; y; z», the lists are text
- * («DY; SS»). The commands of Э19б (the stack, the faults, the system of veins, the planned holes) come with 19.38.
+ * («DY; SS»). The commands of Э19б (19.38): `implicit.relations`, `implicit.fault`, `implicit.group_faults`, `implicit.vein_system` (`stackCommands.ts`); the planned holes are the module `drillholes`.
  */
 import type { Command, ParamSchema } from "../../shell/commands";
 import type { IconName } from "../../shell/Icon";
@@ -128,6 +128,69 @@ export const commands: Command[] = [
     },
   },
   {
+    id: "implicit.relations",
+    title: "Стек отношений",
+    description:
+      "Стек отношений неявной модели (Д-24, Д-31): домены литологии по возрасту (первый — самый молодой) и отношение каждого к более старым ниже него: " +
+      "conformable «Согласно» (молодая группа побеждает в перекрытии, данные не отбрасываются), erode «Эрозия» (молодая поверхность срезает старые: их данные внутри тела молодой группы отбрасываются), " +
+      "onlap «Налегание» (молодая группа ложится на старую поверхность: её данные ниже неё отбрасываются), intrusion «Интрузия» (молодая группа — замкнутое тело, замещающее объёмы всех старых). " +
+      "Без order и relations открывает окно «Стек отношений» модели (перетаскивание, отношения, «рассечена разломом»); с ними записывает стек (PUT /relations) — тела строятся командой «Обновить». " +
+      "model_id — модель (без неё выбранная в дереве или единственная); order — все домены через «;» от самого молодого (номер или название), например «INT; SS; SH»; relations — «группа=отношение» через «;», например «INT=intrusion; SS=erode». У самой старой группы отношение ничего не меняет.",
+    params: {
+      model_id: MODEL,
+      order: P("string", "домены по возрасту через «;», от самого молодого: номера или названия групп"),
+      relations: P("string", "отношения: группа=отношение через «;» (conformable, erode, onlap, intrusion или Согласно, Эрозия, Налегание, Интрузия)"),
+    },
+  },
+  {
+    id: "implicit.fault",
+    title: "Разлом",
+    description:
+      "Разлом неявной модели (Д-24): отдельная поверхность (своя RBF) по данным разлома — коды таблицы скважин и/или слои линий (контакт разлома, точки «внутри» и «снаружи»); рассекаемые домены получают два крыла (f_F < 0 и f_F ≥ 0), на разломе поле имеет разрыв, смещение — результат построения (только чтение). " +
+      "Без codes и layers открывает мастер «Разлом» (model_id — модель; group_id — правка существующего); с ними записывает группу (POST /faults) и домены, которые она рассекает. Крылья и смещение строит «Обновить». " +
+      "codes — коды разлома через «;»; layers — слои линий «номер:роль» через «;», роль contact (по умолчанию), inside или outside; radius — радиус влияния R_F, м (null — бесконечный разлом); domains — рассекаемые домены (номера или названия) через «;».",
+    params: {
+      model_id: MODEL,
+      group_id: P("integer", "номер группы-разлома для правки; без него добавляется новый разлом"),
+      name: P("string", "название разлома (по умолчанию «Разлом N»)"),
+      codes: P("string", "коды разлома в таблице интервалов через «;»"),
+      layers: P("string", "слои линий разлома: номер:роль через «;» (роль contact, inside или outside)"),
+      radius: P("number", "радиус влияния R_F, м (больше 0, до 100000); null — бесконечный разлом", { nullable: true }),
+      domains: P("string", "рассекаемые домены через «;»: номера или названия групп"),
+    },
+  },
+  {
+    id: "implicit.group_faults",
+    title: "Разломы группы",
+    description:
+      "Какие разломы рассекают домен литологии («рассечена разломом», Д-24): записывает список разломов группы (PUT /groups/{gid}/faults), перезаписывая прежний; пустой список — домен не рассекается. " +
+      "Рассекаются только домены, рассекают только группы вида «Разлом». model_id — модель; group_id — домен; fault_ids — разломы через «;» (номера или названия).",
+    params: {
+      model_id: MODEL,
+      group_id: P("integer", "номер домена литологии"),
+      fault_ids: P("string", "разломы, рассекающие домен, через «;»: номера или названия; пусто — никакие"),
+    },
+    required: ["group_id", "fault_ids"],
+  },
+  {
+    id: "implicit.vein_system",
+    title: "Система жил",
+    description:
+      "Система жил неявной модели (Д-39): 2–20 жил с кодами таблицы интервалов; порядок в списке — возраст, первая жила самая молодая и режет более древнюю (тело древней минус тело молодой). " +
+      "Результат построения: тело каждой жилы, общее тело системы, линии пересечения жил (слои стрингов) и таблица пар жил (длина линии, объём общей зоны до обрезки). " +
+      "Без veins открывает окно «Система жил» (model_id — модель; group_id — правка существующей); с veins записывает группу (POST /vein_system). " +
+      "veins — коды жил по возрасту через «;», например «VN; VN2» (первая — самая молодая) или «VN:1; VN2:2»; bound, offset, t_min — граница и параметры всех жил (по умолчанию выпуклая оболочка, 0, 0).",
+    params: {
+      model_id: MODEL,
+      group_id: P("integer", "номер группы-системы для правки; без него добавляется новая"),
+      name: P("string", "название системы (по умолчанию «Жилы N»)"),
+      veins: P("string", "коды жил по возрасту через «;» (первая — самая молодая)"),
+      bound: P("string", "граница: hull — выпуклая оболочка контактов с отступом", { enum: ["hull"] }),
+      offset: P("number", "отступ границы от контактов, м (0–10000) для всех жил"),
+      t_min: P("number", "мощность выклинивания t_min, м (0–100) для всех жил"),
+    },
+  },
+  {
     id: "implicit.show",
     title: "Показать данные модели в 3D",
     description:
@@ -230,6 +293,9 @@ export const IMPLICIT_BUTTONS: readonly ImplicitButton[] = [
   { command: "implicit.vein", label: "Жила", icon: icon("vein"), hint: "Тело жилы по кровле и подошве интервалов", small: true },
   { command: "implicit.structural", label: "Структурные данные", icon: icon("trend"), hint: "Замеры залегания → структурный тренд модели", small: true },
   { command: "implicit.expand", label: "Расширение каркаса", icon: icon("wireframe"), hint: "Поверхность на расстоянии Δ от замкнутого каркаса", small: true },
+  { command: "implicit.relations", label: "Стек отношений", icon: icon("domains"), hint: "Домены по возрасту, отношения «Согласно / Эрозия / Налегание / Интрузия», «рассечена разломом»", small: true },
+  { command: "implicit.fault", label: "Разлом", icon: icon("contact"), hint: "Поверхность разлома по кодам и слоям линий: крылья и смещение", small: true },
+  { command: "implicit.vein_system", label: "Система жил", icon: icon("vein"), hint: "Несколько жил: молодая режет древнюю, общее тело, линии пересечения", small: true },
   { command: "implicit.update", label: "Обновить", icon: icon("refresh"), hint: "Построить модель или пересчитать изменённые участки" },
   { command: "implicit.to_wireframe", label: "В каркас", icon: icon("export"), hint: "Копия выхода модели в обычный каркас", small: true },
   { command: "implicit.check", label: "Проверка по скважинам", icon: icon("audit"), hint: "Невязки модели по точкам данных, CSV, подсветка в 3D", small: true },

@@ -58,7 +58,7 @@ export interface ModelDefaults {
   v_min: number;
   clip: ClipKind;
   /** the limits of the form: the groups, the codes of a group, the manual layers */
-  limits: { groups: number; codes: number; manual: number };
+  limits: { groups: number; codes: number; manual: number; veins: number };
 }
 
 export interface DefaultsAnswer {
@@ -102,7 +102,7 @@ export function readDefaults(raw: unknown): DefaultsAnswer {
       step: num(data.step, 5),
       v_min: num(post.v_min, 0),
       clip: clipOf(post.clip),
-      limits: { groups: num(lim.groups, 50), codes: num(lim.codes, 1000), manual: num(lim.manual, 100) },
+      limits: { groups: num(lim.groups, 50), codes: num(lim.codes, 1000), manual: num(lim.manual, 100), veins: num(lim.veins, 20) },
     },
     ranges: readRanges(o.ranges),
   };
@@ -177,22 +177,37 @@ export async function loadModels(): Promise<ModelRow[]> {
   return (Array.isArray(r.models) ? r.models : []).map(readRow);
 }
 
-/** An output of a model (a surface, a body or — Э19б — a line): the wireframe it wrote. */
+/** An output of a model (a surface, a body or — Э19б — a line): the wireframe (or, for a line, the layer of strings) it wrote. */
 export interface OutputInfo {
+  /** null — a line: it is a layer of strings (`line_layer_id`), not a wireframe */
   wireframe_id: number | null;
   kind: string;
   /** the id of the group; null — «Прочее» */
   group: number | null;
+  /** 0 / 1 — the wing of a fault (f_F < 0 / f_F ≥ 0); null — the group has no wings */
   wing: number | null;
   threshold: number | null;
   name: string;
   volume: number | null;
   area: number | null;
   triangles: number | null;
+  /** Э19б: the body of the wing of a fault is a region of space, not a rock: its volume is not added to the volumes of the rocks */
+  region: boolean;
+  /** Э19б: the common body of a system of veins (the union of the veins) */
+  common: boolean;
+  /** Э19б: the code of a vein of a system */
+  code: string | null;
+  /** Э19б: a line of intersection of two veins: the layer of strings, how many lines, the length */
+  line_layer_id: number | null;
+  lines: number | null;
+  length: number | null;
+  /** the codes of the two veins the line is of */
+  pair: [string, string] | null;
 }
 
 export function readOutput(raw: unknown): OutputInfo {
   const o = obj(raw);
+  const pair = Array.isArray(o.pair) && o.pair.length === 2 ? ([String(o.pair[0]), String(o.pair[1])] as [string, string]) : null;
   return {
     wireframe_id: numOrNull(o.wireframe_id),
     kind: str(o.kind) ?? "",
@@ -203,6 +218,13 @@ export function readOutput(raw: unknown): OutputInfo {
     volume: numOrNull(o.volume),
     area: numOrNull(o.area),
     triangles: numOrNull(o.triangles),
+    region: o.region === true,
+    common: o.common === true,
+    code: str(o.code),
+    line_layer_id: numOrNull(o.line_layer_id),
+    lines: numOrNull(o.lines),
+    length: numOrNull(o.length),
+    pair,
   };
 }
 
@@ -271,7 +293,8 @@ export function readSaved(raw: unknown): Saved {
 
 export const createModel = async (body: Record<string, unknown>): Promise<Saved> => readSaved(await api.post(`${IMPLICIT_API}/models`, body));
 export const replaceModel = async (id: number, version: number, body: Record<string, unknown>): Promise<Saved> => readSaved(await api.put(`${IMPLICIT_API}/models/${id}`, { ...body, expected_version: version }));
-export const deleteModelApi = (id: number): Promise<{ deleted: number; wireframes: number[] }> => api.del(`${IMPLICIT_API}/models/${id}`);
+/** `DELETE /models/{id}` → the wireframes of the outputs and (Э19б) the layers of strings of the lines of intersection it took. */
+export const deleteModelApi = (id: number): Promise<{ deleted: number; wireframes: number[]; line_layers?: number[] }> => api.del(`${IMPLICIT_API}/models/${id}`);
 
 // ---- the groups ----
 

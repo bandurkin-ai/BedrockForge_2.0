@@ -234,7 +234,7 @@ describe("`implicit.show`: the points and the ellipsoid in 3D", () => {
     await new Promise((r) => setTimeout(r, 30));
     expect(core.sent.filter((s) => s.path.endsWith("/points/preview"))).toHaveLength(2);
     expect(implicitViewStore.get().entries["6:1"]).toMatchObject({ status: "ready", version: 8 });
-    expect(readInfo(R.model_stale.body).version).toBe(8);
+    expect(readInfo(R.model_stale.body).version).toBe(6);
     expect(implicitStore.get().rows[0].version).toBe(8);
   });
 });

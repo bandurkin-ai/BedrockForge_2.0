@@ -29,9 +29,14 @@ import { followModels, forgetView } from "./viewState";
 import { onScene } from "../scene/sceneHost";
 import { clearImplicit, implicitStore, isImplicitEvent, loadDetails, loadRows, modelById, pickModel } from "./state";
 import { ExpandForm } from "./ExpandForm";
+import { FaultWizard } from "./FaultWizard";
 import { ShellsForm } from "./ShellsForm";
+import { StackTab } from "./StackTab";
+import { STACK_WINDOW } from "./StackState";
+import { bindStack } from "./stackCommands";
 import { ToWireframe } from "./ToWireframe";
 import { VeinForm } from "./VeinForm";
+import { VeinSystemForm } from "./VeinSystemForm";
 import { Wizard } from "./Wizard";
 import { editTitle, ensureDefaults, forgetDefaults, resetWizard, saveWizard, startEditModel, startNew, TITLE, WIZARD_WINDOW, wizardStore } from "./wizardState";
 import { isIssue } from "../estimation/formBase";
@@ -181,6 +186,7 @@ export function bindImplicit(app: App): void {
   app.registry.bind("implicit.show", noted(app, (a) => runShow(app, a)), needProject); // the view only: a read-only project may show too
   bindGroupCommands(app); // the groups (19.24): shells, vein, expand; «В каркас»; «Удалить»
   bindChecks(app); // the check against the data, the comparison with the holes, «Модель на скважины» (19.25)
+  bindStack(app); // the stack of relations, the faults, the system of veins (Э19б, 19.38)
   let uid: string | null = projectStore.get().current?.uid ?? null;
   if (uid) void loadRows();
   unbind.push(
@@ -247,6 +253,12 @@ export function renderImplicitWindow(w: FloatWin): ReactNode | null {
       return createElement(VeinForm, { winId: w.id });
     case "implicit-expand":
       return createElement(ExpandForm, { winId: w.id });
+    case "implicit-fault":
+      return createElement(FaultWizard, { winId: w.id });
+    case "implicit-vein-system":
+      return createElement(VeinSystemForm, { winId: w.id });
+    case STACK_WINDOW:
+      return createElement(StackTab, { winId: w.id });
     default:
       return createElement(ToWireframe, { winId: w.id });
   }

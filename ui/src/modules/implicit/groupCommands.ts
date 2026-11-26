@@ -61,7 +61,8 @@ export async function runDelete(a: Record<string, unknown>, source: CommandSourc
   try {
     const r = await deleteModelApi(id);
     forgetGroups(id);
-    return `Модель «${name}» удалена${r.wireframes.length ? ` вместе с каркасами-выходами (${r.wireframes.length})` : ""}`;
+    const lines = r.line_layers?.length ?? 0;
+    return `Модель «${name}» удалена${r.wireframes.length ? ` вместе с каркасами-выходами (${r.wireframes.length})` : ""}${lines ? `${r.wireframes.length ? " и" : " вместе с"} линиями пересечения (${lines})` : ""}`;
   } catch (e) {
     if (e instanceof CoreError && e.code === "in_use") {
       const list = readUsage(e.body ?? {});
