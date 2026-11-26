@@ -29,7 +29,7 @@ const SOURCE_NOTE = "Чтобы пересчитать поверхности и
 /** `implicit.relations`. */
 export async function runRelations(app: App, a: Record<string, unknown>, source: CommandSource): Promise<string> {
   const id = needModel(app, a.model_id);
-  if (a.order === undefined && a.relations === undefined) return openStack(id);
+  if (a.order === undefined && a.relations === undefined) return openStack(id, source);
   const info = await detailsOf(id);
   const groups = groupsOfMeta(info.meta);
   const stack = groups.filter((g) => g.type !== "fault");

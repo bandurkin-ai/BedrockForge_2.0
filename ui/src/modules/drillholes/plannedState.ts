@@ -45,6 +45,39 @@ export async function loadPlanned(): Promise<void> {
   }
 }
 
+/**
+ * An event of a planned hole: the one hole named by the event is read again (the list with the paths of up to 10 001 points a hole is not);
+ * deleted — it leaves the list. An event without an id, or a read that fails, reads the whole list.
+ */
+export async function refreshPlanned(data: string): Promise<void> {
+  let ev: { id?: unknown; deleted?: unknown } = {};
+  try {
+    ev = JSON.parse(data) as typeof ev;
+  } catch {
+    return loadPlanned();
+  }
+  const id = ev.id;
+  const st = plannedStore.get();
+  const uid = projectStore.get().current?.uid ?? null;
+  if (typeof id !== "number" || !st.loaded || !uid || uid !== uidOfList) return loadPlanned();
+  if (ev.deleted === true) {
+    plannedStore.set({ rows: st.rows.filter((r) => r.id !== id) });
+    return;
+  }
+  const mine = listSeq;
+  try {
+    const row = await getPlanned(id);
+    if (mine !== listSeq || uid !== (projectStore.get().current?.uid ?? null)) return; // a newer read of the list, or another project: dropped
+    plannedStore.set((c) => ({ rows: [...c.rows.filter((r) => r.id !== id), row].sort((a, b) => a.id - b.id), error: null }));
+  } catch (e) {
+    if (e instanceof CoreError && e.code === "planned_hole_not_found") {
+      if (mine === listSeq) plannedStore.set((c) => ({ rows: c.rows.filter((r) => r.id !== id) }));
+      return;
+    }
+    return loadPlanned();
+  }
+}
+
 export function clearPlanned(): void {
   listSeq++;
   uidOfList = null;
@@ -171,6 +204,7 @@ function adopt(row: PlannedRow, saved: string): void {
 /** «Сохранить» (`asNew` — a new hole next to the open one). The words of a refusal stand under the field (`issue`). */
 export async function saveWin(opts: { asNew?: boolean } = {}): Promise<PlannedRow> {
   const s = plannedWin.get();
+  if (s.saving) throw new CoreError(0, "busy", "Скважина уже записывается.", "Дождитесь окончания записи и повторите.");
   const built = bodyOf(s.form);
   if (!built.ok) {
     plannedWin.set({ issue: built.issue });

@@ -151,6 +151,7 @@ async function save(id: number, a: Record<string, unknown>): Promise<string> {
   const made = faultMake(form, base.ctxOf(model, gid, defaults));
   if (!made.ok) return fail(made.issue);
   if (own) base.store.set({ saving: true });
+  let created: number | null = null; // the fault the core has already written (POST /faults); a refusal after it is not a refusal of the whole write
   try {
     let version = info.version;
     let fid: number;
@@ -172,6 +173,7 @@ async function save(id: number, a: Record<string, unknown>): Promise<string> {
       version = r.version;
       fid = r.group.id as number;
       name = r.group.name;
+      created = fid;
     }
     // the domains that are cut by this fault: the faults of a domain are written whole
     let cut = 0;
@@ -190,6 +192,13 @@ async function save(id: number, a: Record<string, unknown>): Promise<string> {
     return text;
   } catch (e) {
     const r = refusalOf(e);
+    if (created !== null) {
+      // the fault is in the model, the domains were not written: the window takes the fault as its own (the next «Сохранить» edits it, a second POST would be `name_taken`)
+      if (base.windowId() && base.store.get().modelId === id) base.store.set({ groupId: created });
+      await loadRows();
+      void loadDetails(id).catch(() => undefined);
+      return fail({ param: null, code: "domains_not_written", message: "Разлом записан, домены не обновлены: повторите.", hint: `Нажмите «Сохранить» ещё раз — разлом уже есть в модели и второй раз не создаётся. Ответ ядра: ${r.message}` });
+    }
     return fail(groupIssue(r));
   } finally {
     base.store.set({ saving: false });

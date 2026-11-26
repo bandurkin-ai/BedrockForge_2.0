@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AppContext } from "../../src/shell/AppContext";
 import type { App } from "../../src/shell/app";
 import { commandTools } from "../../src/shell/commands";
+import { closeDialog, dialogStore } from "../../src/shell/dialogs";
 import { windowStore } from "../../src/shell/windows";
 import { readInfo, readOutput } from "../../src/modules/implicit/api";
 import { renderImplicitWindow } from "../../src/modules/implicit/bind";
@@ -27,6 +28,14 @@ import { VeinSystemForm } from "../../src/modules/implicit/VeinSystemForm";
 import { ensureDefaults } from "../../src/modules/implicit/wizardState";
 import { R, realApp, teardown } from "./real";
 import { installStack, STACK_ID, VEINS_ID, type StackCore } from "./stackHarness";
+
+const waitFor = async (cond: () => boolean, ms = 2000): Promise<void> => {
+  const t0 = Date.now();
+  while (!cond()) {
+    if (Date.now() - t0 > ms) throw new Error("waitFor: timeout");
+    await new Promise((r) => setTimeout(r, 10));
+  }
+};
 
 let app: App;
 let core: StackCore;
@@ -246,6 +255,23 @@ describe("`implicit.fault`", () => {
     expect(r.result).toContain("Разлом «Разлом» добавлен в модели «Стек и разлом»");
     expect(r.result).toContain("рассекает доменов: 1");
   });
+  it("the fault is written, the domains are not: the window takes the fault as its own, the next «Сохранить» does not POST it again", async () => {
+    await run("implicit.fault"); // the window of a new fault
+    const posted = (R.fault_post.body.group as { id: number }).id;
+    const lists = () => core.sent.filter((x) => x.method === "GET" && /\/implicit\/models$/.test(x.path)).length;
+    core.force(`PUT /implicit/models/${STACK_ID}/groups/1/faults`, { status: 422, body: R.group_faults_bad.body });
+    const before = lists();
+    const r = await run("implicit.fault", { name: "Разлом F2", codes: "FLT", radius: 250, domains: "INT" });
+    expect(r.ok).toBe(false);
+    expect(r.result).toContain("Разлом записан, домены не обновлены");
+    expect(sent("POST", /faults$/)).toHaveLength(1);
+    expect(faults.store.get().groupId).toBe(posted);
+    expect(faults.store.get().issue).toMatchObject({ code: "domains_not_written" });
+    expect(lists()).toBeGreaterThan(before);
+    // the second try edits the fault (a group number), it is not a second POST
+    await run("implicit.fault", { group_id: posted, name: "Разлом F2", codes: "FLT", radius: 250, domains: "INT" });
+    expect(sent("POST", /faults$/)).toHaveLength(1);
+  });
   it("the hand layers: «номер:роль»; a fault without codes is made of them; an infinite fault is `radius: null`", async () => {
     const r = await run("implicit.fault", { name: "Трасса", layers: "16:contact; 17:внутри; 18:outside", radius: null });
     expect(r.ok).toBe(true);
@@ -412,6 +438,40 @@ describe("the window of the stack", () => {
     expect(stackStore.get().dirty).toBe(true);
     expect(stackStore.get().draft?.relations[1]).toBe("onlap");
     expect(app.store.get().statusNote).toContain("замкнут в цикл");
+  });
+  it("a model changed meanwhile is not overwritten: the draft is of an older version, nothing is written, the words say to reread", async () => {
+    await run("implicit.relations");
+    setRelation(1, "onlap");
+    const fresh = { ...(R.model_stack.body as Record<string, unknown>), version: (R.model_stack.body.version as number) + 1 };
+    core.details.set(STACK_ID, fresh);
+    await applyStack(app);
+    expect(core.sent.filter((s) => s.method === "PUT")).toHaveLength(0);
+    expect(stackStore.get().error).toContain("Модель изменена, перечитайте.");
+    expect(stackStore.get().error).toContain("Сбросить");
+    expect(stackStore.get().dirty).toBe(true);
+    expect(app.store.get().statusNote).toContain("Модель изменена");
+  });
+  it("another model replaces a draft that is not written only after the question", async () => {
+    await run("implicit.relations");
+    setRelation(1, "onlap");
+    const p = run("implicit.relations", { model_id: VEINS_ID });
+    await waitFor(() => dialogStore.get().queue.length > 0);
+    const d = dialogStore.get().queue[0];
+    if (d.kind !== "confirm") throw new Error("a confirmation is expected");
+    expect(d.options.message).toContain("не записаны");
+    d.resolve(false);
+    closeDialog(d.id);
+    expect((await p).result).toBe("Отменено");
+    expect(stackStore.get().modelId).toBe(STACK_ID);
+    expect(stackStore.get().dirty).toBe(true);
+    const q = run("implicit.relations", { model_id: VEINS_ID });
+    await waitFor(() => dialogStore.get().queue.length > 0);
+    const e = dialogStore.get().queue[0];
+    if (e.kind !== "confirm") throw new Error("a confirmation is expected");
+    e.resolve(true);
+    closeDialog(e.id);
+    expect((await q).ok).toBe(true);
+    expect(stackStore.get()).toMatchObject({ modelId: VEINS_ID, dirty: false });
   });
   it("the shell's window layer knows the three windows of Э19б", async () => {
     await run("implicit.relations");

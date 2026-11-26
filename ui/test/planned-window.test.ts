@@ -200,7 +200,7 @@ describe("the tab «План / факт»", () => {
     expect(html).toContain("126,3 м");
     expect(html).toContain('data-points="121"');
     expect(html).toContain('data-mark="max"');
-    expect(html).toContain("max 281");
+    expect(html).toContain("макс. 281");
     expect(html).toContain('data-rows="121"');
     expect((html.match(/<tr><td class="[^"]*">\d/g) ?? []).length).toBe(50);
     expect(html).toContain("Строки 1–50 из 121");
