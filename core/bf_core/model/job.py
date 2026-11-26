@@ -9,10 +9,12 @@ the state it had (`ready` or `error` with its reason).
 
 The stages (`spec.STAGES`, the text of a message starts with its stage): «Данные» (`data.load`) → «Участки» (the octree
 and the solution of the patches of every group) → «Изоповерхности» (the bricks) → «Тела» (the chronology, the veins, the
-expansions, the post-processing) → «Проверки» (8.9.3 п. 7) → «Запись» (`job_write.py`, one transaction). The groups are
-built in the order of the model; `implicit.update` is the same run that takes from the project's cache what has not
-changed (`update.py`: the patches by the hash of their content, the bricks by the hash of the patches that reach them)
-and says how much in `reused`. The result is bit for bit that of a full build (Т8.9-8).
+expansions, the post-processing; since 19.36 the stack of relations, the faults and the systems of veins —
+`job_stack.py`) → «Проверки» (8.9.3 п. 7) → «Запись» (`job_write.py`, one transaction; the layers of strings of the
+crossing of the veins too, `store_lines.py`). The groups are built in the order of the model; `implicit.update` is the
+same run that takes from the project's cache what has not changed (`update.py`: the patches by the hash of their
+content, the bricks by the hash of the patches that reach them) and says how much in `reused`. The result is bit for
+bit that of a full build (Т8.9-8).
 
 Nothing is in the project before the last transaction: a cancel (`JobCancelled` from `tick`, at any stage) leaves the
 model as it was (the state goes back; no blob, no wireframe, no row of the graph); an error — `ApiError` {code, message,
@@ -128,7 +130,7 @@ def _stats(points_n: int, built: Built, solver_reused: tuple[int, int], bricks: 
             "max_residual": max(maxes) if maxes else None, "cond_max": max(conds) if conds else None,
             "eta_max": max(etas) if etas else None, "seconds": round(seconds, 3),
             "reused": {"patches": int(solver_reused[0]), "bricks": int(bricks[0])},
-            "by_group": parts, "balance": built.balance}  # fmt: skip
+            "by_group": parts, "balance": built.balance, **built.extra}  # fmt: skip
 
 
 def _answer(model_id: int, done: Any, mode: str, outputs: list[dict[str, Any]], stats: dict[str, Any],
@@ -222,7 +224,7 @@ def _run(engine: sa.Engine, folder: Path, model_id: int, expected: Any, params: 
     except JobCancelled:
         pass  # the commit is done: a cancel now takes nothing back (`run_build` would put the old state over it)
     with dialect.read_tx(engine) as conn:
-        listed = st.outputs_of(conn, {"outputs": done.outputs})
+        listed = st.outputs_of(conn, {"outputs": done.outputs}, lines=True)
     return _answer(model_id, done, mode, listed, stats, journal, prog.stages(), jw.events(model_id, done))
 
 

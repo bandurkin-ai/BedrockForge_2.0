@@ -275,10 +275,13 @@ def delete(conn: sa.Connection, store: BlobStore | None, model_id: int) -> dict[
     that is being built — 409 `model_building`; an output other objects refer to — 422 `wireframe_in_use` (the whole
     deletion is refused). Returns `{deleted, wireframes: [id], removed: [{id, shas, render, shared}]}`: `removed` — what
     `wireframes.store.delete_wireframe` says of each output, for the caller that drops the levels of detail of a
-    geometry nobody has any more (`wireframes/router.py`)."""
+    geometry nobody has any more (`wireframes/router.py`); `line_files` — the files of lines (the crossing of the veins
+    of a system, `store_lines`) that went with it, `line_layers` — their layers."""
     from bf_core import lineage
     from bf_core.wireframes import store as wf
     from bf_core.wireframes.cloud_dz import forget_surface
+
+    from . import store_lines
 
     row = sb.stored(conn, model_id)
     sb.refuse_building(conn, row)
@@ -289,50 +292,62 @@ def delete(conn: sa.Connection, store: BlobStore | None, model_id: int) -> dict[
         removed.append(wf.delete_wireframe(conn, wid))
         forget_surface(conn, wid)
         lineage.forget(conn, lineage.Node("wireframe", wid))
+    files = store_lines.files_of(conn, model_id)
+    gone = store_lines.drop(conn, model_id)
+    layers = [i for i in gone if i not in files]
     conn.execute(sa.delete(blob_owners).where(
         blob_owners.c.owner_kind == sb.OWNER, blob_owners.c.owner_id == model_id))  # fmt: skip
     conn.execute(sa.delete(objects).where(objects.c.id == model_id))  # `object_refs` of the model go by cascade
     lineage.forget(conn, lineage.Node(LINEAGE_KIND, model_id))  # a reused id inherits no pin and no inputs
     if store is not None:
         shutil.rmtree(store.root.parent / "cache" / "implicit" / str(model_id), ignore_errors=True)
-    return {"deleted": model_id, "wireframes": kids, "removed": removed}
+    return {"deleted": model_id, "wireframes": kids, "removed": removed, "line_files": files, "line_layers": layers}
 
 
 # --- the outputs ------------------------------------------------------------------------------------------------------
 
 
-def output_meta(model_id: int, group: int | None, wing: int | None = None,
-                threshold: float | None = None) -> dict[str, Any]:  # fmt: skip
-    """`meta` of a wireframe that is an output: `source {op: "implicit", model_id, group, wing?, threshold?}`
-    (ADR 0026 решение 24). `group` None — «Прочее»."""
+#: what an output of Э19б tells besides its group and wing (`extra` of `commit_output`): the code of a vein of a system,
+#: the common body of a system, the body that is the space of a wing of a fault (not rock)
+EXTRA_KEYS = ("code", "common", "region")
+
+
+def output_meta(model_id: int, group: int | None, wing: int | None = None, threshold: float | None = None,
+                extra: Mapping[str, Any] | None = None) -> dict[str, Any]:  # fmt: skip
+    """`meta` of a wireframe that is an output: `source {op: "implicit", model_id, group, wing?, threshold?, code?,
+    common?, region?}` (ADR 0026 решение 24). `group` None — «Прочее»."""
     source: dict[str, Any] = {"op": "implicit", "model_id": model_id, "group": group}
     if wing is not None:
         source["wing"] = wing
     if threshold is not None:
         source["threshold"] = threshold
+    source.update({k: v for k, v in (extra or {}).items() if k in EXTRA_KEYS and v})
     return {"source": source}
 
 
 def commit_output(conn: sa.Connection, store: BlobStore, staged: StagedWireframe, model_id: int, *, name: str,
                   kind: str, group: int | None, wing: int | None = None, threshold: float | None = None,
-                  color: str | None = None, author: str | None = None) -> dict[str, Any]:  # fmt: skip
+                  color: str | None = None, author: str | None = None,
+                  extra: Mapping[str, Any] | None = None) -> dict[str, Any]:  # fmt: skip
     """Inside the write transaction: a wireframe child of the model (`commit_wireframe(parent_id=model)`), its name
     made free among the wireframes. Returns the entry of `meta.outputs`: `{wireframe_id, kind, group, wing,
-    threshold?, name}`."""
+    threshold?, name, code?, common?, region?}`."""
     from bf_core.wireframes import store as wf
 
     final = wf.free_name(conn, name)
     wid = wf.commit_wireframe(conn, store, staged, name=final, color=color, parent_id=model_id, author=author,
-                              meta=output_meta(model_id, group, wing, threshold))  # fmt: skip
+                              meta=output_meta(model_id, group, wing, threshold, extra))  # fmt: skip
     entry: dict[str, Any] = {"wireframe_id": wid, "kind": kind, "group": group, "wing": wing, "name": final}
     if threshold is not None:
         entry["threshold"] = threshold
+    entry.update({k: v for k, v in (extra or {}).items() if k in EXTRA_KEYS and v})
     return entry
 
 
 def replace_output(conn: sa.Connection, store: BlobStore, staged: StagedWireframe, model_id: int, wireframe_id: int,
                    *, name: str, kind: str, group: int | None, wing: int | None = None,
-                   threshold: float | None = None) -> tuple[dict[str, Any], dict[str, Any]]:  # fmt: skip
+                   threshold: float | None = None,
+                   extra: Mapping[str, Any] | None = None) -> tuple[dict[str, Any], dict[str, Any]]:  # fmt: skip
     """Inside the write transaction: the geometry of an output of the model replaced in place («Обновить», e19-api §2):
     the same id and the same colour and attributes, the new blobs, the rows `objects` (extent, name, `meta.source`,
     version + 1) and `wireframes` (counts, origin, stats, part table). A wireframe is immutable (`wireframes/store.py`
@@ -355,7 +370,7 @@ def replace_output(conn: sa.Connection, store: BlobStore, staged: StagedWirefram
                             role=role)  # fmt: skip
         del staged.files[role]
     final = wf.free_name(conn, name, exclude_id=wireframe_id)
-    meta = {**dict(row.meta or {}), **output_meta(model_id, group, wing, threshold)}
+    meta = {**dict(row.meta or {}), **output_meta(model_id, group, wing, threshold, extra)}
     n = conn.execute(sa.update(objects).where(objects.c.id == wireframe_id, objects.c.version == row.version).values(
         name=final, name_key=dialect.name_key(final), meta=meta, extent=staged.extent, version=int(row.version) + 1,
         updated_at=dialect.utcnow())).rowcount  # fmt: skip
@@ -367,13 +382,17 @@ def replace_output(conn: sa.Connection, store: BlobStore, staged: StagedWirefram
     entry: dict[str, Any] = {"wireframe_id": wireframe_id, "kind": kind, "group": group, "wing": wing, "name": final}
     if threshold is not None:
         entry["threshold"] = threshold
+    entry.update({k: v for k, v in (extra or {}).items() if k in EXTRA_KEYS and v})
     gone = {"id": wireframe_id, "shas": old_shas, "render": old_render, "shared": wf.geometry_shared(conn, old_shas)}
     return entry, gone
 
 
-def outputs_of(conn: sa.Connection, meta: Mapping[str, Any]) -> list[dict[str, Any]]:
+def outputs_of(conn: sa.Connection, meta: Mapping[str, Any], *, lines: bool = False) -> list[dict[str, Any]]:
     """`meta.outputs` with what the wireframes say now: `{wireframe_id, kind, group, wing, threshold, name, volume,
-    area, triangles}`; an output whose wireframe is gone is left out."""
+    area, triangles}` (+ `code`, `common`, `region` of an output of Э19б that has them); an output whose wireframe is
+    gone is left out. `lines` — the layers of strings of the model (`store_lines.listed`: `{line_layer_id, kind:
+    "line", …}`, no `wireframe_id`) follow the wireframes; the readers that take every output for a wireframe (the
+    check, the support, the comparison, the model on the holes) leave it False."""
     given = [o for o in meta.get("outputs") or [] if isinstance(o, Mapping)]
     ids = [int(o["wireframe_id"]) for o in given if isinstance(o.get("wireframe_id"), int)]
     info: dict[int, Any] = {}
@@ -387,9 +406,15 @@ def outputs_of(conn: sa.Connection, meta: Mapping[str, Any]) -> list[dict[str, A
         if r is None:
             continue
         stats = r.stats or {}
-        out.append({"wireframe_id": int(r.id), "kind": o.get("kind"), "group": o.get("group"), "wing": o.get("wing"),
-                    "threshold": o.get("threshold"), "name": str(r.name), "volume": stats.get("volume"),
-                    "area": stats.get("area"), "triangles": int(r.triangle_count)})  # fmt: skip
+        item = {"wireframe_id": int(r.id), "kind": o.get("kind"), "group": o.get("group"), "wing": o.get("wing"),
+                "threshold": o.get("threshold"), "name": str(r.name), "volume": stats.get("volume"),
+                "area": stats.get("area"), "triangles": int(r.triangle_count)}  # fmt: skip
+        item.update({k: o[k] for k in EXTRA_KEYS if o.get(k)})
+        out.append(item)
+    if lines:
+        from . import store_lines
+
+        out.extend(store_lines.listed(conn, given))
     return out
 
 
@@ -421,12 +446,12 @@ def list_rows(conn: sa.Connection) -> list[dict[str, Any]]:
     return out
 
 
-def get(conn: sa.Connection, model_id: int) -> dict[str, Any]:
+def get(conn: sa.Connection, model_id: int, *, lines: bool = False) -> dict[str, Any]:
     """`{id, name, version, meta, state, error, stale, stale_reason, source_lost, outputs, created_at, updated_at}`
-    (e19-api §5); 404 `model_not_found`."""
+    (e19-api §5); 404 `model_not_found`. `lines` — the layers of strings among the outputs (`outputs_of`)."""
     row = sb.stored(conn, model_id)
     meta = sb.viewed(conn, row.meta, int(row.id))
     return {"id": int(row.id), "name": row.name, "version": int(row.version), "meta": meta,
             "state": meta.get("state") or "ready", "error": meta.get("error"), **freshness(conn, meta),
-            "outputs": outputs_of(conn, meta), "created_at": row.created_at,
+            "outputs": outputs_of(conn, meta, lines=lines), "created_at": row.created_at,
             "updated_at": row.updated_at}  # fmt: skip

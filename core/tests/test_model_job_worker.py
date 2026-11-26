@@ -88,10 +88,10 @@ def test_a_refused_model_fails_the_job_with_the_reason(demo) -> None:  # type: i
     with dialect.write_tx(c.project.engine) as conn:
         conn.execute(sa.update(objects).where(objects.c.id == m["id"]).values(
             meta={**sb.stored(conn, m["id"]).meta, "groups": [{**sb.stored(conn, m["id"]).meta["groups"][0],
-                                                              "relation": "erode"}]}))  # fmt: skip
+                                                              "relation": "sideways"}]}))  # fmt: skip
     key, job_id = jobs_of(c.core).submit(job.KIND_BUILD, {"model_id": m["id"], "expected_version": 1}, title="Ошибка")
     failed = wait_job(c, key, job_id, timeout=120)
-    assert failed["status"] == "failed" and failed["error"]["code"] == "not_ready" and failed["error"]["hint"]
+    assert failed["status"] == "failed" and failed["error"]["code"] == "bad_param" and failed["error"]["hint"]
     meta = state(c, m["id"])
-    assert meta["state"] == "error" and meta["error"]["code"] == "not_ready" and meta["outputs"] == []
+    assert meta["state"] == "error" and meta["error"]["code"] == "bad_param" and meta["outputs"] == []
     assert spec_parts.REFUSALS["not_built"][0] == 409  # the route's answer for a model that has no result

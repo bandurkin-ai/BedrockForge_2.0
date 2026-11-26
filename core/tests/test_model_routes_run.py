@@ -67,20 +67,11 @@ def test_refused_before_the_job(im) -> None:  # type: ignore[no-untyped-def]  # 
         refused(c.post(url, json=[1]), 422, "bad_request")
         refused(c.post(f"{IMP}/models/{mid + 99}/{what}", json={"expected_version": 1}), 404, "model_not_found")
     assert get(c, mid)["state"] == "ready" and get(c, mid)["version"] == 1  # nothing of it marked the model
-    # a group of Э19б (a fault) and a relation other than «Согласно» are `not_ready` until 19.32–19.36
-    fault = {"name": "Разлом", "type": "fault", "codes": ["VN"]}
-    ok(c.post(f"{IMP}/models/{mid}/groups", json={"expected_version": 1, "group": fault}))
-    refused(c.post(f"{IMP}/models/{mid}/build", json={"expected_version": 2}), 422, "not_ready")
-    assert get(c, mid)["state"] == "ready"
-    ok(c.delete(f"{IMP}/models/{mid}/groups/4", params={"expected_version": 2}))
-    onlap = {**W.domain("ALV"), "relation": "onlap"}
-    ok(c.post(f"{IMP}/models/{mid}/groups", json={"expected_version": 3, "group": onlap}))
-    refused(c.post(f"{IMP}/models/{mid}/update", json={"expected_version": 4}), 422, "not_ready")
     # a model whose reference went: the row stays readable, the run says what is missing
     with dialect.write_tx(c.project.engine) as conn:
         conn.execute(sa.delete(objects).where(objects.c.id == c.w.set_id))
     assert get(c, mid)["source_lost"] is True
-    refused(c.post(f"{IMP}/models/{mid}/build", json={"expected_version": 4}), 404, "set_not_found", "data.set_id")
+    refused(c.post(f"{IMP}/models/{mid}/build", json={"expected_version": 1}), 404, "set_not_found", "data.set_id")
 
 
 def test_a_queue_that_refuses_the_job_leaves_the_model_as_it_was(im, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
@@ -225,7 +216,7 @@ def test_build_update_copy_archive_delete(im, tmp_path: Path) -> None:  # type: 
     assert shas_before
     ids = kids(c, mid)
     gone = ok(c.delete(f"{IMP}/models/{mid}"))
-    assert gone == {"deleted": mid, "wireframes": ids}
+    assert gone == {"deleted": mid, "wireframes": ids, "line_layers": []}
     assert not alive(c, mid) and not any(alive(c, i) for i in ids) and not cache_dir(c, mid).exists()
     assert alive(c, copy["wireframe_id"]) and alive(c, again["wireframe_id"]) and _blobs(c, mid) == {}
     assert {"kind": "implicit_model", "id": mid, "deleted": True} in [d for n, d in c.events if n == "implicit.changed"]

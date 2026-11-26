@@ -7,13 +7,12 @@
     built = build_groups(project, prep, pre, points, solver, ...)    # «Участки», «Изоповерхности», «Тела»
     check_outputs(built, prep.spec)                    # «Проверки»: п. 7 of 8.9.3 for what was made
 
-Every domain group goes through `bodies.build_bodies` at once (the chronology needs them together); the other groups
-follow in their order: the shells (`model.shells`, 19.14 — a model with one asks for it lazily and is refused 422
-`not_implemented` while the module is not there), the veins (`veins.build_vein`), the expansions
-(`expand.expand_surface` and `iso_post.postprocess`). Nothing is written here: a cancel (`tick` raises) or a
-failure leaves nothing anywhere
-(the writing is `job_write.py`: one transaction at the end). numba, manifold3d and pyfqmr come with the functions that
-need them, not with this module.
+Every domain group goes through `faults.build_with_faults` at once (`job_stack`, 19.36: the chronology, the stack of
+relations and the faults need them together; a model without them is `bodies.build_bodies` bit for bit); the other
+groups follow in their order: the shells (`model.shells`, 19.14), the veins (`veins.build_vein`), the systems of veins
+(`job_stack.build_system`), the expansions (`expand.expand_surface` and `iso_post.postprocess`). Nothing is written
+here: a cancel (`tick` raises) or a failure leaves nothing anywhere (the writing is `job_write.py`: one transaction at
+the end). numba, manifold3d and pyfqmr come with the functions that need them, not with this module.
 """
 
 from __future__ import annotations
@@ -47,7 +46,8 @@ S_BODIES, S_CHECK, S_WRITE = "Тела", "Проверки", "Запись"
 #: the first word of a message of the pipeline → the stage it belongs to (the text of a stage starts with its name)
 STAGE_OF = {"Данные": S_DATA, "Участки": S_PATCHES, "Изоповерхность": S_ISO, "Изоповерхности": S_ISO, "Тела": S_BODIES,
             "Постобработка": S_BODIES, "Проверка": S_BODIES, "Обрезка": S_BODIES, "Жила": S_BODIES,
-            "Расширение": S_BODIES, "Проверки": S_CHECK, "Запись": S_WRITE}  # fmt: skip
+            "Расширение": S_BODIES, "Разломы": S_PATCHES, "Система": S_BODIES, "Проверки": S_CHECK,
+            "Запись": S_WRITE}  # fmt: skip
 AT_DATA, AT_BUILD, AT_CHECK, AT_WRITE = 0.0, 0.04, 0.91, 0.94  # where the stages start in the progress of the job
 RESIDUAL_LIMIT = 1.0e30  # a field that is not finite is a defect, not a result
 
@@ -104,12 +104,11 @@ def not_ready(what: str, group: Group | None = None) -> ApiError:
 
 
 def refuse_unready(spec: ModelSpec) -> None:
-    """Э19б (разломы, система жил, отношения кроме «Согласно»): 422 `not_ready` before anything is read (e19-api §1)."""
-    for g in spec.groups:
-        if g.type in ("fault", "vein_system"):
-            raise not_ready(f"Группа «{g.name}» ({'разлом' if g.type == 'fault' else 'система жил'})", g)
-        if g.relation != "conformable":
-            raise not_ready(f"Отношение группы «{g.name}» («{g.relation}»)", g)
+    """What of Э19б is refused before anything is read (e19-api §1): the relations, a cycle of the order, a fault that
+    is not in the model (`job_stack.check_stack`, 19.36); every group and relation of Э19б is built since 19.36."""
+    from .job_stack import check_stack
+
+    check_stack(spec)
 
 
 def anisotropy_of(conn: sa.Connection, spec: ModelSpec) -> tuple[Any, dict[str, Any] | None]:
@@ -238,12 +237,24 @@ def load_points(project: Any, spec: ModelSpec, prog: Progress) -> Points:
 
 @dataclass
 class Part:
-    """A solved field of a group for the files of the model."""
+    """A solved field of a group for the files of the model. `wing` −1 — no fault divides it (the number of a wing
+    field: `job_stack`); `rows` — the rows of the data it was solved from (None — every row of its group)."""
 
     group: int
     wing: int
     record: Record
     stats: dict[str, Any]
+    rows: Any = None
+
+
+@dataclass
+class LineOut:
+    """The lines where two veins of a system cross (a layer of strings of the outputs): `lines` — [{closed, points}]."""
+
+    group: int
+    a: str
+    b: str
+    lines: list[dict[str, Any]]
 
 
 @dataclass
@@ -256,6 +267,8 @@ class Built:
     boundary_volume: float | None = None
     bricks: BrickStats = field(default_factory=BrickStats)
     used: set[str] = field(default_factory=set)
+    lines: list[LineOut] = field(default_factory=list)
+    extra: dict[str, Any] = field(default_factory=dict)  # `stats` of the model besides the groups: stack, faults, pairs
 
 
 def _finite(x: float) -> float | None:
@@ -449,7 +462,7 @@ def build_groups(
     eta_of = solver.eta_of if spec.smoothing.mode == "auto" else None
     structural = None if pre.trend is None else Structural(project, pre.trend, threads, built.journal)
     domains = [g for g in spec.groups if g.type == "domain"]
-    others = [g for g in spec.groups if g.type in ("shell", "vein", "expand")]
+    others = [g for g in spec.groups if g.type in ("shell", "vein", "expand", "vein_system")]
     units = (1 if domains else 0) + len(others)
     span = (AT_CHECK - AT_BUILD) / max(units, 1)
     at = AT_BUILD
@@ -464,23 +477,13 @@ def build_groups(
         return bricks_of(rec)
 
     if domains:
-        from .bodies import build_bodies
+        from .job_stack import build_domains
 
-        res = build_bodies(spec, points, pre.boundary, clip=pre.clip, matrix=pre.matrix, matrices_of=structural,
-                           eta_of=eta_of, solver=solver, brick_cache=bricks, threads=threads,
-                           tick=prog.window(at, at + span))  # fmt: skip
+        build_domains(spec, pre, points, solver, bricks=bricks, eta_of=eta_of, structural=structural, threads=threads,
+                      win=prog.window(at, at + span), built=built)  # fmt: skip
         at += span
-        built.outputs.extend(res.outputs)
-        built.journal.extend(res.journal)
-        built.time.update({k: float(v) for k, v in res.stats.get("time", {}).items()})
-        built.balance = res.stats.get("balance")
-        built.boundary_volume = res.stats.get("boundary_volume")
-        by_id = {g.id: g for g in domains}
-        for gid, fit in res.fits.items():
-            rec = solver.record_of(fit.patches)
-            assert rec is not None
-            rec.group = gid
-            built.parts.append(Part(gid, -1, rec, _part_stats(by_id[gid], rec, fit.stats)))
+    elif any(g.type == "fault" for g in spec.groups):
+        built.journal.append("Разломы модели не использованы: нет доменов, которые они рассекают.")
     for g in others:
         win = prog.window(at, at + span)
         at += span
@@ -489,6 +492,10 @@ def build_groups(
             _shells(spec, g, points, pre, solver, eta_of, bricks_of, threads, win, built, structural)
         elif g.type == "vein":
             _vein(project, spec, g, pre, h, threads, win, built)
+        elif g.type == "vein_system":
+            from .job_stack import build_system
+
+            build_system(project, spec, g, pre, h, threads, win, built)
         else:
             _expansion(spec, g, pre, h, levels, threads, win, built)
         win(1.0, f"{S_BODIES}: группа «{g.name}» готова")

@@ -181,17 +181,17 @@ def test_the_same_bits_with_1_2_4_8_threads(world: World, threads: int) -> None:
     assert shas(w, a["id"]) == shas(w, b["id"])  # the points, the patches with their hashes, the solution: bit for bit
 
 
-def test_the_relations_of_e19b_are_refused_not_ready(world: World) -> None:
+def test_the_relations_of_e19b_are_built_since_19_36(world: World) -> None:
+    """«Эрозия» and the others are built (`test_model_job_stack.py`); what the route refuses before the job is a cycle
+    of the order or a fault that is not in the model, in Russian (`job_stages.refuse_unready`)."""
     w = world
-    m = make(w, "Разлом", groups_of("SS"))
+    m = make(w, "Эрозия", groups_of("SS", "SH"))
     with dialect.write_tx(w.engine) as conn:
         st.update(conn, w.store, w.project, m["id"], {"groups": [
-            {**groups_of("SS")[0], "relation": "erode"}]}, 1)  # fmt: skip
-    with pytest.raises(ApiError) as e:
-        run(w, m["id"])
-    assert e.value.status == 422 and e.value.code == "not_ready" and e.value.hint and "SS" in e.value.message
-    assert state_of(w, m["id"]) == "ready" and meta_of(w, m["id"])["state"] == "error"  # the reason is in the model
-    assert meta_of(w, m["id"])["error"]["code"] == "not_ready" and kids(w, m["id"]) == []
+            {**groups_of("SS")[0], "relation": "erode"}, groups_of("SH")[0]]}, 1)  # fmt: skip
+    out = run(w, m["id"])
+    assert out["state"] == "ready" and out["stats"]["stack"]["relations"] == {"3": "erode", "4": "conformable"}
+    assert meta_of(w, m["id"])["error"] is None and len(kids(w, m["id"])) == 5
 
 
 # --- the cancel and the errors --------------------------------------------------------------------------------------

@@ -7,8 +7,8 @@
     and `DELETE` — `routes_outputs.py`.
   * `POST /models/{id}/build` and `…/update` {expected_version, threads?} → {source, id} of the job `implicit.build` /
     `implicit.update`. Refused before it starts: 404 `model_not_found`, 409 `model_building`, `version_conflict
-    {version}`, 404 / 422 of the references and the parameters (`store.prepare`), 422 `not_ready` (Э19б groups, the
-    relations other than «Согласно»), 423 `project_read_only`. The route only checks: the job marks the model `building`
+    {version}`, 404 / 422 of the references and the parameters (`store.prepare`), 422 `bad_relations` (a cycle of the
+    order of the stack), 423 `project_read_only`. The route only checks: the job marks the model `building`
     when it starts (`job._begin`), so a job cancelled in the queue or a refused `submit` leaves the model as it was;
     what only the data can tell
     (`no_contacts`, `rbf_singular`, `too_many_points`, `iso_check`) comes from the job.
@@ -70,7 +70,7 @@ def get_model(svc: Svc, model_id: int) -> dict[str, Any]:
 
     project = svc.require_current()
     with dialect.read_tx(project.engine) as conn:
-        return st.get(conn, model_id)
+        return st.get(conn, model_id, lines=True)
 
 
 @router.post("/models")
