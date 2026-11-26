@@ -120,6 +120,19 @@ def test_the_refusals_of_the_faults_name_the_parameter(im) -> None:  # type: ign
     back()
 
 
+def test_a_relation_of_a_group_outside_the_stack_is_refused_not_dropped_in_silence(im) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
+    c = im
+    mid = model(c, "INT", "SS")
+    group = {"name": "Жилы", "type": "vein_system", "params": {"veins": [{"code": "VN"}, {"code": "VN2"}]}}
+    vid = ok(c.post(f"{IMP}/models/{mid}/vein_system", json={"expected_version": 1, "group": group}))["group"]["id"]
+    url = f"{IMP}/models/{mid}/relations"
+    refused(c.put(url, json={"expected_version": 2, "relations": {str(vid): "erode"}}), 422, "bad_param",
+            f"relations.{vid}")  # fmt: skip
+    assert get(c, mid)["version"] == 2
+    # what the window sends: the stored relation of every group of the stack, the veins with it — nothing changes there
+    ok(c.put(url, json={"expected_version": 2, "relations": {str(vid): "conformable", "1": "erode"}}))
+
+
 # --- the systems of veins ---------------------------------------------------------------------------------------------
 
 

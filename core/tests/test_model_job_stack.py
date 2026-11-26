@@ -224,6 +224,33 @@ def test_a_missing_fault_is_refused_before_the_job_reads_anything(world) -> None
     assert e.value.status == 422 and e.value.code == "bad_param" and e.value.hint
 
 
+def test_too_many_wings_are_refused_before_the_job_not_at_the_end_of_the_build(world) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
+    from dataclasses import replace
+
+    from bf_core.model import job_stack as jst
+    from bf_core.model import job_stages as js
+
+    assert jst.max_wing([False] * 7) == 127 and jst.max_wing([False] * 8) == 255  # the codes of the wings of 7 / 8
+    assert jst.max_wing([True] * 3) == 62 and jst.max_wing([True] * 4) == 254 and jst.max_wing([]) == 0
+    w = world
+    lay = fault_layers(w)
+
+    def spec_of(finite: list[bool]) -> Any:
+        ids = [FAULT_ID + k for k in range(len(finite))]
+        faults = [fault_group(i, f"Разлом {i}", 100.0 if f else None) for i, f in zip(ids, finite, strict=True)]
+        groups = [*groups_of("SS", "SH"), *faults]
+        spec = w.spec(groups, [m for i in ids for m in fault_manual(lay, i)])
+        return replace(spec, groups=tuple(replace(g, faults=tuple(ids)) if g.name == "SS" else g for g in spec.groups))
+
+    js.refuse_unready(spec_of([False] * 7))  # 127: the last one the byte holds
+    js.refuse_unready(spec_of([True] * 3))
+    for finite in ([False] * 8, [True] * 4):
+        with pytest.raises(ApiError) as e:
+            js.refuse_unready(spec_of(finite))
+        assert (e.value.status, e.value.code, e.value.extra["param"]) == (422, "bad_param", "faults")
+        assert "три" not in e.value.hint and e.value.hint
+
+
 # --- the systems of veins -------------------------------------------------------------------------------------------
 
 
@@ -257,8 +284,10 @@ def test_a_system_of_veins_gives_a_body_a_vein_the_common_body_and_the_lines_of_
     with dialect.read_tx(w.engine) as conn:
         row = conn.execute(sa.select(objects.c.parent_id, objects.c.kind, line_layers.c.line_count).join(
             line_layers, line_layers.c.object_id == objects.c.id).where(objects.c.id == layer["line_layer_id"])).one()
-        parent = conn.execute(sa.select(objects.c.parent_id, objects.c.kind).where(objects.c.id == row.parent_id)).one()
+        parent = conn.execute(sa.select(objects.c.parent_id, objects.c.kind, objects.c.meta).where(
+            objects.c.id == row.parent_id)).one()
     assert row.kind == "line_layer" and parent.kind == "line_file" and parent.parent_id == m["id"]
+    assert "model_id" not in parent.meta  # the owner is `parent_id`: a copy would stay stale after `.bfggis`
     assert ["objects.changed", {"kind": "line_layer", "id": layer["line_layer_id"]}] in out["events"]
 
 
@@ -341,6 +370,11 @@ def test_the_rows_of_a_field_are_found_by_their_data_and_a_whole_group_has_none(
     assert used_rows(pts, 1, SimpleNamespace(xyz=None, f=None)) is None  # type: ignore[arg-type]
     other = SimpleNamespace(xyz=xyz[[31, 35]], f=f[[31, 35]])
     assert used_rows(pts, 2, other).tolist() == [31, 35]  # type: ignore[arg-type]
+    xyz[11], f[11] = xyz[10], f[10]  # two contacts of two holes at one place with one value
+    both = SimpleNamespace(xyz=xyz[[3, 10, 11, 20]], f=f[[3, 10, 11, 20]])
+    assert used_rows(pts, 1, both).tolist() == [3, 10, 11, 20]  # type: ignore[arg-type]  # not [3, 10, 10, 20]
+    back = SimpleNamespace(xyz=xyz[[11, 3, 10]], f=f[[11, 3, 10]])
+    assert used_rows(pts, 1, back).tolist() == [10, 3, 11]  # type: ignore[arg-type]  # the twins in their order
 
 
 # --- the cancel -----------------------------------------------------------------------------------------------------

@@ -152,6 +152,17 @@ def layers() -> tuple[Any, Any]:
     return cube(2, 50.0, (0.0, 0.0, -50.0), seed=None), cube(2, 50.0, (0.0, 0.0, -100.0), seed=None)
 
 
+def test_the_veins_of_a_system_are_coded_by_their_own_codes_not_by_the_name_of_the_system(w: W) -> None:
+    upper, lower = layers()
+    veins = [("Жила VN", 1, upper, {"extra": {"code": "VN"}}), ("Жила VN2", 1, lower, {"extra": {"code": "VN2"}})]
+    ident = model_with(w, veins, groups=1)
+    set_id = new_set(w, [vertical("V-1", 25.0, 25.0)])
+    done = go(w, {"set_id": set_id, "model_id": ident, "name": "Жилы"})
+    assert [r[3] for r in table(w, set_id, done["table_id"]) if r[3] is not None] == ["VN", "VN2"]
+    renamed = go(w, {"set_id": set_id, "model_id": ident, "name": "Жилы 2", "codes": {"1": "Жильная"}})
+    assert {r[3] for r in table(w, set_id, renamed["table_id"])} == {"Жильная", None}  # a code given wins
+
+
 # --- ТД34-1, ТД34-2 ----------------------------------------------------------------------------------------------
 
 

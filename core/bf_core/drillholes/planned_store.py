@@ -55,11 +55,17 @@ def check_set(conn: sa.Connection, set_id: int | None) -> None:
 
 
 def _item(row: Any, *, with_path: bool) -> dict[str, Any]:
-    """`{id, name, version, meta[, trajectory, extent]}` of a row; a `meta` that does not parse has no path."""
+    """`{id, name, version, meta[, trajectory, target_depth]}` of a row; a `meta` that does not parse (a file of another
+    program, a hand edit) has no path: the row comes without `trajectory` and with `path_error` {code, message, hint}
+    — a list or a read does not fail for one broken hole."""
     out: dict[str, Any] = {"id": int(row.id), "name": str(row.name), "version": int(row.version),
                            "meta": dict(row.meta or {})}  # fmt: skip
     if with_path:
-        p = pl.parse(out["meta"])
+        try:
+            p = pl.parse(out["meta"])
+        except ApiError as e:
+            out["path_error"] = {"code": e.code, "message": e.message, "hint": e.hint}
+            return out
         out["trajectory"] = pl.path(pl.trajectory(p), p.length)
         out["target_depth"] = p.target_depth
     return out
@@ -102,7 +108,8 @@ def update(conn: sa.Connection, ident: int, raw: Mapping[str, Any]) -> dict[str,
     if int(row.version) != version:
         raise conflict(int(row.version))
     p = pl.parse(raw, row.meta or {})
-    check_set(conn, p.set_id)
+    if "set_id" in raw and p.set_id != (row.meta or {}).get("set_id"):
+        check_set(conn, p.set_id)  # only a set that is new: the stored one may be gone (deleted, or not in a `.bfggis`)
     final = str(row.name) if raw.get("name") is None else eb.final_name(conn, KIND, raw["name"], "", ident)
     extent = pl.extent_of(pl.path(pl.trajectory(p), p.length))
     n = conn.execute(sa.update(objects).where(objects.c.id == ident, objects.c.version == version).values(
