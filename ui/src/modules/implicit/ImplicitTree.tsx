@@ -6,7 +6,7 @@
  * registry (`treeModel.ts`), unavailable ones with the reason. «+» of the section — `implicit.new` (by the orchestrator: shell/treeSections.ts). The rows are
  * a flat list made at once (`treeItems`): 100 models are a few ms.
  */
-import { useMemo, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useApp } from "../../shell/AppContext";
 import { openMenu } from "../../shell/ContextMenu";
 import type { IconName } from "../../shell/Icon";
@@ -18,11 +18,13 @@ import { useWatch } from "../lineage/hooks";
 import { LineageBadge } from "../lineage/LineageBadge";
 import type { LNode } from "../lineage/api";
 import { useSel } from "../estimation/hooks";
-import { implicitStore, loadRows } from "./state";
-import { BRANCH_TITLES, branchMenu, groupTitle, modelMenu, modelTitleText, statsText, stateText, treeItems, type OpenState, type TreeItem } from "./treeModel";
+import { implicitStore, loadDetails, loadRows } from "./state";
+import { BRANCH_TITLES, branchMenu, groupMenu, groupTitle, modelMenu, modelTitleText, needsDetails, statsText, stateText, treeItems, type OpenState, type TreeItem } from "./treeModel";
 import { implicitViewStore, pointsShown } from "./viewState";
 
 export const NODE_KIND = "object:implicit_model";
+
+const groupNameOfOutput = (rows: readonly { id: number; group_list: { id: number | null; name: string }[] }[], model: number, group: number | null): string => rows.find((r) => r.id === model)?.group_list.find((g) => g.id === group)?.name ?? "Система жил";
 
 const icon = (name: string): IconName => name as IconName;
 
@@ -33,7 +35,20 @@ export function ImplicitTree() {
   const selected = useSel(app.store, (s) => s.selected);
   const [open, setOpen] = useState<OpenState>({});
   const [chosen, setChosen] = useState<string | null>(null);
-  const items = useMemo(() => treeItems(rows, open), [rows, open]);
+  const details = useSel(implicitStore, (s) => s.details);
+  const hidden = useSel(app.store, (s) => s.view.hidden);
+  const items = useMemo(() => treeItems(rows, open, details), [rows, open, details]);
+  // the list has no relations, radii and lines: the models that show them are read once per version
+  const asked = useRef(new Set<string>());
+  useEffect(() => {
+    for (const it of items) {
+      if (it.kind !== "model" || !it.expanded || !needsDetails(it.row) || details[it.row.id]?.version === it.row.version) continue;
+      const key = `${it.row.id}:${it.row.version}`;
+      if (asked.current.has(key)) continue;
+      asked.current.add(key);
+      void loadDetails(it.row.id).catch(() => asked.current.delete(key));
+    }
+  }, [items, details]);
   const nodes = useMemo<LNode[]>(() => rows.map((r) => ({ kind: NODE_KIND, id: r.id })), [rows]);
   useWatch(nodes); // the states of the whole section in one request (Д-35)
   if (!rows.length) return <div className={tree.none}>{error ? `Не прочитано: ${error}` : loaded ? "Нет моделей — «+» открывает мастер «Новая модель»" : "Нет объектов"}</div>;
@@ -113,15 +128,100 @@ export function ImplicitTree() {
           testId={`tree-implicit-${it.model}-group-${gid}`}
           glyph={<Glyph icon={icon(it.group.type === "vein" ? "vein" : "domains")} />}
           after={<span className={entry?.status === "error" ? tree.error : tree.count}>{entry?.status === "loading" ? "…" : entry?.status === "error" ? "ошибка" : groupTitle(it.group.type)}</span>}
+          onContextMenu={(e) => {
+            const menu = groupMenu(it.model, it.group, reason, run);
+            if (!menu.length) return;
+            e.preventDefault();
+            openMenu(e.clientX, e.clientY, menu);
+          }}
+        />
+      );
+    }
+    if (it.kind === "fault") {
+      return (
+        <TreeRow
+          key={it.key}
+          label={it.group.name}
+          ariaLabel={`${it.group.name}: разлом${it.text ? `, ${it.text}` : ""}`}
+          level={it.level}
+          selected={chosen === it.key}
+          onSelect={() => setChosen(it.key)}
+          onActivate={() => void run("implicit.fault", { model_id: it.model, group_id: it.group.id })}
+          title={`Разлом «${it.group.name}»${it.text ? `: ${it.text}` : ""}\nДвойной щелчок — окно «Разлом»; смещение — результат построения, только чтение`}
+          testId={`tree-implicit-${it.model}-fault-${it.group.id}`}
+          glyph={<Glyph icon={icon("contact")} />}
+          after={it.text ? <span className={tree.count}>{it.text}</span> : undefined}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            openMenu(e.clientX, e.clientY, groupMenu(it.model, it.group, reason, run));
+          }}
+        />
+      );
+    }
+    if (it.kind === "stackgroup") {
+      return (
+        <TreeRow
+          key={it.key}
+          label={`${it.position}. ${it.group.name}`}
+          ariaLabel={`${it.position}. ${it.group.name}${it.relation ? `: ${it.relation}` : ""}`}
+          level={it.level}
+          selected={chosen === it.key}
+          onSelect={() => setChosen(it.key)}
+          onActivate={() => void run("implicit.relations", { model_id: it.model })}
+          title={`Домен «${it.group.name}» — ${it.position}-й по возрасту (сверху самый молодой)${it.relation ? `; отношение к более старым: ${it.relation}` : ""}\nДвойной щелчок — окно «Стек отношений»`}
+          testId={`tree-implicit-${it.model}-stack-${it.group.id}`}
+          glyph={<Glyph icon={icon("domains")} />}
+          after={it.relation ? <span className={tree.count}>{it.relation}</span> : undefined}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            openMenu(e.clientX, e.clientY, groupMenu(it.model, it.group, reason, run));
+          }}
+        />
+      );
+    }
+    if (it.kind === "wings") {
+      return (
+        <TreeRow
+          key={it.key}
+          label={`${it.name}: ${it.region ? "области крыльев" : "крылья"}`}
+          level={it.level}
+          expanded={it.expanded}
+          onToggle={() => toggle(it.key, it.expanded)}
+          after={<span className={tree.count}>{it.count}</span>}
+          title={it.region ? "Области двух сторон разлома — пространство, не порода: объёмы областей не складываются" : "Крылья рассечённой группы: каждое крыло — свой кусок поверхности и тела"}
+          testId={`tree-implicit-${it.model}-wings-${it.group ?? "rest"}`}
         />
       );
     }
     const o = it.output;
+    const lineId = o.line_layer_id;
+    const kindWord = o.region ? "Область крыла разлома" : o.common ? "Общее тело системы жил" : o.kind === "line" ? "Линия пересечения жил" : it.branch === "surface" ? "Поверхность" : "Тело";
+    const label = it.level === 5 ? `крыло ${o.wing}${o.region ? " (область)" : ""}` : o.common ? `${groupNameOfOutput(rows, it.model, o.group)}: общее тело` : o.name || `каркас ${o.wireframe_id ?? ""}`;
+    if (o.kind === "line") {
+      const on = lineId !== null && !hidden.includes(`ln:${lineId}`);
+      return (
+        <TreeRow
+          key={it.key}
+          label={label}
+          level={it.level}
+          selected={chosen === it.key || (selected?.kind === "lines" && lineId !== null && selected.id === lineId)}
+          onSelect={() => {
+            setChosen(it.key);
+            if (lineId !== null) void run("object.select", { kind: "lines", id: lineId });
+          }}
+          check={lineId === null ? undefined : { checked: on, label: `${o.name}: показать в 3D`, onChange: (v) => void run("layer.show", { layer: "lines", id: lineId, visible: v }) }}
+          title={`${kindWord}: слой линий проекта (редактор стрингов), перезаписывается командой «Обновить модель».${o.length !== null ? ` Длина ${o.length.toLocaleString("ru-RU", { maximumFractionDigits: 1 })} м.` : ""}`}
+          testId={`tree-implicit-line-${lineId ?? o.name}`}
+          glyph={<Glyph icon={icon("lines")} />}
+          after={o.length !== null ? <span className={tree.count}>{o.length.toLocaleString("ru-RU", { maximumFractionDigits: 1 })} м</span> : undefined}
+        />
+      );
+    }
     const wid = o.wireframe_id;
     return (
       <TreeRow
         key={it.key}
-        label={o.name || `каркас ${wid ?? ""}`}
+        label={label}
         level={it.level}
         selected={chosen === it.key || (selected?.kind === "wireframe" && wid !== null && selected.id === wid)}
         onSelect={() => {
@@ -129,9 +229,10 @@ export function ImplicitTree() {
           if (wid !== null) void run("object.select", { kind: "wireframe", id: wid });
         }}
         onActivate={() => wid !== null && void selectWithProperties(app, "wireframe", wid)}
-        title={`${it.branch === "surface" ? "Поверхность" : it.branch === "body" ? "Тело" : "Линия"} модели: обычный каркас проекта, перезаписывается командой «Обновить модель». «В каркас…» делает копию без связи с моделью.`}
+        title={`${kindWord} модели${o.name ? `: «${o.name}»` : ""}. Обычный каркас проекта, перезаписывается командой «Обновить модель». «В каркас…» делает копию без связи с моделью.${o.region ? "\nОбласть — часть пространства по одну сторону разлома, не порода: объём области в сумму объёмов пород не входит." : ""}${o.common ? "\nОбщее тело — объединение жил: повторяет их объёмы, в сумму не входит." : ""}`}
         testId={`tree-implicit-out-${wid ?? o.name}`}
         glyph={<Glyph icon={icon("wireframe")} />}
+        after={o.region ? <span className={tree.count}>область</span> : o.common ? <span className={tree.count}>общее</span> : undefined}
       />
     );
   };

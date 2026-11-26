@@ -34,7 +34,7 @@ const wizards = () => windowStore.get().windows.filter((w) => w.kind === WIZARD_
 
 describe("the declarations", () => {
   it("every command of §12 that belongs to Э19 is in the catalog, once", () => {
-    for (const id of ["implicit.new", "implicit.domains", "implicit.shells", "implicit.vein", "implicit.expand", "implicit.structural", "implicit.update", "implicit.to_wireframe", "implicit.delete", "implicit.check", "implicit.support", "implicit.compare_holes", "drillholes.from_model"]) expect(ids).toContain(id);
+    for (const id of ["implicit.new", "implicit.domains", "implicit.shells", "implicit.vein", "implicit.expand", "implicit.structural", "implicit.update", "implicit.to_wireframe", "implicit.delete", "implicit.check", "implicit.support", "implicit.compare_holes", "drillholes.from_model", "implicit.relations", "implicit.fault", "implicit.group_faults", "implicit.vein_system"]) expect(ids).toContain(id);
     expect(new Set(ids).size).toBe(ids.length);
     const catalog = moduleCommands().map((c) => c.id);
     for (const id of ids) expect(catalog.filter((x) => x === id)).toHaveLength(1);
@@ -59,7 +59,7 @@ describe("the declarations", () => {
     expect(tools.map((t) => t.name).some((n) => n.endsWith("implicit_domains"))).toBe(true);
   });
   it("the buttons of the ribbon name registered commands, with a hint; the icons that are in the set are drawn", () => {
-    expect(IMPLICIT_BUTTONS.map((b) => b.command)).toEqual(["implicit.new", "implicit.domains", "implicit.shells", "implicit.vein", "implicit.structural", "implicit.expand", "implicit.update", "implicit.to_wireframe", "implicit.check", "implicit.support", "implicit.compare_holes", "drillholes.from_model"]);
+    expect(IMPLICIT_BUTTONS.map((b) => b.command)).toEqual(["implicit.new", "implicit.domains", "implicit.shells", "implicit.vein", "implicit.structural", "implicit.expand", "implicit.relations", "implicit.fault", "implicit.vein_system", "implicit.update", "implicit.to_wireframe", "implicit.check", "implicit.support", "implicit.compare_holes", "drillholes.from_model"]);
     for (const b of IMPLICIT_BUTTONS) {
       expect(ids).toContain(b.command);
       expect(b.hint).toMatch(/[А-Яа-я]/);
@@ -69,7 +69,7 @@ describe("the declarations", () => {
   });
   it("every command is bound and available with a project", () => {
     const reason = (id: string) => app.registry.reason(id, ctx);
-    for (const id of ["implicit.new", "implicit.domains", "implicit.save", "implicit.update", "implicit.shells", "implicit.vein", "implicit.expand", "implicit.structural", "implicit.to_wireframe", "implicit.delete", "implicit.check", "implicit.support", "implicit.compare_holes", "drillholes.from_model"]) expect(reason(id), id).toBeNull();
+    for (const id of ["implicit.new", "implicit.domains", "implicit.save", "implicit.update", "implicit.shells", "implicit.vein", "implicit.expand", "implicit.structural", "implicit.to_wireframe", "implicit.delete", "implicit.check", "implicit.support", "implicit.compare_holes", "drillholes.from_model", "implicit.relations", "implicit.fault", "implicit.group_faults", "implicit.vein_system"]) expect(reason(id), id).toBeNull();
     for (const c of commands) expect(c.stage, c.id).toBeUndefined(); // every command of Э19 has its handler
     expect(app.registry.reason("implicit.new", { ...ctx, hasProject: false })).toBe("Откройте или создайте проект");
   });

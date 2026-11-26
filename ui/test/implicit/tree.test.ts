@@ -32,7 +32,7 @@ const ROW = readRow(LIST.models[0]);
 
 describe("the list as the core wrote it", () => {
   it("a row keeps the groups and the outputs of the list, the numbers and the state", () => {
-    expect(ROW).toMatchObject({ id: MODEL_ID, name: "Литология", version: 7, state: "ready", stale: false, source_lost: false, groups: 2, outputs: 5, stats: { points: 3316, patches: 16 } });
+    expect(ROW).toMatchObject({ id: MODEL_ID, name: "Литология", version: 5, state: "ready", stale: false, source_lost: false, groups: 2, outputs: 5, stats: { points: 3316, patches: 16 } });
     expect(ROW.group_list).toEqual([
       { id: 1, name: "INT", type: "domain" },
       { id: 3, name: "SS", type: "domain" },
@@ -53,7 +53,7 @@ describe("the list as the core wrote it", () => {
   });
   it("the stale model and the model that failed — as the core answers", () => {
     const stale = readInfo(R.model_stale.body);
-    expect(stale).toMatchObject({ stale: true, stale_reason: "изменены параметры", state: "ready", version: 8 });
+    expect(stale).toMatchObject({ stale: true, stale_reason: "изменены параметры", state: "ready", version: 6 });
     expect(stateText({ ...ROW, stale: true, stale_reason: stale.stale_reason })).toBe("устарела: изменены параметры");
     const failed = readInfo(R.model_error.body);
     expect(failed).toMatchObject({ state: "error", outputs: [], error: { code: "no_contacts", group: 2 } });
@@ -66,7 +66,7 @@ describe("the list as the core wrote it", () => {
     expect(statsText(ROW).replace(/\s/g, " ")).toMatch(/^3 316 точек · 16 участков · \d+(,\d)? с$/);
     expect(statsText({ stats: null })).toBe("не построена");
     const t = modelTitleText(ROW);
-    expect(t).toContain("Модель «Литология», версия 7");
+    expect(t).toContain("Модель «Литология», версия 5");
     expect(t).toContain("Групп 2, каркасов-выходов 5");
     expect(t).toContain("Двойной щелчок — «Свойства»");
     expect(modelTitleText({ ...ROW, stale: true, stale_reason: "изменены параметры" })).toContain("Устарела: изменены параметры");
@@ -78,13 +78,16 @@ describe("the list as the core wrote it", () => {
 });
 
 describe("the rows of the tree", () => {
-  it("a model, «Данные» with the groups, «Поверхности» and «Тела» with the outputs; no «Линии» without lines", () => {
+  it("a model, «Данные» with the groups, «Стек» with the domains by age, «Поверхности» and «Тела» with the outputs; no «Линии» and no «Разломы» without them", () => {
     const items = treeItems(implicitStore.get().rows, {});
-    expect(items.map((i) => `${i.level} ${i.kind === "model" ? i.row.name : i.kind === "branch" ? `[${i.branch} ${i.count}]` : i.kind === "group" ? `g:${i.group.name}` : `o:${i.output.name}`}`)).toEqual([
+    expect(items.map((i) => `${i.level} ${i.kind === "model" ? i.row.name : i.kind === "branch" ? `[${i.branch} ${i.count}]` : i.kind === "group" ? `g:${i.group.name}` : i.kind === "stackgroup" ? `s:${i.position}.${i.group.name}` : i.kind === "output" ? `o:${i.output.name}` : i.kind}`)).toEqual([
       "2 Литология",
       "3 [data 2]",
       "4 g:INT",
       "4 g:SS",
+      "3 [stack 2]",
+      "4 s:1.INT",
+      "4 s:2.SS",
       "3 [surface 2]",
       "4 o:Литология · INT · поверхность",
       "4 o:Литология · SS · поверхность",
@@ -101,17 +104,17 @@ describe("the rows of the tree", () => {
     expect(noSurfaces.filter((i) => i.kind === "output")).toHaveLength(3);
     expect(treeItems(rows, {}).map((i) => i.key)).toEqual(treeItems(rows, {}).map((i) => i.key));
   });
-  it("a model without a build has the three branches, the outputs empty", () => {
+  it("a model without a build has the branches of the data, the stack and the outputs, the outputs empty", () => {
     const fresh: ModelRow = { ...ROW, id: 99, name: "Новая", stats: null, outputs: 0, output_list: [] };
     const items = treeItems([fresh], {});
-    expect(items.filter((i) => i.kind === "branch").map((i) => (i.kind === "branch" ? [i.branch, i.count] : null))).toEqual([["data", 2], ["surface", 0], ["body", 0]]);
+    expect(items.filter((i) => i.kind === "branch").map((i) => (i.kind === "branch" ? [i.branch, i.count] : null))).toEqual([["data", 2], ["stack", 2], ["surface", 0], ["body", 0]]);
   });
   it("the models are by name, the same names — by number; with more than eight they start closed", () => {
     const many = Array.from({ length: 9 }, (_, i) => ({ ...ROW, id: 100 - i, name: i % 2 ? "Б" : "А" }));
     const items = treeItems(many, {});
     expect(items.every((i) => i.kind === "model")).toBe(true);
     expect(items.map((i) => (i.kind === "model" ? i.row.id : 0))).toEqual([92, 94, 96, 98, 100, 93, 95, 97, 99]);
-    expect(treeItems(many, { m100: true }).filter((i) => i.kind === "branch")).toHaveLength(3);
+    expect(treeItems(many, { m100: true }).filter((i) => i.kind === "branch")).toHaveLength(4);
   });
 });
 
@@ -121,9 +124,9 @@ describe("the menu of a model runs the commands of the registry", () => {
     let refreshed = 0;
     const items = modelMenu(ROW, (id) => app.registry.reason(id), (id, args) => void ran.push([id, args]), () => void refreshed++);
     const labels = items.filter((i) => !i.separator).map((i) => i.label);
-    expect(labels).toEqual(["Домены литологии…", "Оболочки содержаний…", "Жила…", "Расширение каркаса…", "Обновить модель", "В каркас…", "Проверка по данным…", "Опора данных…", "Сверка со скважинами…", "Обновить список", "Удалить…"]);
+    expect(labels).toEqual(["Домены литологии…", "Оболочки содержаний…", "Жила…", "Расширение каркаса…", "Разлом…", "Система жил…", "Стек отношений…", "Обновить модель", "В каркас…", "Проверка по данным…", "Опора данных…", "Сверка со скважинами…", "Обновить список", "Удалить…"]);
     for (const i of items) if (!i.separator && i.reason == null) i.run?.();
-    expect(ran.map((r) => r[0])).toEqual(["implicit.domains", "implicit.shells", "implicit.vein", "implicit.expand", "implicit.update", "implicit.to_wireframe", "implicit.check", "implicit.support", "implicit.compare_holes", "implicit.delete"]);
+    expect(ran.map((r) => r[0])).toEqual(["implicit.domains", "implicit.shells", "implicit.vein", "implicit.expand", "implicit.fault", "implicit.vein_system", "implicit.relations", "implicit.update", "implicit.to_wireframe", "implicit.check", "implicit.support", "implicit.compare_holes", "implicit.delete"]);
     expect(ran.every(([, a]) => a.model_id === MODEL_ID)).toBe(true);
     expect(refreshed).toBe(1);
   });
@@ -198,9 +201,9 @@ describe("100 models", () => {
     const t0 = performance.now();
     for (let k = 0; k < 10; k++) treeItems(rows, {});
     const flat = (performance.now() - t0) / 10;
-    // all open: 100 × (1 + 3 + groups + outputs) rows
+    // all open: 100 × (1 + 4 + groups + domains of the stack + outputs) rows
     const open = Object.fromEntries(rows.map((r) => [`m${r.id}`, true]));
-    expect(treeItems(rows, open)).toHaveLength(100 * 11);
+    expect(treeItems(rows, open)).toHaveLength(100 * 14);
     const t1 = performance.now();
     const html = render(createElement(ImplicitTree));
     const draw = performance.now() - t1;

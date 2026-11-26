@@ -18,7 +18,7 @@ import { EMPTY_FORM, formOfMeta, rangesOf, type ModelForm } from "./form";
 import { implicitStore, loadDetails, loadRows, modelById, pickModel } from "./state";
 import { ensureDefaults } from "./wizardState";
 
-export type GroupKind = "shell" | "vein" | "expand";
+export type GroupKind = "shell" | "vein" | "expand" | "fault" | "vein_system";
 
 // ---- the ranges of the parameters of a group (the answer of `GET /defaults` is the source; these mirror `spec_parts.RANGES`) ----
 
@@ -29,6 +29,8 @@ export const GROUP_RANGES: Record<string, Range> = {
   t_min: R(0, 100, "м"),
   offset: R(0, 10_000, "м"),
   expand: R(-1000, 1000, "м"),
+  /** R_F of a finite fault (Э19б): above 0 */
+  fault_radius: { lo: 0, hi: 100_000, lo_open: true, integer: false, unit: "м" },
 };
 
 /** Thresholds of a shell (`limits.thresholds` of the core). */

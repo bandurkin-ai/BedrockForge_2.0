@@ -15,7 +15,9 @@ import { findTrend, trendsStore } from "../trends/state";
 import { staleLine } from "./run";
 import { implicitStore, loadDetails } from "./state";
 import { anisotropyFacts, anisotropyOf, drawable, groupStats, journalOfResult, resultFacts, settingsFacts, trendAngles } from "./propsModel";
-import { branchOfOutput, stateText } from "./treeModel";
+import { stateText } from "./treeModel";
+import { outputKindText } from "./stackFacts";
+import { StackProps } from "./StackProps";
 import { implicitViewStore, KIND_COLORS, KIND_TITLES, KIND_NAMES } from "./viewState";
 import { entryText } from "./showCommand";
 import { useSel } from "../estimation/hooks";
@@ -156,6 +158,7 @@ export function ImplicitProps({ id }: { id: number }) {
           </div>
         )}
       </fieldset>
+      {info && <StackProps id={id} meta={meta} outputs={info.outputs} run={run} reason={(c) => reason(c)} />}
       <fieldset className={css.group} data-testid="props-implicit-points">
         <legend>Точки данных в 3D</legend>
         {row.group_list.length ? (
@@ -204,12 +207,12 @@ export function ImplicitProps({ id }: { id: number }) {
               </thead>
               <tbody>
                 {info.outputs.map((o) => (
-                  <tr key={o.wireframe_id ?? o.name} title={o.name}>
+                  <tr key={o.wireframe_id ?? o.line_layer_id ?? o.name} title={o.region ? `${o.name}\nОбласть крыла разлома — пространство, не порода: в сумму объёмов пород не входит` : o.common ? `${o.name}\nОбщее тело системы жил повторяет объёмы жил: в сумму не входит` : o.name}>
                     <td>{o.name}</td>
-                    <td>{branchOfOutput(o) === "surface" ? "поверхность" : branchOfOutput(o) === "body" ? "тело" : "линия"}</td>
-                    <td>{o.volume !== null ? num(o.volume, 0) : dash}</td>
+                    <td>{outputKindText(o)}</td>
+                    <td>{o.kind === "line" ? (o.length !== null ? `${num(o.length, 1)} м` : dash) : o.volume !== null ? num(o.volume, 0) : dash}</td>
                     <td>{o.area !== null ? num(o.area, 0) : dash}</td>
-                    <td>{o.triangles !== null ? num(o.triangles, 0) : dash}</td>
+                    <td>{o.triangles !== null ? num(o.triangles, 0) : o.lines !== null ? `${num(o.lines, 0)} лин.` : dash}</td>
                   </tr>
                 ))}
               </tbody>
