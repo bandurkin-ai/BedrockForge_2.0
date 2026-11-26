@@ -25,6 +25,7 @@ import { checkText, runText } from "./format";
 import { calendarFormOfParams } from "./formsCalendar";
 import { rocksFormOfParams } from "./formsRocks";
 import { slopesFormOfParams } from "./formsSlopes";
+import { bindPitResults, renderPitResultsWindow } from "./bindResults";
 import { bindCalendar, bindRocks, bindSlopes } from "./bindSetup";
 import { CalendarWindow } from "./CalendarWindow";
 import { CheckWindow } from "./CheckWindow";
@@ -402,7 +403,8 @@ export function bindPit(app: App): () => void {
   bindRocks(app);
   bindSlopes(app);
   bindCalendar(app);
-  // 21.18: bindReport(app), bindShow(app) · 21.19: bindSurfaces(app), bindSolid(app), bindCompare(app)
+  bindPitResults(app);
+  // 21.18: bindReport(app), bindShow(app)
 
   // the scenarios belong to the project: another project — clean windows and the lists read again
   let uid: string | null = projectStore.get().current?.uid ?? null;
@@ -448,5 +450,5 @@ export function renderPitWindow(w: FloatWin): ReactNode | null {
   if (w.kind === PIT_SLOPES_WINDOW) return createElement(SlopesWindow, { winId: w.id });
   if (w.kind === PIT_CALENDAR_WINDOW) return createElement(CalendarWindow, { winId: w.id });
   if (w.kind === PIT_CHECK_WINDOW) return createElement(CheckWindow, { winId: w.id });
-  return null;
+  return renderPitResultsWindow(w);
 }
