@@ -1,14 +1,17 @@
 # Э19 и Э19б — контракт неявного моделирования (для дорожек Х, К1, К2, К3, К4, Т, П, И-А, И-Б, Ф)
 
 **Состояние: Э19 — по коду (подшаг 19.30, сверено с `core/bf_core/model/*`, `geo/iso*.py`, `drillholes/from_model*.py`,
-`geostat/trend_struct.py`); §10 (Э19б: стек, разломы, система жил, проектные скважины) — черновик, код пишет Э19б.**
+`geostat/trend_struct.py`); Э19б (стек, разломы, система жил, проектные скважины) — по коду (подшаг 19.41, сверено с
+`model/{stack,faults,faults_parts,vein_system,job_stack,routes_stack,store_lines}.py`, `drillholes/{planned,planned_eval,
+planned_export,planned_store,routes_planned}.py`): §10 и поправки Э19б в §1, §2, §4, §5, §7, §11, §12, §14.**
 
 Источник истины — ADR 0026 (решения 1–30, «API», «Команды реестра», «Точность и приёмка»), ТЗ 8.9 (8.9.4 —
 умолчания и диапазоны), 8.0, 7.35 Д-15, Д-24, Д-25, Д-31…Д-34, Д-39; граф — ADR 0025. Разбор параметров —
 `core/bf_core/model/{spec,spec_parts}.py` (19.1). Образцы — `core/tests/data/implicit/{params,contract_answers}.json`;
-`contract_answers.json` — **настоящие ответы ядра** для маршрутов Э19 (пишут `test_implicit_contract.py` и
-`test_implicit_spec.py`, `BF_REGEN_IMPLICIT=1`); ключи `trend_*` (структурный тренд), `build_iso_error` и `*_b` (Э19б)
-— образцы форм. Интерфейс принимается только на настоящих ответах. Изменение формы — только через оркестратора.
+`contract_answers.json` — **настоящие ответы ядра** для маршрутов Э19 и Э19б (пишут `test_implicit_contract.py` и
+`test_implicit_spec.py`, `BF_REGEN_IMPLICIT=1`: ключи `relations`, `fault_*`, `group_faults*`, `vein_system_*`,
+`build_stack_*`, `model_stack`, `model_veins`, `planned_*`); ключи `trend_*` (структурный тренд) и `build_iso_error` —
+образцы форм. Интерфейс принимается только на настоящих ответах. Изменение формы — только через оркестратора.
 Префикс маршрутов — `/api/v1/implicit` (роутер `model/router.py`).
 
 Пути: `M/` = `core/bf_core/model/`, `G/` = `core/bf_core/geo/`, `I/` = `ui/src/modules/implicit/`.
@@ -37,8 +40,10 @@
 - События: `implicit.changed {kind: "implicit_model", id, deleted?}` — после записи и удаления; `objects.changed
   {kind: "wireframe", id}` — выходы; `geostat.changed {kind: "trend", id}` — структурный тренд; `drillholes.changed
   {set_id}` — «Модель на скважины»; Э19б — `implicit.changed {kind: "planned_hole", id}`.
-- Группы Э19б (`fault`, `vein_system`) и отношения ≠ `conformable` разбираются `spec.py` уже в Э19; `build` /
-  `update` отвечают на них 422 `not_ready` (`job_stages.refuse_unready`) до 19.32–19.36.
+- Группы Э19б (`fault`, `vein_system`) и отношения ≠ `conformable` разбираются `spec.py` с Э19; строятся с 19.36
+  (`job_stack`). Отказ `not_ready` (`job_stages.not_ready`) в коде остался, но не выдаётся: `refuse_unready` теперь —
+  `job_stack.check_stack` (синхронно до задания: 422 `bad_relations` — цикл порядка расчёта, 422 `bad_param` —
+  несуществующий разлом, больше 8 разломов у групп, число полей крыльев > 127).
 - Побитность (Т8.9-8, Т8.9-13, Т8.9-16, ТД39-3): результат не зависит от порядка точек в таблицах, числа потоков
   (1, 2, 4, 8), порядка кирпичей и от того, полное это построение или «Обновить».
 
@@ -50,10 +55,14 @@ objects(kind="implicit_model", parent_id=NULL).meta v1 — дерево «Нея
   + v 1; algo "rbf-1"; versions {numpy, scipy, numba, skimage, manifold3d}; created_at
   + extent [xmin, ymin, zmin, xmax, ymax, zmax]   охват границы (box или bbox каркаса), float64; origin = центр охвата
   + state "ready" | "building" | "error"; error {code, message, hint, group?} | null
-  + outputs [{wireframe_id, kind: "surface" | "body" | "line", group: gid | null, wing: 0 | 1 | null, threshold?,
-             name}]   group null + kind body — «Прочее»; line — Э19б (line_layer_id вместо wireframe_id)
+  + outputs [{wireframe_id, kind: "surface" | "body", group: gid | null, wing: код | null, threshold?, name, code?,
+             common?, region?}]   group null + kind body — «Прочее» (Э19б: у «Прочее» тоже `wing`); `code` — тело жилы
+             системы (код жилы), `common` — общее тело системы, `region` — область крыла разлома (пространство, не порода)
+             + линии пересечения жил: {line_layer_id, kind: "line", group, wing: null, name, pair: [a, b]} (вместо wireframe_id)
   + stats {points, patches, max_residual, cond_max, eta_max, seconds, reused {patches, bricks}, balance,
-           by_group [{group, wing, points, patches, h_bar, max_residual, cond_max, eta_min, eta_max, support_share}]}
+           by_group [{group, wing, points, patches, h_bar, max_residual, cond_max, eta_min, eta_max, support_share,
+                      faults: [fid], offset: {mean, max} | null, offset_by_fault: {"fid": {mean, max}} | null}],
+           stack {order, relations, dropped, dropped_total}, faults {"fid": {...}}, vein_pairs [...]   — Э19б, §10}
            balance — относительная разность суммы объёмов тел и объёма границы (Т8.9-5); `support_threshold` у группы
            пишет «Карта опоры»; max_residual — наибольший модуль невязки в точках данных, м
   + inputs [{kind, id, fp, name}] (§2.3); last_run {at, job, mode: "build" | "update", seconds, params} | null
@@ -63,7 +72,11 @@ cache\implicit\<model_id>\<sha кирпича>.npy — f8 значения уз�
 ```
 
 Выходы — каркасы `commit_wireframe(parent_id = модель, meta.source {op: "implicit", model_id, group, wing?,
-threshold?})`, имена «‹модель› · ‹группа›», «… · поверхность», «‹модель› · Прочее»; удаление модели удаляет их.
+threshold?, code?, common?, region?})`, имена «‹модель› · ‹группа›», «… · поверхность», «‹модель› · Прочее»; Э19б:
+крыло — «‹группа›, крыло N», область крыла разлома — «‹разлом›, крыло N (область)», жила системы — «‹модель› ·
+‹система› · ‹жила›», общее тело — «… · общее тело», «Прочее, крыло N»; линии пересечения жил — слои стрингов
+(`store_lines`: файл линий — потомок модели, слой на пару «‹модель› · пересечение A × B», атрибуты «Пара», «Длина, м»;
+каждый запуск пишет файл заново — правка слоя в редакторе стрингов при «Обновить» теряется); удаление модели удаляет их.
 «В каркас» — копия без родителя, вход графа — модель. Каркасы-выходы при «Обновить» переписываются на месте (тот же
 id, версия + 1), лишние удаляются, новые добавляются.
 
@@ -71,7 +84,7 @@ id, версия + 1), лишние удаляются, новые добавл�
 
 | Роль | Формат | Содержимое (dtype) |
 |---|---|---|
-| `implicit_points` | Parquet zstd, метаданные `bf.implicit` = `{v: 1, groups: [gid…], sources: [имя…]}` | `x, y, z` f8 (проекта); `f` f8; `kind` i1 (индекс `spec.POINT_TYPES`: 0 contact, 1 inside, 2 outside, 3 manual, 4 value); `group` i4; `wing` i1 (−1 — нет, Э19б 0/1); `src` i4 (номер в `sources`; −1 — нет); `from`, `to` f8 (глубины по стволу; NaN у слоёв); `vertex` i8 (номер вершины слоя; −1 у скважин). Порядок: по `group`, внутри — канонический (решение 4) |
+| `implicit_points` | Parquet zstd, метаданные `bf.implicit` = `{v: 1, groups: [gid…], sources: [имя…]}` | `x, y, z` f8 (проекта); `f` f8; `kind` i1 (индекс `spec.POINT_TYPES`: 0 contact, 1 inside, 2 outside, 3 manual, 4 value); `group` i4; `wing` i1 (−1 — нет; Э19б: код крыла Σ sign_k·2^k, у одного разлома 0 (f_F < 0) / 1; частичные поля конечного разлома — `(mask + 1)·2^m + код`, m — разломы группы; наибольшее 127: `job_stack.wing_id`, иначе 422 `bad_param {param: "faults"}`); `src` i4 (номер в `sources`; −1 — нет); `from`, `to` f8 (глубины по стволу; NaN у слоёв); `vertex` i8 (номер вершины слоя; −1 у скважин). Порядок: по `group`, внутри — канонический (решение 4) |
 | `implicit_patches` | Parquet zstd, без метаданных | `group` i4, `wing` i1, `j` i4 (номер участка в группе), `cx, cy, cz` f8 (центр шара: при глобальной A — в пространстве A·x, при структурном тренде — в координатах проекта), `r` f8 (R после роста до N_min), `n` i4, `offset` i8 (начало λ в `implicit_solution`), `hash` fixed 32 Б (`S32`, SHA-256), `eta` f8 (м, в единицах φ), `cond` f8 (cond₁, 6 значащих цифр). **Дополнительно только при структурном тренде** — девять столбцов `a00, a01, …, a22` f8: матрица A_j участка по строкам (`MATRIX_COLUMNS`); при глобальной A и без анизотропии столбцов нет (файл прежний), `store.load_fields` отдаёт `GroupData.matrices` (None — нет) |
 | `implicit_solution` | `.npy` `<f8` одномерный, Σ(n + 4) | по строкам `implicit_patches` (по `offset`): λ (n), затем c (4: c0, cx, cy, cz) — c в нормированных координатах участка (x − центр) / масштаб; масштаб — R (глобальная A) или R·‖A_j‖₂ (структурный тренд), хранится не отдельно, а восстанавливается из строк участков |
 
@@ -176,17 +189,22 @@ n × n × n, значения узлов), если совпал SHA-256(`Grid.t
 | `shell` | пусто | `source: composites` (`result_id`) / `table` (`set_id?` — по умолчанию `data.set_id`, `table`); `field`; `transform: linear` / `log` / `nscore`; `mode: numeric` / `indicator`; `thresholds` 1–20 строго ↑; `p` 0,5 (0,3–0,7, только indicator) | значения g (решение 6) |
 | `vein` | коды жилы | `bound: hull` / `polygon` (`polygon [[u, v] ≥ 3]`: метры в плоскости жилы от `veins.fit_plane().origin`, оси u, v — главные компоненты контактов); `offset` 0 (0–10 000 м); `t_min` 0 (0–100 м) | кровля / подошва интервалов (решение 17) |
 | `expand` | пусто | `wireframe_id`; `delta` ≠ 0, −1000…1000 м | SDF (решение 18) |
-| `fault` (Э19б) | коды разлома или ручной слой | `radius` R_F > 0 м, null — бесконечный | контакты, точки, линии |
-| `vein_system` (Э19б) | = коды жил | `veins [{code, name?, bound, polygon, offset, t_min}]`, 2–20, порядок — возраст (первая молодая) | как `vein` |
+| `fault` (Э19б) | коды разлома или ручной слой (роли `contact` / `inside` / `outside`) | `radius` R_F — число > 0 до `LEN_MAX` (100 000 м), null — бесконечный | контакты, точки, линии (как у домена) |
+| `vein_system` (Э19б) | = коды жил (по порядку `veins`) | `veins [{code, name?, bound, polygon, offset, t_min}]`, 2–20, порядок — возраст (первая молодая); `name` по умолчанию = код; коды жил различны | как `vein`, по коду |
 
-- `relation` (умолч. `conformable`; `erode`, `onlap`, `intrusion` — Э19б) несёт **молодая** группа: как она
-  поступает с группами ниже (старшими). У `fault` отношения и разломов нет. `faults` — id групп вида `fault`.
+- `relation` (умолч. `conformable`; `erode`, `onlap`, `intrusion` — Э19б, строятся с 19.32/19.34) несёт **молодая**
+  группа: как она поступает со **всеми** группами ниже (старшими) — одно отношение на группу. Ядро принимает только
+  эти четыре слова (`spec_parts.RELATIONS`); `erosion` и русские «Согласно / Эрозия / Налегание / Интрузия» понимает
+  разбор команды `implicit.relations` (`ui … stackApi.parseRelation`), не маршрут. Отношение есть только у доменов
+  (`domain`): у оболочки, жилы, расширения, системы жил и разлома — 422 `bad_param {param: "relations.N"}`.
+  `faults` — id групп вида `fault` (только у домена).
 - В модели: имена и id уникальны, код — в одной группе, коды требуют `data`, у `domain` / `vein` / `fault` — коды
   или ручной слой; `with_group(g)` — заменить по id или добавить последней (старшей).
 - Тело группы (решение 15): Э19 — D = {f_D < 0} ∩ граница минус тела групп выше; «Прочее» = граница минус
   объединение. Оболочки (знак как у доменов: внутри f < 0): числовая — одно RBF значений T(g) (T — преобразование),
   поле порога f = T(t) − RBF; индикаторная — RBF значений [g ≥ t] − 0,5 на каждый порог, f = (p − 0,5) − RBF;
-  оболочка k = {f_k < 0} ∩ оболочка k − 1; выходы `kind: body` с `threshold`.
+  оболочка k = {f_k < 0} ∩ оболочка k − 1; выходы `kind: body` с `threshold`. Стек (отношения), разломы (крылья),
+  интрузия, система жил — §10.
 
 ## 5. Маршруты (`/api/v1/implicit`)
 
@@ -211,7 +229,8 @@ n × n × n, значения узлов), если совпал SHA-256(`Grid.t
 | `POST /models/{id}/to_wireframe` | `{wireframe_id, name?}` | `{wireframe_id, name}`: копия выхода без родителя, имя «‹выход› (копия)» (свободное), вход графа — модель; 404 `wireframe_not_found` |
 | `POST /drillholes/from_model` (маршрут `drillholes`) | §8.4 | `{source: "jobs", id}` → `drillholes.from_model` |
 | `POST/PUT /geostat/trends` (`kind: structural`), `GET /geostat/trends/{id}/discs` | §9 | Д-15 |
-| Э19б: `PUT /models/{id}/relations`, `POST /models/{id}/faults`, `PUT /models/{id}/groups/{gid}/faults`, `POST /models/{id}/vein_system`; `/planned_holes…` | §10 | — |
+| Э19б: `PUT /models/{id}/relations`, `POST /models/{id}/faults`, `PUT /models/{id}/groups/{gid}/faults`, `POST /models/{id}/vein_system` (`model/routes_stack.py`) | §10 | как правка группы: `{id, version[, group]}` |
+| Э19б: `/planned_holes` (отдельный префикс, не `/implicit`; `drillholes/routes_planned.py`) | §10 | — |
 
 ## 6. Задания
 
@@ -225,7 +244,8 @@ n × n × n, значения узлов), если совпал SHA-256(`Grid.t
 `implicit.build` / `.update`: `{model_id, version, state, mode: "build" | "update", outputs: [{wireframe_id, kind, group,
 wing, threshold, name, volume, area, triangles}], stats (§2), reused {patches, bricks}, journal: [строки], stages
 {«Данные», «Участки», «Изоповерхности», «Тела», «Проверки», «Запись», total: секунды}, events}`; `volume` у поверхности —
-`null`.
+`null`. Э19б: `outputs` несёт и записи `kind: "line"` (`line_layer_id`, `pair`, `lines`, `length`; формы — §10.2), `events` —
+`objects.changed {kind: "line_layer", id}` для слоёв линий; отказы стека, разломов и систем жил до задания — `job_stack.check_stack`.
 Провал проверок 8.9.3 п. 7 (замкнутость, многообразие, самопересечения, объём > 0) у тела — задание падает с ошибкой
 `iso_check {group}` («Тело «…» не прошло проверки: …»), модель получает `state: "error"` и `meta.error {code, message,
 hint, group}`; каркасы не пишутся, прежние остаются. «Обновить» берёт кеш участков и кирпичей, только если прошлое
@@ -255,6 +275,12 @@ hint, group}`; каркасы не пишутся, прежние остаютс
 | `model_not_found` / `group_not_found` | 404 | — |
 | `model_building` / `not_built` | 409 | модель строится / ещё не построена |
 | `iso_check` | 422 (ошибка задания и `meta.error`) | проверки 8.9.3 п. 7 тела; `{group}`; `geo/iso_post.IsoError("iso_check")` — поверхность не прошла проверки после постобработки |
+| `bad_relations` | 422 | Э19б: отношения образуют цикл порядка расчёта (`stack.order_of`); `{groups: [позиции]}`; проверяется в `PUT …/relations` и до задания (`job_stack.check_stack`) |
+| `fault_outside` | 422 (ошибка задания) | Э19б: поверхность разлома не рассекает границу модели, одно из крыльев пусто; `{fault}` |
+| `no_contacts` у крыла / после стека | 422 | Э19б: нет смены знака у данных группы после отбрасывания по отношениям стека (`{group, dropped}`), у крыла разлома (`{group, wing, faults}`), у самого разлома (`{group, fault}`); у жилы системы — `{group, …}` с названием жилы в тексте |
+| `planned_hole_not_found`, `set_not_found`, `hole_not_found`, `wireframe_not_found` | 404 | Э19б: проектные скважины (§10) |
+| `target_at_collar`, `target_beyond_length {need}`, `hole_no_trajectory`, `bad_format`, `wireframe_orientation` | 422 | Э19б: проектные скважины (§10) |
+| `files_exist {files}`, `folder_not_found`, `path_not_absolute` | 409 / 404 / 422 | Э19б: выгрузка проектной скважины (§10) |
 | `version_conflict`, `name_taken`, `in_use` | 409 | как Э18 |
 | `project_read_only` | 423 | §1 |
 
@@ -347,26 +373,122 @@ A_j = diag(1, 1/r2, 1/r3)·R_j (`anisotropy.local`: те же байты, что
 глобальный — плоскость малой оси (ось с наименьшим отношением, при равенстве — третья; = источник `global` с теми же
 углами, 1e−12), структурный — нормаль в середине интервала по стволу, интервал без положения — пусто; `TT_SRC = "тренд"`.
 
-## 10. Э19б — стек, разломы, система жил, проектные скважины
+## 10. Э19б — стек, разломы, система жил, проектные скважины (по коду, 19.41)
 
-- `PUT /models/{id}/relations {expected_version, order: [gid…] (все группы кроме `fault`), relations: {"gid":
-  relation}}` → `{id, version}` (`spec.parse_relations`).
-- `POST /models/{id}/faults {expected_version, group: {name, type: "fault", codes?, params: {radius?}}}` → `{id,
-  version, group}`; ручные слои разлома — `manual` модели (`group` = id разлома).
-- `PUT /models/{id}/groups/{gid}/faults {expected_version, fault_ids: [id…]}` → `{id, version}`.
-- `POST /models/{id}/vein_system {expected_version, group: {name, type: "vein_system", params: {veins}}}` → `{id,
-  version, group}`. Выходы: тело каждой жилы (`group`, `code`), общее тело, линии пересечения — слои стрингов
-  (`kind: line`, `line_layer_id`); `stats.vein_pairs [{a, b, line_length, volume_common}]`.
-- Крылья: выходы с `wing` 0 (f_F < 0) / 1; `stats.by_group[].offset {mean, max}` — смещение (только чтение).
-- `planned_holes`: `objects(kind="planned_hole").meta {v, collar [x, y, z], azimuth [0; 360), dip [−90; 90] (вниз
-  — отрицательный, как 7.11), length (0; 10 000] м, change {azimuth, dip} °/100 м (−30…30) | target [x, y, z] |
-  null, method "minimum_curvature", set_id?}`. `GET/POST/PUT/DELETE /planned_holes[/{id}]` → `{id, name, version,
-  meta, trajectory {depth: [], x: [], y: [], z: []} (шаг 1 м)}`; `POST /planned_holes/{id}/evaluate {model_id |
-  mesh_ids}` → `{intervals [{from, to, code}], nearest [{hole, hole_id, distance, depth}] (≤ 5 у цели)}`; `…/compare
-  {set_id, hole}` → `{rows [{depth, dx, dy, dz, d}], max}` (шаг 1 м); `…/export {format: csv | dxf}` → файл
-  (`collar.csv` + `survey.csv` или DXF-линия).
+### 10.1. Маршруты `/implicit` (`model/routes_stack.py`)
 
-## 11. Интерфейсы Python (по коду, 19.30)
+Каждый — правка модели, как в `routes_groups.py` (`_edit`): вся модель проверяется заново, версия + 1, построенная
+модель «устарела» до «Обновить»; 404 `model_not_found`, `group_not_found`; 409 `model_building`, `version_conflict
+{version}`; 422 `bad_param {param}`; 423 `project_read_only`.
+
+| Маршрут | Тело | Ответ; отказы |
+|---|---|---|
+| `PUT /models/{id}/relations` | `{expected_version, order: [gid…], relations: {"gid": relation}}` — `order`: все группы кроме `fault`, каждая один раз, первая — самая молодая (нет ключа — прежний порядок); `relations`: `conformable`, `erode`, `onlap`, `intrusion` (не названная группа сохраняет отношение); разломы остаются после остальных (`spec.parse_relations`) | `{id, version}`; 422 `bad_param {order}` (не те группы), `{relations.N}` (нет группы, неизвестное слово, отношение у не-домена), 422 `bad_relations` (цикл порядка расчёта, `job_stack.check_stack`) |
+| `POST /models/{id}/faults` | `{expected_version, group: {name, type?: "fault", codes?, params: {radius?}}, manual?: [{layer_id, role}]}`; слои `manual` получают номер новой группы, роли `contact` / `inside` / `outside` | `{id, version, group}` (группа — последней); 422 `bad_param {group.type}` (не `fault`), `{group.id}` (занят), `{manual}`, `{groups.N.codes}` (ни кодов, ни слоёв) |
+| `PUT /models/{id}/groups/{gid}/faults` | `{expected_version, fault_ids: [id…]}` (≤ 64; пустой список — не рассекается) | `{id, version}`; 422 `bad_param {fault_ids}` (группа не домен), `{fault_ids.N}` (не разлом) |
+| `POST /models/{id}/vein_system` | `{expected_version, group: {name, type?: "vein_system", params: {veins: [{code, name?, bound, polygon, offset, t_min}]}}}` — 2–20 жил, первая — самая молодая | `{id, version, group}`; 422 `bad_param {group.params.veins}` (меньше двух), `{…veins.N.code}` (повтор кода) |
+
+`group` в ответах — каноническая форма §4; новая группа — последней. Системе жил отношение не задаётся (в стек не входит),
+разлому — тоже (в порядке расчёта он первый).
+
+### 10.2. Построение — `build` / `update` (`job_stack.py`, `stack.py`, `faults.py`, `vein_system.py`)
+
+```python
+stack.build_stack(spec, points, boundary, *, relations=None, clip=None, matrix=None, matrices_of=None, eta_of=None,
+                  solver=None, brick_cache=None, threads=1, tick=None) -> BodiesResult        # + stats["stack"]
+faults.build_with_faults(<те же аргументы>) -> FaultsResult  # BodiesResult + faults {fid: Fit}, fields {gid: FaultedField}, wing_fits
+vein_system.build_vein_system(veins: Sequence[VeinInput(code, name, hanging, footwall, params)], h, *, threads=1,
+                  tick=None, dense_max=None) -> VeinSystemResult(parts, common, pairs, lines, stats, notes)
+job_stack.build_domains(...)   # домены и разломы модели через build_with_faults → выходы, поля, части (Part)
+job_stack.build_system(...)    # группа vein_system: тела жил, общее тело, линии пар, vein_pairs
+```
+
+Если разломов у доменов нет и все отношения «Согласно», `build_with_faults` делегирует `build_stack`, а тот —
+`bodies.build_bodies`: результат побитно прежний (файлы Э19 те же). Побитность при 1, 2, 4, 8 потоках и «Обновить» =
+полному построению (Т8.9-13, ТД31-4, ТД39-3).
+
+**Отношения** (молодая группа → все старшие; маска — по ЗНАЧЕНИЮ поля другой группы в точке данных (`Fit.field`, RBF без
+границы), не по каркасу; допуск «на поверхности» = max(1e−9·h̄, наибольшая невязка данных той группы)):
+
+| `relation` | Слово | Данные | Тело |
+|---|---|---|---|
+| `conformable` | «Согласно» | не отбрасываются | молодая побеждает в перекрытии (хронология 8.9.2) |
+| `erode` | «Эрозия» | у каждой старшей отбрасываются точки с f_молодой < допуск (внутри тела молодой и на её поверхности) | старшее − молодое; кровля старой срезана |
+| `onlap` | «Налегание» | молодая отбрасывает свои точки с f_старшей < −допуск (ниже поверхности старшей) | молодое ∩ {f_старшей ≥ 0}; побеждает старшая |
+| `intrusion` | «Интрузия» (Д-31) | у каждой старшей отбрасываются точки строго внутри тела (f_I < −допуск; контакт на поверхности I остаётся) | тело I вычитается из старших; само режется более молодыми по их отношению |
+
+Порядок расчёта — топологический по «победителям» пар (молодая i, старшая j): победитель i для `conformable` / `erode` /
+`intrusion`, j для `onlap`; среди свободных — наименьшая позиция (самая молодая). Группа маскируется уже решёнными;
+цикл — 422 `bad_relations`. Нет контактов после маски — 422 `no_contacts {group, dropped}`. Журнал: «Стек отношений:
+порядок расчёта — …», по группе: «Группа «…»: ‹отношение› группы «…» — отброшено точек N из M (…)».
+
+**Разломы.** Группа `fault` — отдельное RBF f_F (данные как у домена: контакты, ±D, ручные слои); крылья — тело {f_F < 0}
+(крыло 0) и остаток границы (крыло 1) (`WingTiling`: не пересекаются). Домен с непустым `faults` рассечён: данные делятся по
+знаку f_F (|f_F| ≤ 1e−9·h или поле не определено — на оба крыла), у каждого крыла своё поле (тот же PoU), тело крыла =
+{g_k < 0} ∩ область крыла − тела групп перед ним. Несколько разломов — области = комбинации знаков (порядок разломов — как
+в списке модели, код крыла Σ sign_k·2^k); разлом рассекает только те домены, у которых он в `faults`; разломов у групп не
+больше 8. Конечный разлом (`radius` R_F): g_k = w·f_k + (1 − w)·f_0, w = W(r/R_F) = (1 − t)⁴₊(4t + 1), r — расстояние до
+ближайшего контакта разлома; за R_F поля крыльев = f_0 побитно (Т8.9-12). Смещение крыльев — результат (вдоль нормали
+контакта), не параметр. Отказы: 422 `no_contacts {group, wing, faults}` (у крыла нет смены знака), `{group, fault}` (у
+разлома нет контактов), `fault_outside {fault}`.
+
+**Система жил.** Каждая жила целиком строится `veins.build_vein`; выклинившаяся целиком — без тела (журнал). Тело жилы j =
+сырое R_j минус сырые тела всех более молодых жил; общее тело = объединение сырых (Σ объёмов вырезанных = объём общего);
+пара (молодая a, старшая b), сырые тела которых встречаются, даёт строку `{a, b, line_length, volume_common}` (объём
+R_a ∩ R_b ДО выреза) и линии `crossing.intersection_lines` (по паре; линии разных пар не сливаются); не встречаются —
+строки нет. Общая зона отдельного кода не имеет (вопрос № 94): она у более молодой жилы. Обрезка модели (`post.clip`)
+режет каждое тело системы.
+
+**Выходы** (имена и формы записей — §2):
+
+| Выход | `kind` | `group` | `wing` | Прочее |
+|---|---|---|---|---|
+| лист разлома внутри границы | `surface` | разлом | null | «‹модель› · ‹разлом› · поверхность» |
+| область крыла разлома | `body` | разлом | 0 / 1 | `region: true` — пространство, не порода (в сумму объёмов пород не входит); «…, крыло N (область)» |
+| домен без разломов | `surface`, `body` | домен | null | как в Э19 |
+| крыло рассечённого домена | `surface`, `body` | домен | код крыла | «‹группа›, крыло N» |
+| «Прочее» | `body` | null | код области (при разломах), иначе null | «Прочее, крыло N» |
+| жила системы | `body` | система | null | `code` — код жилы; «‹модель› · ‹система› · ‹жила›» |
+| общее тело системы | `body` | система | null | `common: true`; «… · общее тело» |
+| линия пересечения пары | `line` | система | null | `{line_layer_id, pair: [a, b], lines, length}` вместо `wireframe_id`; «‹модель› · пересечение A × B» |
+
+`stats` (в `meta` и в итоге задания; ключи словарей — текст): `stack {order: [gid в порядке расчёта], relations: {"gid":
+relation}, dropped: [{group, by, relation, points, of, undefined}], dropped_total}`; `faults {"fid": {radius | null,
+points, wing_volumes: [v0, v1], balance, max_residual}}`; `by_group[]` — по группе и крылу (`wing` код | null): `faults
+[fid]`, `offset {mean, max} | null`, `offset_by_fault {"fid": {mean, max}} | null`; `vein_pairs [{group, a, b,
+line_length, volume_common}]` (a — молодая, b — старшая); `balance` — |Σ объёмов доменов и «Прочее» − объём границы| /
+объём границы ≤ 1e−9 (области крыльев не входят; баланс двух крыльев разлома — `faults[fid].balance`). «Модель на
+скважины» и прогноз проектной скважины берут тела доменов (оба крыла — под именем группы) и жилы (под их кодами), без
+областей крыльев и общего тела (`from_model_spec._model_bodies`).
+
+### 10.3. Проектные скважины (`drillholes/{planned,planned_store,planned_eval,planned_export,planned_remap}.py`)
+
+`objects(kind="planned_hole", parent_id=NULL)`, имена уникальны; без файлов (траектория считается из `meta`); не строка
+набора скважин, на статистику и оценку не влияет (вопрос № 103). Узел графа `object:planned_hole` — источник (fp =
+`version`). `meta` v1: `{v, collar [x, y, z], azimuth [0; 360), dip [−90; 90] (вниз — отрицательный, как 7.11), length
+(0; 10 000] м, change {azimuth, dip} (−30…30 °/100 м) | null, target [x, y, z] | null, method, set_id | null}`; `method` —
+`minimum_curvature` (умолч.), `tangent`, `balanced_tangent`, `average_angle`. Режим один из трёх: прямая; `change`
+(азимут и угол на глубине d: `azimuth + change.azimuth·d/100`, угол ограничен ±90; станции через 10 м и забой); `target`
+(прямая от устья через точку: `azimuth` и `dip` ядро считает и записывает, заданные заменяются; `length` нет — до цели;
+короче расстояния — 422 `target_beyond_length {need}`; длиннее — скважина идёт дальше цели; цель в устье — 422
+`target_at_collar`; `PUT` с новой целью без `length` кончает скважину в новой цели). Оба режима сразу — 422 `bad_param
+{param: "change"}`. Траектория — `desurvey` 7.11; в ответах — каждый 1 м и забой.
+
+| Маршрут (префикс `/api/v1/planned_holes`) | Тело | Ответ |
+|---|---|---|
+| `GET ?trajectory=` | — | `{planned_holes: [{id, name, version, meta[, trajectory]}]}` |
+| `POST` | `{name?, collar, azimuth, dip, length, change \| target, method?, set_id?}` (название по умолчанию «Проектная скважина», свободное) | `{id, name, version: 1, meta, trajectory {depth, x, y, z}, target_depth}`; 409 `name_taken` |
+| `GET /{id}`, `PUT /{id}`, `DELETE /{id}` | `PUT` — `{expected_version, name?, ключи тела POST}` | то же, версия + 1; `{deleted}`; 404 `planned_hole_not_found`; 409 `version_conflict {version}` |
+| `POST /{id}/evaluate` | `{model_id \| mesh_ids, codes?, set_id?, point?}` — нужны модель или каркасы и/или набор (иначе 422 `bad_param {model_id}`) | `{id, intervals: [{from, to, code}] \| null, codes: [{code, length}] \| null, nearest: [{hole, hole_id, distance, depth}] \| null (≤ 5), target {point, depth}, set_id?, length, inside, journal (последние три — с телами)}`; промежуток вне тел — `code: null`; `point` — точка для ближайших скважин (по умолчанию цель, без цели — забой); `distance` — до самой скважины (по отрезкам), `depth` — по ней |
+| `POST /{id}/compare` | `{set_id?, hole \| hole_id}` (набор по умолчанию — сохранённый со скважиной) | `{id, set_id, rows: [{depth, dx, dy, dz, d}], max, max_depth, length {planned, actual, compared}, hole, hole_id}` — каждый 1 м до меньшей длины; Δ = факт − план; одинаковые пути — 0; 404 `set_not_found`, `hole_not_found`; 422 `hole_no_trajectory` |
+| `POST /{id}/export` | `{format: "csv" \| "dxf", path, overwrite?, delimiter?, decimal?, encoding?}` | `{format, files, points, size}`; `csv` — `path` папка: `collar.csv` (`HOLEID, EAST, NORTH, RL, DEPTH, AZIMUTH, DIP`) и `survey.csv` (`HOLEID, DEPTH, AZIMUTH, DIP`), «;» и «,», набор скважин принимает их импортом; `dxf` — файл (`.dxf` добавляется), одна полилиния по пути каждые 1 м; файлы уже есть — 409 `files_exist {files}` без `overwrite`; 404 `folder_not_found`, 422 `bad_format`, `path_not_absolute` |
+
+Запись публикует `implicit.changed {kind: "planned_hole", id, deleted?}`; в проекте «только просмотр» запись — 423,
+`evaluate`, `compare`, `export` работают. Другие отказы `evaluate`: 404 `model_not_found`, `wireframe_not_found`; 409
+`model_building`; 422 `no_bodies`, `wireframe_open`, `wireframe_orientation`. `.bfggis`: `meta.set_id` перенумеровывается
+(`planned_remap`; набора нет в архиве — `DEAD_ID`, запрос с ним — 404 `set_not_found`).
+
+## 11. Интерфейсы Python (по коду, 19.30; Э19б — сигнатуры `stack`, `faults`, `vein_system`, `job_stack` в §10.2)
 
 Соглашения: float64; NaN — пусто (не 0); numba `cache=True, nogil=True`, без `prange`, `fastmath`, импорт numba — внутри
 функций (обработчики заданий лёгкие); координаты — проекта, сдвиг к началу делают сами ядра и показ; BLAS в 1 поток внутри
@@ -526,10 +648,13 @@ compare_holes.parse(body) -> Request; run(project, model_id, req) -> dict (§8.3
 | `implicit.compare_holes {model_id, set_id, table, field}` | — | §8.3; переход в 7.17 («К скважине») |
 | `drillholes.from_model {set_id, model_id \| mesh_ids, name}` | — | §8.4 |
 | `trend.save {kind: "structural", …}`, `trend.show {trend_id, visible}` | confirm, — | §9; у структурного `trend.show` — диски в 3D |
-| Э19б: `implicit.relations {model_id, order, relations}`, `implicit.fault {model_id, fault_id?, data?, radius?}`, `implicit.group_faults {group_id, fault_ids}`, `implicit.vein_system {model_id, veins}`, `planned_hole.create {…}`, `planned_hole.evaluate {id, model_id}`, `planned_hole.compare {id, hole_id}` | — | §10 (Главная › Скважины › Проектная скважина) |
+| Э19б: `implicit.relations {model_id?, order?, relations?}` | — | без `order` и `relations` — окно «Стек отношений»; с ними — `PUT …/relations` (порядок — домены через «;» от самого молодого, номер или название; отношения «группа=отношение» через «;»: `conformable`, `erode` (`erosion`), `onlap`, `intrusion` или русские слова) |
+| Э19б: `implicit.fault {model_id?, group_id?, name?, codes?, layers?, radius?, domains?}`, `implicit.group_faults {model_id?, group_id, fault_ids}`, `implicit.vein_system {model_id?, group_id?, name?, veins?, bound?, offset?, t_min?}` | — | без данных — окно (`Разлом`, `Система жил`); с данными — `POST …/faults` (+ `PUT …/faults` домена), `PUT …/groups/{gid}/faults`, `POST …/vein_system`; `layers` — «номер:роль» через «;»; `radius: null` — бесконечный разлом; `veins` — коды по возрасту через «;» |
+| Э19б: `planned.new {name?, x?, y?, z?, azimuth?, dip?, length?, change_azimuth?, change_dip?, target_x?, target_y?, target_z?, set_id?, method?}`, `planned.open {id?}`, `planned.save {as_new?}`, `planned.evaluate {id?, model_id?, mesh_ids?, set_id?}`, `planned.compare {id?, set_id?, hole?}`, `planned.export {id?, format, path?, overwrite?}`, `planned.delete {id}` (confirm), `planned.show {id?, visible?}`, `planned.pick {what}` (только окно) | —; confirm у `planned.delete` | §10.3 (лента «Главная › Скважины»: «Проектная скважина», «Прогноз», «План / факт», «Экспорт проектной»); без параметров — окно «Проектная скважина» |
 
 Без параметров — окно, с параметрами — выполняет (ADR 0021 п. 9); списки — текст через «;». Значки `implicit`,
-`fault`, `vein`, `planned_hole` — `shell/Icon.tsx` (оркестратор).
+`fault`, `vein`, `planned_hole` — `shell/Icon.tsx` (оркестратор). Идентификаторы проектных скважин — `planned.*`
+(в 7.35 Д-34 названы `planned_hole.create / evaluate / compare`; решение 19.39, §14 п. 26).
 
 ## 13. Фикстуры
 
@@ -539,13 +664,15 @@ compare_holes.parse(body) -> Request; run(project, model_id, req) -> dict (§8.3
 - `core/tests/data/implicit/contract_answers.json` — ответы маршрутов Э19 `{status, body}`: настоящие — ключи
   `test_implicit_contract.py` (`BF_REGEN_IMPLICIT=1 uv run pytest -q tests/test_implicit_contract.py`; сцена
   `core/tests/modapi_world.py`: 100 скважин, домены INT и SS), `defaults`, `bad_param`, `refusals` — `test_implicit_spec.py`;
-  образцы форм (код Э19б или проверка в E2E): `trend_structural_post`, `trend_discs`, `build_iso_error`, `*_b`. Без флага
+  образцы форм: `trend_structural_post`, `trend_discs`, `build_iso_error`; ключи Э19б — настоящие ответы: `relations*`,
+  `fault_*`, `group_faults*`, `build_stack_*`, `model_stack`, `update_stack_result`, `vein_system_*`, `model_veins`,
+  `outputs_veins`, `delete_veins` (19.36; `stack_b` в `params.json`), `planned_*` (19.37, 19.39). Без флага
   тест проверяет, что ядро отвечает то же (времена, отпечатки, версии библиотек, невязки и числа, округляемые по-разному
   на машинах, исключены; числа сравниваются до 1e−7).
 - `tests/fixtures/implicit/` — `collars.csv`, `lithology.csv`, `assays.csv`, `strings.csv` (`tools/gen/implicit.py`, зерно
   12345): складка 100 прямых скважин, слои ALV, SS, SH, GR, сфера-интрузия INT, плита VN; ручные стринги.
 
-## 14. Трактовки (вне буквы ТЗ и ADR: п. 1–8 — контракт 19.1, п. 9–19 — приняты при реализации Э19)
+## 14. Трактовки (вне буквы ТЗ и ADR: п. 1–8 — контракт 19.1, п. 9–19 — приняты при реализации Э19, п. 20–29 — при реализации Э19б)
 
 1. `GET /implicit/defaults` — форма мастера (умолчания и диапазоны), как `/estimate/defaults`; в списке ADR «API» нет.
 2. Отношение (`relation`) несёт молодая группа и описывает её действие на старшие (Д-24 «у группы — отношение к
@@ -583,3 +710,35 @@ compare_holes.parse(body) -> Request; run(project, model_id, req) -> dict (§8.3
 18. `hash` участка зависит от значений f, соли (ядро, a, режим, η₀, цель cond, A) и A_j; η в хеш не входит (функция тех же
     аргументов). «Обновить» использует кеш только если версия программы и библиотек прежняя, иначе строит полностью.
 19. Показ в «Свойствах» и «Проверке»: пропуск — «—», не 0; невязка и расстояния — в метрах, в окне — 4 значащих цифры.
+20. (Э19б.) Маска данных стека — по ЗНАЧЕНИЮ поля другой группы в точке данных (`Fit.field`, RBF без границы), не по каркасу:
+    точка за границей или под третьим телом всё равно по свою сторону поверхности. Допуск «на поверхности» —
+    max(1e−9·h̄, наибольшая невязка данных группы, чья это поверхность): «Эрозия» отбрасывает и точки на поверхности
+    молодой (контакт среза — срез, а не поверхность старой); «Интрузия» и «Налегание» контакт на поверхности оставляют
+    (это контакт старого слоя с интрузией, молодого — со старой поверхностью).
+21. У группы одно отношение ко всем более старым (не к выбранной); «Налегание» меняет порядок расчёта (победитель —
+    старшая), остальные — молодая первой; порядок — топологический, цикл — 422 `bad_relations` (при одном отношении на
+    группу не возникает; страховка маршрута и задания). Оболочки, жилы, расширения и системы жил в стек не входят.
+22. Крылья разлома: код Σ sign_k·2^k (0 — f_F < 0); точка данных на разломе (|f_F| ≤ 1e−9·h) — на оба крыла; разломов у групп
+    модели не больше 8, номер поля крыла ≤ 127 (int8 в blobs); тела `{f_F < 0}` и остаток — области (`region`), а не породы:
+    в `balance` пород они не входят (у каждого разлома свой баланс двух областей); лист разлома — выход `surface`.
+23. Смещение крыльев не задаётся: оно измеряется после построения (среднее и наибольшее вдоль нормали контакта, по группе и
+    по каждому разлому) и показывается только для чтения («Свойства», окно «Разлом»).
+24. Система жил: вырез — сырыми телами только более молодых жил; общее тело — объединение сырых; общая зона отдельного
+    кода не имеет (№ 94); `volume_common` — до выреза; пары, чьи тела не встречаются, в таблицу не входят; линии — слой
+    стрингов на пару (файл линий — потомок модели, пишется заново при каждом запуске); жила, выклинившаяся целиком или
+    целиком вырезанная молодыми, тела не имеет (журнал, не ошибка).
+25. «Интрузия» — отношение домена, а не тип группы; тело интрузии режется более молодыми группами по их отношению
+    («Согласно» и «Эрозия» — они побеждают).
+26. Идентификаторы команд проектных скважин — `planned.new / open / save / evaluate / compare / export / delete / show /
+    pick` (в 7.35 Д-34 и ADR 0026 — `planned_hole.create / evaluate / compare`); лента «Главная › Скважины», раздел дерева
+    «Проектные скважины» (скважина не входит в раздел «Скважины»).
+27. Проектная скважина: «через цель» — прямая от устья через точку (азимут и угол решает ядро и пишет в `meta`); дуга
+    `change` считается по станциям через 10 м; прогноз, ближайшие скважины и «План / факт» читают СОХРАНЁННУЮ скважину (окно
+    просит сохранить); «ближайшие» — до 5, расстояние до самой скважины (по отрезкам), а не до станции; «План / факт» —
+    каждый 1 м до меньшей из длин, Δ = факт − план; `collar.csv` и `survey.csv` — тот формат, который принимает импорт
+    набора скважин (разделитель «;», десятичная запятая).
+28. Прогноз проектной скважины и «Модель на скважины» берут от модели с разломами тела доменов (оба крыла — под именем
+    группы) и жилы (под их кодами); области крыльев и общее тело системы не кодируются.
+29. «Обновить» модели со стеком и разломом: участки кешируются (как в Э19), кирпичи групп с разломом (у крыльев своё поле)
+    и лист разлома — нет; доля времени полного построения: ci 0,61–0,65, full 0,81; цель ТЗ ≤ 25 % не достигнута
+    (вопрос № 104); результат побитно равен полному построению.
