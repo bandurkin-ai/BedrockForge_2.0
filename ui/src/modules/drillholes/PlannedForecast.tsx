@@ -39,7 +39,15 @@ export function PlannedForecast() {
   const body = evaluateBody(src, setId);
   const sets = useLatest<SetRow[]>(loadSets, [], () => undefined);
   const reason = askReason() ?? (typeof body === "string" ? body : run.phase === "loading" ? "Идёт расчёт" : null);
-  const go = () => void app.run("planned.evaluate", { id: w.id }).catch(() => undefined); // a refusal stands under the button
+  // the arguments are the request: without them the command only opens this tab (`runEvaluateCommand`), so the button names the source it shows
+  const go = () => {
+    if (typeof body === "string") return;
+    const args: Record<string, unknown> = { id: w.id };
+    if (body.model_id !== undefined) args.model_id = body.model_id;
+    if (body.mesh_ids !== undefined) args.mesh_ids = (body.mesh_ids as number[]).join(";");
+    if (body.set_id !== undefined) args.set_id = body.set_id;
+    void app.run("planned.evaluate", args).catch(() => undefined); // a refusal stands under the button
+  };
   const toggleMesh = (id: number, on: boolean) => setSource({ meshIds: on ? [...src.meshIds, id] : src.meshIds.filter((m) => m !== id) });
   return (
     <div data-testid="pl-forecast">

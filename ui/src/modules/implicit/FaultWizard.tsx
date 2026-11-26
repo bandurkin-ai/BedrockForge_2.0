@@ -3,7 +3,7 @@
  * (the role «контакт» is the trace of the fault; «внутри» / «снаружи» fix the wings) —, the radius of influence R_F (empty — an infinite fault) and the
  * domains the fault cuts. The offset of the wings is the result of the build and is shown read only. «Сохранить» runs `implicit.fault`.
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import css from "../../shell/PropsParts.module.css";
 import { parseNumber } from "../composites/params";
 import { errorText } from "../../shell/props";
@@ -46,7 +46,9 @@ export function FaultWizard({ winId }: { winId: string }) {
   const f: FaultForm = s.form;
   const info = useSel(implicitStore, (x) => (s.modelId === null ? undefined : x.details[s.modelId]));
   const defaults = useSel(wizardStore, (x) => x.defaults.data);
-  const layersAll = useSel(sceneObjects, (x) => lineLayers(x)).filter((l) => !l.cloud);
+  // the files are the snapshot: a selector that builds a new array at every call would never settle (React #185)
+  const files = useSel(sceneObjects, (x) => x.files);
+  const layersAll = useMemo(() => lineLayers({ files }).filter((l) => !l.cloud), [files]);
   const ranges = groupRanges(defaults);
   const model = info ? formOfMeta(info.name, info.meta) : null;
   const meta = metaOf(info);

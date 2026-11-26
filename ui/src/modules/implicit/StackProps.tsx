@@ -195,7 +195,7 @@ export function StackProps({ id, meta, outputs, run, reason }: StackPropsArgs) {
             <p className={css.note}>Жилы по возрасту (первая самая молодая и режет древнюю): {g.codes.join(", ") || "—"}.</p>
             <VeinPairsTable pairs={pairsOf(meta, g.id)} names={names} />
             <LineOutputs lines={lines} run={run} />
-            <div className={css.row}>{btn("Изменить систему…", "implicit.vein_system", { group_id: g.id }, `system-${g.id}`)}</div>
+            <div className={css.row}>{btn("Изменить систему…", "implicit.vein_system", { group_id: g.id }, `system-edit-${g.id}`)}</div>
           </fieldset>
         );
       })}
