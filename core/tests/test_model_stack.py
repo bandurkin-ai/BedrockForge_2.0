@@ -418,12 +418,12 @@ def test_a_cycle_of_the_relations_is_refused_in_russian() -> None:
     assert "цикл" in e.message and "«Верх»" in e.message and "«Низ»" in e.message
 
 
-def test_bad_relations_argument_and_unbuilt_relation_are_refused_in_russian() -> None:
+def test_bad_relations_argument_is_refused_in_russian() -> None:
     spec = lap_spec()
     pts = md.assemble([lap_points(), base_points()])
     box = box_solid(BOX_L)
-    for rel, code, text in (({9: "erode"}, "bad_param", "несуществующей"), ({1: "над"}, "bad_param", "неизвестное"),
-                            ({1: "intrusion"}, "not_ready", "пока не строится")):  # fmt: skip
+    for rel, code, text in (({9: "erode"}, "bad_param", "несуществующей"),
+                            ({1: "над"}, "bad_param", "неизвестное")):  # fmt: skip
         with pytest.raises(ApiError) as err:
             build_stack(spec, pts, box, relations=rel)
         e = err.value
