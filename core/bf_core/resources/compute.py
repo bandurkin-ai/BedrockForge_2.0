@@ -180,6 +180,18 @@ def default_frac(model: Model) -> str | None:
     return None if f is None else str(f["name"])
 
 
+def _w(a: Any, dtype: Any = np.float64) -> np.ndarray:
+    """`a` as a writable C-contiguous array of `dtype` (a copy only when it is not one). numba compiles a kernel once
+    per dtype and per read-only flag, and the columns of a model are read-only when a portion is a row group of the
+    file, writable when portions were joined, f4 or f8 by the field: with this the kernels have ONE specialization
+    each, the one `resources/warm.py` compiles (a copy of a portion is ~1 ms per million rows; the bits do not
+    change)."""
+    a = np.asarray(a)
+    if a.dtype == dtype and a.flags.writeable and a.flags.c_contiguous:
+        return a
+    return np.array(a, dtype=dtype, order="C")
+
+
 def _plain(model: Model, ch: Any) -> bool:
     """True — whole parents on a regular grid: the volume is one number, the layer of a row is `P // (nx·ny)`."""
     return ch.s is None and model.grid.tensors is None
@@ -198,7 +210,7 @@ def _key_slots(core: Core, cols: dict[str, np.ndarray], dummy: np.ndarray) -> tu
             bstride = stride
             continue
         assert key.field is not None
-        kcols[slot] = np.ascontiguousarray(cols[key.field], dtype=np.int32)
+        kcols[slot] = _w(cols[key.field], np.int32)
         kmul[slot], radix[slot] = stride, key.radix
         slot += 1
     return (kcols[0], kcols[1], kcols[2]), kmul, radix, bstride
@@ -222,8 +234,8 @@ def run(
     counts = np.zeros(3, dtype=np.int64)
     dummy_i, dummy_f = np.zeros(cap, dtype=np.int32), np.empty(0)
     edges, gedges = (
-        np.ascontiguousarray(core.edges, dtype=np.float64),
-        np.ascontiguousarray(core.group_edges, np.float64),
+        _w(core.edges),
+        _w(core.group_edges),
     )
     nxy = np.uint64(model.grid.counts[0] * model.grid.counts[1])
     for ch, f in r.iter(model, extra=core.reads(), chunk=chunk):
@@ -236,10 +248,10 @@ def run(
             vol = dummy_f if frac is None else vol_c * np.asarray(frac, dtype=np.float64)
         else:
             vol_c, vol = 0.0, geometry.row_volumes(model.grid, ch.p, ch.s, ch.w, frac)
-        dens = cols[core.density_field] if core.density_field else dummy_f
-        cut = cols[core.cutoff_field] if core.cutoff_field else dummy_f
-        rk.prepare(f, vol, vol_c, dens, float(core.density_value or 0.0), cut, edges, gedges, bin_t[:n], bin_g[:n],
-                   veff[:n], tonnes[:n], counts, out.no_density_acc)  # fmt: skip
+        dens = _w(cols[core.density_field]) if core.density_field else dummy_f
+        cut = _w(cols[core.cutoff_field]) if core.cutoff_field else dummy_f
+        rk.prepare(_w(f), _w(vol), vol_c, dens, float(core.density_value or 0.0), cut, edges, gedges, bin_t[:n],
+                   bin_g[:n], veff[:n], tonnes[:n], counts, out.no_density_acc)  # fmt: skip
         for k, name in enumerate(core.grades):
             gbuf[k, :n] = cols[name]
         kcols, kmul, radix, bstride = _key_slots(core, cols, dummy_i[:n])
@@ -254,7 +266,7 @@ def run(
                 zlo, zhi = zc - dz * 0.5, zc + dz * 0.5
             size = model.grid.size
             rk.accumulate_bench(bin_t[:n], bin_g[:n], kcols, kmul, radix, bstride, bench.count, bench.first,
-                                bench.height, zlo, zhi, np.ascontiguousarray(ch.p, dtype=np.uint64), nxy,
+                                bench.height, zlo, zhi, _w(ch.p, np.uint64), nxy,
                                 float(model.grid.corner[2]), float(size[2]) if size else 0.0, veff[:n], tonnes[:n],
                                 gbuf, *args)  # fmt: skip
     for name, v in zip(("filtered", "no_volume", "no_density"), counts, strict=True):
