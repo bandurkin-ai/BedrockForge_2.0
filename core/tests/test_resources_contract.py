@@ -6,8 +6,8 @@ samples of the contract (`{status, body}`), read by vitest (`ui/test/resources/*
 
 Regenerate: `BF_REGEN_RESOURCES=1 uv run pytest -q tests/test_resources_contract.py` — the keys of this test replace
 the samples, the others stay as they are: `defaults`, `bad_param`, `group_numeric`, `refusals` are written by `spec.py`
-(`test_resources_spec.py`); `export_*`, `files_exist` (20.5) and `drill*` (20.9) are samples of the contract until
-their routes write them; `compare_reports`, `compare_post`, `compare_result` and `estimate_compare` (20.10) are real.
+(`test_resources_spec.py`); `export_*`, `files_exist` (20.5) are samples of the contract until their routes write them;
+`drill`, `drill_rows` (20.9), `compare_reports`, `compare_post`, `compare_result` and `estimate_compare` (20.10) are real.
 Without the variable the test checks that the core still answers what the file
 holds; the times, the fingerprints, the versions of the libraries and the numbers of the jobs are left out, the floats
 are compared to 9 digits."""
@@ -34,7 +34,7 @@ REGEN = os.environ.get("BF_REGEN_RESOURCES") == "1"
 NOTE = ("ЧАСТЬ КЛЮЧЕЙ — ответы настоящего ядра (BF_REGEN_RESOURCES=1 uv run pytest -q "
         "tests/test_resources_contract.py, "
         "20.7, модель Т8.10-1: 8 блоков 10×10×10 м, ρ = 2,5, Au 0,2…5,0 г/т, борт 1,0 → 12 500 т, 2,5 г/т, 31,25 кг; "
-        "tests/resapi_world.py); export_*, files_exist (20.5), drill* (20.9) — ОБРАЗЦЫ форм "
+        "tests/resapi_world.py); export_*, files_exist (20.5) — ОБРАЗЦЫ форм "
         "(docs/progress/e20-api.md §8–§10); defaults, bad_param, group_numeric, refusals пишет spec.py "
         "(BF_REGEN_RESOURCES=1 uv run pytest -q tests/test_resources_spec.py). Интерфейс принимается только на "
         "настоящих ответах.")  # fmt: skip
@@ -42,8 +42,8 @@ NOTE = ("ЧАСТЬ КЛЮЧЕЙ — ответы настоящего ядра 
 KEYS = ("report_post", "preview_result", "report_result", "reports_list", "report_get", "report_put", "report_rebuilt",
         "report_delete", "templates", "template_get", "template_gkz", "template_put", "template_delete",
         "report_not_found", "template_not_found", "field_not_found", "filter_not_found", "report_building",
-        "version_conflict", "name_taken", "filter_field_missing", "report_too_big", "read_only", "compare_reports",
-        "compare_post", "compare_result", "estimate_compare")  # fmt: skip
+        "version_conflict", "name_taken", "filter_field_missing", "report_too_big", "read_only", "drill",
+        "drill_rows", "compare_reports", "compare_post", "compare_result", "estimate_compare")  # fmt: skip
 SKIP = ("seconds", "created_at", "updated_at", "cells_sha", "versions", "job_id", "at", "stages")
 
 
@@ -110,6 +110,9 @@ def build(c: Any) -> dict[str, Any]:
         out["read_only"] = answer(start(c, base, save=True))
     finally:
         back()
+    cell = {"group": ["Измеренные"], "cutoff": 1.0}  # 20.9: a cell of the report → its blocks
+    out["drill"] = answer(c.post(f"{RS}/reports/{rid}/drill", json=cell))
+    out["drill_rows"] = answer(c.post(f"{RS}/reports/{rid}/drill/rows", json={**cell, "page": 1, "size": 1000}))
     out.update(compare_answers(c, mid, base))
     assert tuple(out) == KEYS, tuple(out)
     return json.loads(json.dumps(out, ensure_ascii=False))  # type: ignore[no-any-return]

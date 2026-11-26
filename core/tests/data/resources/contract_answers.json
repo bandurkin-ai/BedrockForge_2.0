@@ -1,5 +1,5 @@
 {
- "_note": "ЧАСТЬ КЛЮЧЕЙ — ответы настоящего ядра (BF_REGEN_RESOURCES=1 uv run pytest -q tests/test_resources_contract.py, 20.7, модель Т8.10-1: 8 блоков 10×10×10 м, ρ = 2,5, Au 0,2…5,0 г/т, борт 1,0 → 12 500 т, 2,5 г/т, 31,25 кг; tests/resapi_world.py); export_*, files_exist (20.5), drill* (20.9) — ОБРАЗЦЫ форм (docs/progress/e20-api.md §8–§10); defaults, bad_param, group_numeric, refusals пишет spec.py (BF_REGEN_RESOURCES=1 uv run pytest -q tests/test_resources_spec.py). Интерфейс принимается только на настоящих ответах.",
+ "_note": "ЧАСТЬ КЛЮЧЕЙ — ответы настоящего ядра (BF_REGEN_RESOURCES=1 uv run pytest -q tests/test_resources_contract.py, 20.7, модель Т8.10-1: 8 блоков 10×10×10 м, ρ = 2,5, Au 0,2…5,0 г/т, борт 1,0 → 12 500 т, 2,5 г/т, 31,25 кг; tests/resapi_world.py); export_*, files_exist (20.5) — ОБРАЗЦЫ форм (docs/progress/e20-api.md §8–§10); defaults, bad_param, group_numeric, refusals пишет spec.py (BF_REGEN_RESOURCES=1 uv run pytest -q tests/test_resources_spec.py). Интерфейс принимается только на настоящих ответах.",
  "report_post": {
   "status": 200,
   "body": {
@@ -495,10 +495,10 @@
    "warnings": [],
    "files": [],
    "seconds": {
-    "read": 0.0191,
-    "kernel": 2.1735,
-    "control": 0.0006,
-    "total": 2.1949
+    "read": 0.0278,
+    "kernel": 2.3381,
+    "control": 0.0005,
+    "total": 2.368
    }
   }
  },
@@ -1038,11 +1038,11 @@
    "warnings": [],
    "files": [],
    "seconds": {
-    "read": 0.004,
-    "kernel": 0.0016,
-    "control": 0.0004,
-    "write": 0.0402,
-    "total": 0.0577
+    "read": 0.0037,
+    "kernel": 0.0014,
+    "control": 0.0003,
+    "write": 0.032,
+    "total": 0.0471
    },
    "events": [
     [
@@ -1089,8 +1089,8 @@
      },
      "files": [],
      "xlsx": false,
-     "created_at": "2026-11-26T07:36:09.865350+00:00",
-     "updated_at": "2026-11-26T07:36:09.865350+00:00",
+     "created_at": "2026-11-26T08:09:15.673246+00:00",
+     "updated_at": "2026-11-26T08:09:15.673246+00:00",
      "job_id": null,
      "rows": 8,
      "size": 7156
@@ -1670,8 +1670,8 @@
     "AU": "cells|None",
     "CLASS": "cells|None"
    },
-   "created_at": "2026-11-26T07:36:09.865350+00:00",
-   "updated_at": "2026-11-26T07:36:09.865350+00:00",
+   "created_at": "2026-11-26T08:09:15.673246+00:00",
+   "updated_at": "2026-11-26T08:09:15.673246+00:00",
    "job_id": null
   }
  },
@@ -2219,11 +2219,11 @@
    "warnings": [],
    "files": [],
    "seconds": {
-    "read": 0.0158,
-    "kernel": 0.3325,
+    "read": 0.0111,
+    "kernel": 0.329,
     "control": 0.0004,
     "write": 0.012,
-    "total": 0.3762
+    "total": 0.3616
    },
    "events": [
     [
@@ -2460,6 +2460,90 @@
    "hint": "Закройте проект в другом окне и откройте его заново."
   }
  },
+ "drill": {
+  "status": 200,
+  "body": {
+   "rules": {
+    "op": "and",
+    "items": [
+     {
+      "cond": {
+       "field": "CLASS",
+       "op": "=",
+       "value": "Измеренные"
+      }
+     },
+     {
+      "expr": "AU >= 1"
+     }
+    ]
+   },
+   "cell": {
+    "blocks": 1,
+    "volume": 1000.0,
+    "tonnes": 2500.0
+   },
+   "stale": false,
+   "stale_reason": null,
+   "model_id": 1,
+   "warnings": []
+  }
+ },
+ "drill_rows": {
+  "status": 200,
+  "body": {
+   "rules": {
+    "op": "and",
+    "items": [
+     {
+      "cond": {
+       "field": "CLASS",
+       "op": "=",
+       "value": "Измеренные"
+      }
+     },
+     {
+      "expr": "AU >= 1"
+     }
+    ]
+   },
+   "cell": {
+    "blocks": 1,
+    "volume": 1000.0,
+    "tonnes": 2500.0
+   },
+   "stale": false,
+   "stale_reason": null,
+   "model_id": 1,
+   "warnings": [],
+   "page": 1,
+   "size": 1000,
+   "total": 1,
+   "rows": [
+    {
+     "i": 1,
+     "j": 1,
+     "k": 0,
+     "x": 15.0,
+     "y": 15.0,
+     "z": 5.0,
+     "dx": 10.0,
+     "dy": 10.0,
+     "dz": 10.0,
+     "f": 1.0,
+     "volume": 1000.0,
+     "tonnes": 2500.0,
+     "keys": {
+      "CLASS": "Измеренные"
+     },
+     "elements": {
+      "AU": 1.0
+     }
+    }
+   ],
+   "csv": null
+  }
+ },
  "compare_reports": {
   "status": 200,
   "body": {
@@ -2519,7 +2603,7 @@
     ],
     "stale": false,
     "stale_reason": null,
-    "created_at": "2026-11-26T08:02:20.818693+00:00"
+    "created_at": "2026-11-26T08:09:16.671149+00:00"
    },
    "b": {
     "id": 6,
@@ -2577,7 +2661,7 @@
     ],
     "stale": false,
     "stale_reason": null,
-    "created_at": "2026-11-26T08:02:21.069575+00:00"
+    "created_at": "2026-11-26T08:09:16.917435+00:00"
    },
    "grids_differ": false,
    "warnings": [
@@ -3196,10 +3280,10 @@
    },
    "warnings": [],
    "stages": {
-    "read": 0.003,
-    "calc": 0.011,
-    "write": 0.011,
-    "total": 0.025
+    "read": 0.004,
+    "calc": 0.003,
+    "write": 0.014,
+    "total": 0.021
    },
    "events": [
     [
@@ -3384,10 +3468,10 @@
    },
    "warnings": [],
    "stages": {
-    "read": 0.003,
-    "calc": 0.011,
-    "write": 0.011,
-    "total": 0.025
+    "read": 0.004,
+    "calc": 0.003,
+    "write": 0.014,
+    "total": 0.021
    },
    "events": [
     [
@@ -3414,110 +3498,6 @@
    "format": "xlsx",
    "bytes": 21874,
    "rows": 7
-  }
- },
- "drill": {
-  "status": 200,
-  "body": {
-   "rules": {
-    "op": "and",
-    "items": [
-     {
-      "cond": {
-       "field": "CLASS",
-       "op": "=",
-       "value": "Измеренные"
-      }
-     },
-     {
-      "expr": "AU >= 1"
-     }
-    ]
-   },
-   "cell": {
-    "blocks": 3,
-    "volume": 3000.0,
-    "tonnes": 7500.0
-   },
-   "stale": false,
-   "stale_reason": null,
-   "model_id": 12
-  }
- },
- "drill_rows": {
-  "status": 200,
-  "body": {
-   "cell": {
-    "blocks": 3,
-    "volume": 3000.0,
-    "tonnes": 7500.0
-   },
-   "page": 1,
-   "size": 1000,
-   "total": 3,
-   "rows": [
-    {
-     "i": 0,
-     "j": 0,
-     "k": 0,
-     "x": 5.0,
-     "y": 5.0,
-     "z": 5.0,
-     "dx": 10.0,
-     "dy": 10.0,
-     "dz": 10.0,
-     "f": 1.0,
-     "volume": 1000.0,
-     "tonnes": 2500.0,
-     "keys": {
-      "CLASS": "Измеренные"
-     },
-     "elements": {
-      "AU": 1.0
-     }
-    },
-    {
-     "i": 1,
-     "j": 0,
-     "k": 0,
-     "x": 15.0,
-     "y": 5.0,
-     "z": 5.0,
-     "dx": 10.0,
-     "dy": 10.0,
-     "dz": 10.0,
-     "f": 1.0,
-     "volume": 1000.0,
-     "tonnes": 2500.0,
-     "keys": {
-      "CLASS": "Измеренные"
-     },
-     "elements": {
-      "AU": 1.5
-     }
-    },
-    {
-     "i": 2,
-     "j": 0,
-     "k": 0,
-     "x": 25.0,
-     "y": 5.0,
-     "z": 5.0,
-     "dx": 10.0,
-     "dy": 10.0,
-     "dz": 10.0,
-     "f": 1.0,
-     "volume": 1000.0,
-     "tonnes": 2500.0,
-     "keys": {
-      "CLASS": "Измеренные"
-     },
-     "elements": {
-      "AU": 3.0
-     }
-    }
-   ],
-   "csv": null
   }
  },
  "files_exist": {
