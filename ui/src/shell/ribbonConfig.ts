@@ -21,6 +21,7 @@ import { SETTINGS_BUTTONS } from "../modules/blocks/window/commands";
 import { CREATE_BUTTONS, CREATE_GROUP_TITLE, FIELD_BUTTONS as BUILD_FIELD_BUTTONS } from "../modules/blocks/build/commands";
 import { FIELD_BUTTONS, FIELD_GROUP_TITLE } from "../modules/blocks/fields/commands";
 import { COMPARE_BUTTONS } from "../modules/blocks/compare/commands";
+import { PIT_GROUPS, PIT_TAB_TITLE } from "../modules/pit/commands";
 import { RESOURCES_BUTTONS, RESOURCES_GROUP_TITLE } from "../modules/resources/commands";
 import { REPORT_BUTTONS } from "../modules/blocks/report/commands";
 import { CHART_BUTTONS, CHART_GROUP_TITLE } from "../modules/charts/commands";
@@ -308,6 +309,7 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState, series: Partial
       { title: CHECK_GROUP_TITLE, items: [...CHECK_BUTTONS, ...COMPARE_BUTTONS].map((b): RibbonItem => ({ ...b })) },
       { title: SIM_GROUP_TITLE, items: SIM_BUTTONS.map((b): RibbonItem => ({ ...b })) },
     ] },
+    { id: "pit", title: PIT_TAB_TITLE, groups: PIT_GROUPS.map((g) => ({ title: g.title, items: g.buttons.map((b): RibbonItem => ({ ...b })) })) },
     {
       id: "projsettings",
       title: "Настройки проекта",

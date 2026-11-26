@@ -59,6 +59,7 @@ import { renderInterceptsWindow } from "../modules/intercepts/TtWindow";
 import { renderTrendWindow } from "../modules/trends/bind";
 import { renderFiltersWindow } from "../modules/blocks/filters/bind";
 import { renderReportWindow } from "../modules/blocks/report/bind";
+import { renderPitWindow } from "../modules/pit/bind";
 import { renderResourcesWindow, renderTemplatesWindow } from "../modules/resources/bind";
 import { renderDrillWindow } from "../modules/resources/DrillWindow";
 import { renderCompareWindow } from "../modules/resources/compareBind";
@@ -121,7 +122,7 @@ const renderWindow: WindowRenderer = (w) => {
     case "model-report":
       return <ReportWindow winId={w.id} {...(w.props as unknown as ReportProps)} />;
     default:
-      return renderSeriesWindow(w) ?? renderLinesWindow(w) ?? renderDataManagerWindow(w) ?? renderCompositesWindow(w) ?? renderChartsWindow(w) ?? renderSwathWindow(w) ?? renderQaqcSetupWindow(w) ?? renderInterceptsWindow(w) ?? renderVariographyWindow(w) ?? renderEstimationWindow(w) ?? renderSimulationWindow(w) ?? renderImplicitWindow(w) ?? renderPlannedWindow(w) ?? renderLineageWindow(w) ?? renderTrendWindow(w) ?? renderFiltersWindow(w) ?? renderReportWindow(w) ?? renderResourcesWindow(w) ?? renderTemplatesWindow(w) ?? renderDrillWindow(w) ?? renderCompareWindow(w) ?? renderEstimateCompareWindow(w) ?? renderBuildWindow(w) ?? renderExportWindow(w) ?? renderModelWindow(w) ?? renderFieldsWindow(w);
+      return renderSeriesWindow(w) ?? renderLinesWindow(w) ?? renderDataManagerWindow(w) ?? renderCompositesWindow(w) ?? renderChartsWindow(w) ?? renderSwathWindow(w) ?? renderQaqcSetupWindow(w) ?? renderInterceptsWindow(w) ?? renderVariographyWindow(w) ?? renderEstimationWindow(w) ?? renderSimulationWindow(w) ?? renderImplicitWindow(w) ?? renderPlannedWindow(w) ?? renderLineageWindow(w) ?? renderTrendWindow(w) ?? renderFiltersWindow(w) ?? renderReportWindow(w) ?? renderResourcesWindow(w) ?? renderTemplatesWindow(w) ?? renderDrillWindow(w) ?? renderCompareWindow(w) ?? renderPitWindow(w) ?? renderEstimateCompareWindow(w) ?? renderBuildWindow(w) ?? renderExportWindow(w) ?? renderModelWindow(w) ?? renderFieldsWindow(w);
   }
 };
 
