@@ -70,9 +70,8 @@ describe("the declarations", () => {
     expect(PIT_GROUPS[0].buttons.map((b) => b.command)).toEqual(["pit.new", "pit.economics", "pit.rocks", "pit.slopes", "pit.relief", "pit.calendar"]);
     expect(PIT_GROUPS[1].buttons.map((b) => b.command)).toEqual(["pit.check", "pit.run"]);
   });
-  it("the commands of the window of 21.18 wait for their lane: unavailable with the stage; the commands of 21.16, 21.17 and 21.19 are bound", () => {
-    for (const id of ["pit.report", "pit.show"]) expect(app.registry.reason(id), id).toMatch(/появится на этапе Э21/);
-    for (const id of ["pit.surfaces", "pit.solid", "pit.compare"]) expect(app.registry.reason(id), id).toBeNull();
+  it("all the commands of the module are bound (no stage left); `pit.report` and `pit.show` are told in `panel.test.ts`, the results in `resultsCommands.test.ts`", () => {
+    for (const id of ["pit.report", "pit.show", "pit.surfaces", "pit.solid", "pit.compare"]) expect(app.registry.reason(id) ?? "", id).not.toMatch(/появится на этапе/);
     for (const id of ["pit.new", "pit.economics", "pit.rocks", "pit.slopes", "pit.relief", "pit.calendar", "pit.check", "pit.rename", "pit.delete"]) expect(app.registry.reason(id), id).toBeNull();
   });
 });

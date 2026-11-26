@@ -25,6 +25,7 @@ import { checkText, runText } from "./format";
 import { calendarFormOfParams } from "./formsCalendar";
 import { rocksFormOfParams } from "./formsRocks";
 import { slopesFormOfParams } from "./formsSlopes";
+import { bindPitPanel } from "./bindPanel";
 import { bindPitResults, renderPitResultsWindow } from "./bindResults";
 import { bindCalendar, bindRocks, bindSlopes } from "./bindSetup";
 import { CalendarWindow } from "./CalendarWindow";
@@ -403,8 +404,8 @@ export function bindPit(app: App): () => void {
   bindRocks(app);
   bindSlopes(app);
   bindCalendar(app);
+  bindPitPanel(app);
   bindPitResults(app);
-  // 21.18: bindReport(app), bindShow(app)
 
   // the scenarios belong to the project: another project — clean windows and the lists read again
   let uid: string | null = projectStore.get().current?.uid ?? null;

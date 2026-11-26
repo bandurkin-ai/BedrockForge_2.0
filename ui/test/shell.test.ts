@@ -121,7 +121,7 @@ describe("workspace (ТЗ 7.0.10, 7.0.14)", () => {
 
   it("the bottom tab «QAQC» and the tree section «Отчёты» (ADR 0020 §11); a stored order without «Отчёты» gets it at the end", () => {
     expect(BOTTOM_TITLES.qaqc).toBe("QAQC");
-    expect(Object.keys(BOTTOM_TITLES)).toEqual(["table", "audit", "stats", "qaqc", "jobs", "log", "resources"]);
+    expect(Object.keys(BOTTOM_TITLES)).toEqual(["table", "audit", "stats", "qaqc", "jobs", "log", "resources", "pit"]);
     expect(setPanel(DEFAULT_WORKSPACE, "bottom", true, "qaqc")).toMatchObject({ bottom: true, bottomTab: "qaqc" });
     expect(normalizeWorkspace({ bottom: true, bottomTab: "qaqc" }).bottomTab).toBe("qaqc");
     expect(moduleCommands().find((c) => c.id === "panel.set")?.params?.tab?.enum).toEqual(Object.keys(BOTTOM_TITLES));

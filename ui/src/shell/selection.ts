@@ -4,7 +4,7 @@
  * «Свойства» panel shows it (7.27), «Снять выбор» (Esc) clears it. Pure: no React.
  */
 
-export type ObjectKind = "wireframe" | "lines" | "raster" | "blocks" | "implicit" | "resource_report";
+export type ObjectKind = "wireframe" | "lines" | "raster" | "blocks" | "implicit" | "resource_report" | "pit_scenario";
 
 export interface Selected {
   kind: ObjectKind;
@@ -23,6 +23,7 @@ export const KIND_TITLES: Record<ObjectKind, { name: string; chosen: string; mis
   blocks: { name: "блочная модель", chosen: "Выбрана", missing: "не найдена" },
   implicit: { name: "неявная модель", chosen: "Выбрана", missing: "не найдена" },
   resource_report: { name: "отчёт по ресурсам", chosen: "Выбран", missing: "не найден" },
+  pit_scenario: { name: "сценарий карьера", chosen: "Выбран", missing: "не найден" },
 };
 
 /** The selection after the lists of the project changed: an object that is gone is not selected any more. */

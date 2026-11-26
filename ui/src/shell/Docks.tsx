@@ -2,6 +2,7 @@ import { useApp } from "./AppContext";
 import { AuditPanel } from "../modules/audit/AuditPanel";
 import { JobsPanel } from "../modules/jobs/JobsPanel";
 import { QaqcPanel } from "../modules/qaqc/QaqcPanel";
+import { PitPanel } from "../modules/pit/PitPanel";
 import { ResultPanel } from "../modules/resources/ResultPanel";
 import { SceneView } from "../modules/scene/SceneView";
 import { StatsPanel } from "../modules/stats/StatsPanel";
@@ -29,7 +30,7 @@ export function BottomDock() {
           <Icon name="close" size={14} />
         </button>
       </div>
-      <div className={css.dockBody}>{tab === "log" ? <CommandLog /> : tab === "jobs" ? <JobsPanel /> : tab === "table" ? <TablePanel /> : tab === "audit" ? <AuditPanel /> : tab === "qaqc" ? <QaqcPanel /> : tab === "resources" ? <ResultPanel /> : <StatsPanel />}</div>
+      <div className={css.dockBody}>{tab === "log" ? <CommandLog /> : tab === "jobs" ? <JobsPanel /> : tab === "table" ? <TablePanel /> : tab === "audit" ? <AuditPanel /> : tab === "qaqc" ? <QaqcPanel /> : tab === "resources" ? <ResultPanel /> : tab === "pit" ? <PitPanel /> : <StatsPanel />}</div>
     </section>
   );
 }

@@ -4,6 +4,7 @@ import { EstimationTree } from "../modules/estimation/EstimationTreeSection";
 import { SimulationTree } from "../modules/simulation/SimulationTreeSection";
 import { ImplicitTree } from "../modules/implicit/ImplicitTree";
 import { PlannedTree } from "../modules/drillholes/PlannedTree";
+import { PitTree } from "../modules/pit/ScenariosTree";
 import { TrendsTree } from "../modules/trends/TrendsTree";
 import { useState, type DragEvent } from "react";
 import { useApp } from "./AppContext";
@@ -48,6 +49,7 @@ const CONTENT: Partial<Record<TreeSection, () => JSX.Element>> = {
   simulation: SimulationTree,
   implicit: ImplicitTree,
   planned: PlannedTree,
+  pit: PitTree,
   views: ViewsTree,
   series: SeriesTree,
   blocks: BlocksTree,
