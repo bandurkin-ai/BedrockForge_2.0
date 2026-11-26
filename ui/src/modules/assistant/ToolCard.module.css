@@ -1,0 +1,21 @@
+/* The card of a call of a tool (ТЗ 7.32; ADR 0029 решение 33): the brand tokens of the theme (docs/brand, ADR 0006). */
+.card { align-self: stretch; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); font-size: 12px; min-width: 0; }
+.card[data-status="error"] { border-color: var(--danger); }
+.card[data-status="waiting"][data-side="ui"] { border-color: var(--warn); }
+.line { display: flex; align-items: baseline; gap: 6px; padding: 4px 8px; cursor: pointer; list-style: none; min-width: 0; flex-wrap: wrap; }
+.line::-webkit-details-marker { display: none; }
+.line::before { content: "▸"; color: var(--text-faint); font-size: 10px; flex: none; }
+.fold[open] > .line::before { content: "▾"; }
+.line:hover { background: var(--bg-hover); }
+.side { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-faint); flex: none; }
+.title { font-family: var(--font-brand); font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+.badge { flex: none; padding: 0 6px; border-radius: 8px; border: 1px solid var(--border-strong); font-size: 11px; color: var(--text-dim); }
+.ok { color: var(--ok); border-color: var(--ok); }
+.error { color: var(--danger); border-color: var(--danger); }
+.declined { color: var(--text-dim); }
+.waiting { color: var(--warn); border-color: var(--warn); }
+.brief { color: var(--text-dim); overflow-wrap: anywhere; min-width: 0; }
+.body { border-top: 1px solid var(--border); padding: 4px 8px 6px; display: flex; flex-direction: column; gap: 4px; }
+.args, .result { margin: 0; padding: 4px 6px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 3px; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 11px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; }
+.none { color: var(--text-faint); }
+.actions { border-top: 1px solid var(--border); padding: 4px 8px; display: flex; gap: 6px; flex-wrap: wrap; }
