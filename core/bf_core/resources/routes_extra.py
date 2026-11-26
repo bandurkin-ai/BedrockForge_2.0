@@ -11,9 +11,12 @@ docs/progress/e20-api.md §5, §8–§10). Relative to `/resources` (`router.py`
     `resources.export` (quick; 20.5). Checked before it: 422 `bad_param`, 404 `resource_report_not_found`. It writes
     outside the project, so it works in a project «только просмотр». While the job is not in the build — 501
     `not_implemented`. The job is given {report_id, format, path, template, cutoff, overwrite}.
-  * `POST /reports/{id}/drill`, `POST /reports/{id}/drill/rows` (Д-36, 20.9) and `POST /compare` (Д-37, 20.10) — the
-    paths and the checks of the contract; the answer is 501 `not_implemented` until those sub-steps land. The body of
-    a drill has no `report_id`: it is the one of the path.
+  * `POST /reports/{id}/drill` {group, cutoff, kind?} → {rules, cell, stale, stale_reason, model_id, warnings} and
+    `POST /reports/{id}/drill/rows` {…, page, size, csv?} → the same + {page, size, total, rows, csv} (Д-36, 20.9;
+    `drill.py`; synchronous, they work in a project «только просмотр»): 404 `resource_report_not_found`,
+    `block_model_not_found`; 409 `report_building`; 422 `bad_param {param}`. The body has no `report_id`: it is the
+    one of the path. `POST /compare` (Д-37, 20.10) — the path and the checks of the contract; the answer is 501
+    `not_implemented` until that sub-step lands.
 """
 
 from __future__ import annotations
@@ -120,20 +123,30 @@ def export_report(svc: Svc, s: Sched, report_id: int, body: Payload) -> dict[str
 
 @router.post("/reports/{report_id}/drill")
 def drill(svc: Svc, report_id: int, body: Payload) -> dict[str, Any]:
+    from bf_core.storage.blobs import BlobStore
+
+    from . import drill as dr
     from . import spec
 
-    spec.parse_drill({**body_of(body), "report_id": report_id})
+    d = spec.parse_drill({**body_of(body), "report_id": report_id})
     _exists(svc, report_id)
-    raise not_implemented("Переход к блокам")
+    project = svc.require_current()  # the jump writes nothing: it works in a project «только просмотр»
+    with dialect.read_tx(project.engine) as conn:
+        return dr.answer(conn, BlobStore(project.folder), d)
 
 
 @router.post("/reports/{report_id}/drill/rows")
 def drill_rows(svc: Svc, report_id: int, body: Payload) -> dict[str, Any]:
+    from bf_core.storage.blobs import BlobStore
+
+    from . import drill as dr
     from . import spec
 
-    spec.parse_drill_rows({**body_of(body), "report_id": report_id})
+    d = spec.parse_drill_rows({**body_of(body), "report_id": report_id})
     _exists(svc, report_id)
-    raise not_implemented("Таблица блоков ячейки")
+    project = svc.require_current()
+    with dialect.read_tx(project.engine) as conn:
+        return dr.rows_answer(conn, BlobStore(project.folder), d)
 
 
 @router.post("/compare")

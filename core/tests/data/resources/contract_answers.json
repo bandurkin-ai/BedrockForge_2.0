@@ -1,5 +1,5 @@
 {
- "_note": "ЧАСТЬ КЛЮЧЕЙ — ответы настоящего ядра (BF_REGEN_RESOURCES=1 uv run pytest -q tests/test_resources_contract.py, 20.7, модель Т8.10-1: 8 блоков 10×10×10 м, ρ = 2,5, Au 0,2…5,0 г/т, борт 1,0 → 12 500 т, 2,5 г/т, 31,25 кг; tests/resapi_world.py); export_*, files_exist (20.5), drill*, compare_* (20.9, 20.10) — ОБРАЗЦЫ форм (docs/progress/e20-api.md §8–§10); defaults, bad_param, group_numeric, refusals пишет spec.py (BF_REGEN_RESOURCES=1 uv run pytest -q tests/test_resources_spec.py). Интерфейс принимается только на настоящих ответах.",
+ "_note": "ЧАСТЬ КЛЮЧЕЙ — ответы настоящего ядра (BF_REGEN_RESOURCES=1 uv run pytest -q tests/test_resources_contract.py, 20.7, модель Т8.10-1: 8 блоков 10×10×10 м, ρ = 2,5, Au 0,2…5,0 г/т, борт 1,0 → 12 500 т, 2,5 г/т, 31,25 кг; tests/resapi_world.py); export_*, files_exist (20.5), compare_* (20.10) — ОБРАЗЦЫ форм (docs/progress/e20-api.md §8–§10); defaults, bad_param, group_numeric, refusals пишет spec.py (BF_REGEN_RESOURCES=1 uv run pytest -q tests/test_resources_spec.py). Интерфейс принимается только на настоящих ответах.",
  "report_post": {
   "status": 200,
   "body": {
@@ -2460,22 +2460,6 @@
    "hint": "Закройте проект в другом окне и откройте его заново."
   }
  },
- "export_post": {
-  "status": 200,
-  "body": {
-   "source": "jobs",
-   "id": 42
-  }
- },
- "export_result": {
-  "status": 200,
-  "body": {
-   "path": "C:\\Отчёты\\resources.xlsx",
-   "format": "xlsx",
-   "bytes": 21874,
-   "rows": 7
-  }
- },
  "drill": {
   "status": 200,
   "body": {
@@ -2495,33 +2479,53 @@
     ]
    },
    "cell": {
-    "blocks": 3,
-    "volume": 3000.0,
-    "tonnes": 7500.0
+    "blocks": 1,
+    "volume": 1000.0,
+    "tonnes": 2500.0
    },
    "stale": false,
    "stale_reason": null,
-   "model_id": 12
+   "model_id": 1,
+   "warnings": []
   }
  },
  "drill_rows": {
   "status": 200,
   "body": {
-   "cell": {
-    "blocks": 3,
-    "volume": 3000.0,
-    "tonnes": 7500.0
+   "rules": {
+    "op": "and",
+    "items": [
+     {
+      "cond": {
+       "field": "CLASS",
+       "op": "=",
+       "value": "Измеренные"
+      }
+     },
+     {
+      "expr": "AU >= 1"
+     }
+    ]
    },
+   "cell": {
+    "blocks": 1,
+    "volume": 1000.0,
+    "tonnes": 2500.0
+   },
+   "stale": false,
+   "stale_reason": null,
+   "model_id": 1,
+   "warnings": [],
    "page": 1,
    "size": 1000,
-   "total": 3,
+   "total": 1,
    "rows": [
     {
-     "i": 0,
-     "j": 0,
+     "i": 1,
+     "j": 1,
      "k": 0,
-     "x": 5.0,
-     "y": 5.0,
+     "x": 15.0,
+     "y": 15.0,
      "z": 5.0,
      "dx": 10.0,
      "dy": 10.0,
@@ -2535,49 +2539,25 @@
      "elements": {
       "AU": 1.0
      }
-    },
-    {
-     "i": 1,
-     "j": 0,
-     "k": 0,
-     "x": 15.0,
-     "y": 5.0,
-     "z": 5.0,
-     "dx": 10.0,
-     "dy": 10.0,
-     "dz": 10.0,
-     "f": 1.0,
-     "volume": 1000.0,
-     "tonnes": 2500.0,
-     "keys": {
-      "CLASS": "Измеренные"
-     },
-     "elements": {
-      "AU": 1.5
-     }
-    },
-    {
-     "i": 2,
-     "j": 0,
-     "k": 0,
-     "x": 25.0,
-     "y": 5.0,
-     "z": 5.0,
-     "dx": 10.0,
-     "dy": 10.0,
-     "dz": 10.0,
-     "f": 1.0,
-     "volume": 1000.0,
-     "tonnes": 2500.0,
-     "keys": {
-      "CLASS": "Измеренные"
-     },
-     "elements": {
-      "AU": 3.0
-     }
     }
    ],
    "csv": null
+  }
+ },
+ "export_post": {
+  "status": 200,
+  "body": {
+   "source": "jobs",
+   "id": 42
+  }
+ },
+ "export_result": {
+  "status": 200,
+  "body": {
+   "path": "C:\\Отчёты\\resources.xlsx",
+   "format": "xlsx",
+   "bytes": 21874,
+   "rows": 7
   }
  },
  "compare_reports": {
