@@ -342,6 +342,25 @@ def test_valley_the_chain_through_air_is_kept_by_a_bridge():
     assert np.array_equal(mined[g.real], F.solve(ref)[~air])
 
 
+def test_plan_make_graph_makes_the_bridges_of_the_valley():
+    """`plan.make_graph` (the graph of a scenario) asks for the bridges: the nodes of the table are the blocks, the
+    «воздух» cell of the valley is a bridge, nothing else changes."""
+    from types import SimpleNamespace
+
+    from bf_core.mine import plan
+
+    dims, air, _ = valley_case()
+    tab = SimpleNamespace(p=np.flatnonzero(~air).astype(np.uint64), n_nodes=int((~air).sum()))
+    tpl = tp.build_template(1.0, 1.0, 1.0, tp.angle_table([(0.0, 45.0)]), k=2)
+    g = plan.make_graph(SimpleNamespace(grid=SimpleNamespace(counts=dims)), tab, tpl, None, 1000)
+    assert (g.n, g.n_real) == (15, 14) and G.parent_index(g)[~g.real].tolist() == [1 + 5 * 1]
+    assert np.array_equal(G.parent_index(g, real_only=True), tab.p.astype(np.int64))  # the order of the table
+    assert g.expand(np.arange(g.n_real, dtype=np.int64)).shape == (g.n,)
+    flat = SimpleNamespace(p=np.arange(10, dtype=np.uint64), n_nodes=10)  # the top level is «воздух»: no bridge
+    g2 = plan.make_graph(SimpleNamespace(grid=SimpleNamespace(counts=dims)), flat, tpl, None, 1000)
+    assert g2.real is None and g2.n == 10
+
+
 def test_bridge_interface_expand_real_pit_real_view_masks():
     dims, air, value = valley_case()
     g = G.build_graph(dims, value, air, None, [reduced(45.0, 2)], bridges=True)
