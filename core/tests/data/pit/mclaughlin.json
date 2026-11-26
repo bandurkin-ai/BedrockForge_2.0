@@ -1,0 +1,25 @@
+{
+ "_note": "Параметры сценария McLaughlin (MineLib) для тестов и замера Э21 (21.13, ADR 0028 находка 7, вопрос № 116). costs, recovery, slope_angle, revenue_factor — из index.json.gz файла tests/data/ext/omf/minelib/McLaughlin_tutorial.omf (сценарий Incline «McLaughlin Starting scenario»: откатка руды 2,10 и пустой 1,21 $/т, фабрика 20,90 $/т, извлечение 84 %, борт 45°, RF 0,2…1,7 шаг 0,025, 61 оболочка). assumptions — ДОПУЩЕНИЯ: в OMF у сценария нет цены (revenues: []) и единицы au; цена и единица ниже выбраны так, чтобы борт руды не был ни пустым, ни почти всей моделью, и ждут результата MineFlow/Incline заказчика. template_k — K шаблона 21.3 (ТЗ 8.11.3). model — что читается из OMF (тест сверяет).",
+ "source": "tests/data/ext/omf/minelib/McLaughlin_tutorial.omf (OMF 2 Incline Design 0.3.3, блочная модель mclaughlin_bm)",
+ "model": {
+  "dims": [140, 296, 68],
+  "size": [7.62, 7.62, 6.096],
+  "blocks": 2817920,
+  "rock_blocks": 2140342,
+  "air_blocks": 677578,
+  "au_positive": 292740,
+  "au_max": 67.92
+ },
+ "costs": {"ore_haulage": 2.1, "waste_haulage": 1.21, "process": 20.9},
+ "recovery": 0.84,
+ "slope_angle": 45.0,
+ "template_k": 8,
+ "revenue_factor": {"from": 0.2, "to": 1.7, "step": 0.025, "count": 61},
+ "assumptions": {
+  "price_usd_per_troy_oz": 1800.0,
+  "au_unit": "g/t",
+  "question": "вопрос № 116",
+  "status": "допущение: в OMF цены и единицы au нет; заменить результатом MineFlow/Incline заказчика"
+ },
+ "check_rf": [0.5, 1.0]
+}

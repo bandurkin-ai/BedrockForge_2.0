@@ -121,17 +121,17 @@ describe("the restrictor: «Карьер», «Ниже рельефа» and the 
   const f = (p: Partial<ResourceForm>): ResourceForm => ({ ...EMPTY_FORM, modelId: 12, ...p });
   it("nothing — no restrictor; one leaf — the leaf itself; several — «И»", () => {
     expect(restrictOfForm(f({}))).toEqual({ ok: true, rule: null });
-    expect(restrictOfForm(f({ pit: { ...EMPTY_FORM.pit, on: true, n: "3" } }))).toEqual({ ok: true, rule: { expr: "PIT <= 3" } });
+    expect(restrictOfForm(f({ pit: { ...EMPTY_FORM.pit, on: true, n: "3" } }))).toEqual({ ok: true, rule: { op: "and", items: [{ expr: "PIT >= 1" }, { expr: "PIT <= 3" }] } });
     expect(restrictOfForm(f({ pit: { on: true, mode: "wireframe", n: "1", wireframeId: 50, by: "frac" } }))).toEqual({ ok: true, rule: { wireframe: { id: 50, side: "inside", by: "frac", m: 4 } } });
     expect(restrictOfForm(f({ below: { on: true, surfaceId: 41, by: "centre" } }))).toEqual({ ok: true, rule: { surface: { id: 41, side: "below", by: "centre" } } });
     const both = restrictOfForm(f({ pit: { ...EMPTY_FORM.pit, on: true, n: "2,5" }, below: { on: true, surfaceId: 41, by: "frac" } }));
-    expect(both).toEqual({ ok: true, rule: { op: "and", items: [{ expr: "PIT <= 2.5" }, { surface: { id: 41, side: "below", by: "frac" } }] } });
+    expect(both).toEqual({ ok: true, rule: { op: "and", items: [{ op: "and", items: [{ expr: "PIT >= 1" }, { expr: "PIT <= 2.5" }] }, { surface: { id: 41, side: "below", by: "frac" } }] } });
   });
   it("the tree of the window stands first, the shortcuts after it; the filter of the library goes beside, as its own key", () => {
     const tree = { op: "and" as const, items: [{ cond: { field: "DOM", op: "=" as const, value: "A", list: "" } }] };
     const p = built(f({ filterId: 5, restrictOn: true, restrict: tree, pit: { ...EMPTY_FORM.pit, on: true, n: "1" } }));
     expect(p.filter_id).toBe(5);
-    expect(p.restrict).toEqual({ op: "and", items: [{ op: "and", items: [{ cond: { field: "DOM", op: "=", value: "A" } }] }, { expr: "PIT <= 1" }] });
+    expect(p.restrict).toEqual({ op: "and", items: [{ op: "and", items: [{ cond: { field: "DOM", op: "=", value: "A" } }] }, { op: "and", items: [{ expr: "PIT >= 1" }, { expr: "PIT <= 1" }] }] });
   });
   it("a shortcut without its object is told in its place", () => {
     expect(issueOf({ pit: { on: true, mode: "wireframe", n: "1", wireframeId: null, by: "frac" } }).field).toBe("pit");

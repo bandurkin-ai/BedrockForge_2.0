@@ -1,0 +1,47 @@
+/* The windows of the pit optimisation (ТЗ 8.11.5; ADR 0028): the form in a column, the theme tokens of the brand (docs/brand, ADR 0006). */
+.window { display: flex; flex-direction: column; height: 100%; min-height: 0; font-size: 13px; }
+.body { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; padding: 8px 12px; overflow: auto; }
+.body fieldset { margin: 0; }
+.footer { display: flex; gap: 8px; align-items: center; flex: none; padding: 8px 12px 10px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.grow { flex: 1; min-width: 0; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; align-self: flex-start; }
+.seg button { border: 0; background: transparent; color: var(--text-dim); padding: 2px 10px; cursor: pointer; font: inherit; }
+.seg button[aria-pressed="true"] { background: var(--bg-active); color: var(--text); }
+.seg button:disabled { opacity: 0.5; cursor: default; }
+.radios { display: flex; flex-direction: column; gap: 4px; }
+.radios label { display: flex; align-items: center; gap: 6px; }
+.pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 10px; }
+.triple { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 10px; }
+.shortcut { display: flex; flex-direction: column; gap: 4px; border: 1px dashed var(--border); border-radius: var(--radius); padding: 4px 6px; }
+.elements { display: flex; flex-direction: column; gap: 4px; max-height: 280px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); padding: 4px; }
+.element { display: grid; grid-template-columns: minmax(80px, 1fr) minmax(70px, 96px) repeat(3, minmax(56px, 84px)); align-items: center; gap: 4px 6px; }
+.element label { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.element label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.elementHead { color: var(--text-faint); font-size: 11px; }
+.marked input, .marked select { border-color: var(--danger); }
+.unit { color: var(--text-faint); }
+.head { margin: 0; font-family: var(--font-brand); font-weight: 600; }
+.ready { margin: 0; font-variant-numeric: tabular-nums; }
+.ready[data-ready="true"] { color: var(--text); }
+.ready[data-ready="false"] { color: var(--warn); }
+
+/* 21.17: the rocks (the rules, the table of the types), the slopes (the sectors, the domains), the check (the chart, the legend) */
+.rules { display: flex; flex-direction: column; gap: 6px; }
+.rule { display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); padding: 4px 6px; }
+.ruleHead { display: flex; align-items: center; gap: 4px; }
+.ruleHead input { flex: 1; min-width: 0; }
+.ruleNo { color: var(--text-faint); min-width: 18px; text-align: right; font-variant-numeric: tabular-nums; }
+.rocks { display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); padding: 4px; }
+.rock { display: grid; align-items: center; gap: 4px 6px; }
+.typeName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.add { display: flex; gap: 6px; align-items: center; }
+.add input { flex: 1; min-width: 0; }
+.sectors { display: flex; flex-direction: column; gap: 4px; }
+.sector { display: grid; grid-template-columns: 24px minmax(70px, 1fr) minmax(70px, 1fr) 24px; align-items: center; gap: 4px 6px; max-width: 360px; }
+.domains { display: flex; flex-direction: column; gap: 6px; max-height: 300px; overflow: auto; }
+.domain { display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 6px; }
+.chartBox { display: flex; flex-direction: column; gap: 6px; }
+.legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 12px; }
+.legendItem { display: inline-flex; align-items: center; gap: 4px; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
+.legendItem .swatch { margin-right: 0; }

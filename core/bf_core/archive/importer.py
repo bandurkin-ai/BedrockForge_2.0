@@ -21,6 +21,7 @@ from bf_core.db import dialect, migrate
 from bf_core.db.schema import blobs, project_md, project_meta
 from bf_core.drillholes.planned_remap import remap_planned
 from bf_core.geostat.remap import remap_geostat
+from bf_core.mine.remap import remap_pit
 from bf_core.model.remap import remap_implicit
 from bf_core.ops.provenance import remap_lineage
 from bf_core.ops.provenance import remap_objects as remap_built_records
@@ -277,6 +278,7 @@ def _restore(
     remap_implicit(conn, maps.get("objects", {}), maps.get("dh_tables", {}), maps.get("dh_results", {}))  # ADR 0026 §26
     remap_planned(conn, maps.get("objects", {}))  # ADR 0026 §26: meta.set_id of the planned holes
     remap_resources(conn, maps.get("objects", {}))  # ADR 0027 §14: ids inside the parameters of resource reports
+    remap_pit(conn, maps.get("objects", {}))  # ADR 0028 §24: ids inside the parameters of pit scenarios
     remap_lineage(conn, maps)  # the graph of dependencies (ADR 0025 §11)
     # files: into place and registered (owners came with blob_owners)
     now = dialect.utcnow()

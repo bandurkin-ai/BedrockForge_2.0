@@ -310,7 +310,7 @@ DTYPES = ("f8", "f4", "i4", "i2", "i1", "cat")
 NUMBER_DTYPES = DTYPES[:5]
 NUMBER_ROLES, CATEGORY_ROLES = ("grade", "density", "frac"), ("code", "class")
 FIELD_OPS = ("import", "calc", "fill", "code", "density", "classify", "regularize", "estimate", "simulate",
-             "compare")
+             "compare", "pit")
 MODEL_OPS = ("import", "prototype", "fill", "code", "regularize")
 FLD = "fld:"
 SUB_COLUMNS = ("sx", "sy", "sz", "wx", "wy", "wz")

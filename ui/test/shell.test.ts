@@ -19,8 +19,8 @@ const tabs = buildRibbon(DEFAULT_WORKSPACE, DEFAULT_VIEW);
 const items = flattenRibbon(tabs);
 
 describe("ribbon (ТЗ 7.0.4)", () => {
-  it("has the eight tabs (ADR 0008: + «Настройки проекта»; ADR 0016: + «Разрезы»; ADR 0022: + «Геостатистика»)", () => {
-    expect(tabs.map((t) => t.title)).toEqual(["Главная", "Вид", "Разрезы", "Моделирование", "Анализ", "Геостатистика", "Настройки проекта", "Claude"]);
+  it("has the nine tabs (ADR 0008: + «Настройки проекта»; ADR 0016: + «Разрезы»; ADR 0022: + «Геостатистика»; ADR 0028: + «Карьер»)", () => {
+    expect(tabs.map((t) => t.title)).toEqual(["Главная", "Вид", "Разрезы", "Моделирование", "Анализ", "Геостатистика", "Карьер", "Настройки проекта", "Claude"]);
     expect(tabs.every((t) => /^[a-z]{1,16}$/.test(t.id))).toBe(true);
   });
 
@@ -121,7 +121,7 @@ describe("workspace (ТЗ 7.0.10, 7.0.14)", () => {
 
   it("the bottom tab «QAQC» and the tree section «Отчёты» (ADR 0020 §11); a stored order without «Отчёты» gets it at the end", () => {
     expect(BOTTOM_TITLES.qaqc).toBe("QAQC");
-    expect(Object.keys(BOTTOM_TITLES)).toEqual(["table", "audit", "stats", "qaqc", "jobs", "log", "resources"]);
+    expect(Object.keys(BOTTOM_TITLES)).toEqual(["table", "audit", "stats", "qaqc", "jobs", "log", "resources", "pit"]);
     expect(setPanel(DEFAULT_WORKSPACE, "bottom", true, "qaqc")).toMatchObject({ bottom: true, bottomTab: "qaqc" });
     expect(normalizeWorkspace({ bottom: true, bottomTab: "qaqc" }).bottomTab).toBe("qaqc");
     expect(moduleCommands().find((c) => c.id === "panel.set")?.params?.tab?.enum).toEqual(Object.keys(BOTTOM_TITLES));

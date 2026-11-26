@@ -7,8 +7,8 @@
 export type Theme = "dark" | "light";
 export type PanelId = "project" | "properties" | "assistant" | "bottom";
 export type RightTab = "properties" | "assistant";
-export type BottomTab = "table" | "audit" | "stats" | "qaqc" | "jobs" | "log" | "resources";
-export type TreeSection = "views" | "series" | "holes" | "wireframes" | "dtm" | "lines" | "rasters" | "blocks" | "filters" | "audit" | "reports" | "trends" | "variograms" | "estimation" | "simulation" | "implicit" | "planned";
+export type BottomTab = "table" | "audit" | "stats" | "qaqc" | "jobs" | "log" | "resources" | "pit";
+export type TreeSection = "views" | "series" | "holes" | "wireframes" | "dtm" | "lines" | "rasters" | "blocks" | "filters" | "audit" | "reports" | "trends" | "variograms" | "estimation" | "simulation" | "implicit" | "planned" | "pit";
 
 export const BOTTOM_TITLES: Record<BottomTab, string> = {
   table: "Таблица",
@@ -18,6 +18,7 @@ export const BOTTOM_TITLES: Record<BottomTab, string> = {
   jobs: "Задания",
   log: "Журнал команд",
   resources: "Ресурсы",
+  pit: "Pit-by-pit",
 };
 
 export const TREE_SECTIONS: Record<TreeSection, string> = {
@@ -42,6 +43,8 @@ export const TREE_SECTIONS: Record<TreeSection, string> = {
   /** Implicit models (ADR 0026, Э19): models with their data, surfaces and bodies; a stored order without it gets it at the end (`normalizeOrder`). */
   implicit: "Неявные модели",
   planned: "Проектные скважины",
+  /** Pit scenarios (ADR 0028, Э21); a stored order without it gets it at the end (`normalizeOrder`). */
+  pit: "Карьер",
   audit: "Аудит и статистика",
   /** QAQC reports (ADR 0020 §11); a stored order without it gets it at the end (`normalizeOrder`). */
   reports: "Отчёты",

@@ -7,6 +7,7 @@ import { BlockProps } from "../modules/blocks/BlockProps";
 import { ImplicitProps } from "../modules/implicit/ImplicitProps";
 import { LayerProps } from "../modules/lines/LayerProps";
 import { LineageProps } from "../modules/lineage/LineageProps";
+import { ScenarioProps } from "../modules/pit/ScenarioProps";
 import { nodeOfSelected } from "../modules/lineage/state";
 import { RasterProps } from "../modules/rasters/RasterProps";
 import { ReportProps } from "../modules/resources/ReportProps";
@@ -32,6 +33,7 @@ export function PropertiesPanel() {
       {selected.kind === "blocks" && <BlockProps key={key} id={selected.id} />}
       {selected.kind === "implicit" && <ImplicitProps key={key} id={selected.id} />}
       {selected.kind === "resource_report" && <ReportProps key={key} id={selected.id} />}
+      {selected.kind === "pit_scenario" && <ScenarioProps key={key} id={selected.id} />}
       {node && <LineageProps key={`lin:${key}`} node={node} />}
       {hole && <HoleCard />}
     </div>

@@ -1,0 +1,3353 @@
+{
+ "_note": "Примеры параметров сценария карьера (21.1): body — `params` запроса POST /pit/scenarios; canonical — spec.parse_params(body).canonical(); resolved — то же после PitSpec.resolved(fixture.fields, fixture.z_range) (meta.params, docs/progress/e21-api.md §2); invalid — тела, которые разбор отклоняет 422 bad_param с этим param; validate — тело и контекст → первый missing (§3). Перегенерация: BF_REGEN_PIT=1 uv run pytest -q tests/test_pit_spec.py",
+ "fixture": {
+  "fields": [
+   {
+    "name": "AU",
+    "kind": "number",
+    "unit": "г/т",
+    "role": "grade"
+   },
+   {
+    "name": "CU",
+    "kind": "number",
+    "unit": "%",
+    "role": "grade"
+   },
+   {
+    "name": "SG",
+    "kind": "number",
+    "unit": null,
+    "role": "density",
+    "stats": {
+     "min": 2.4,
+     "max": 3.1
+    }
+   },
+   {
+    "name": "ROCK",
+    "kind": "category",
+    "unit": null,
+    "role": null,
+    "labels": [
+     "Окисленная",
+     "Первичная"
+    ]
+   },
+   {
+    "name": "DOM",
+    "kind": "category",
+    "unit": null,
+    "role": null,
+    "labels": [
+     "A",
+     "B",
+     "C"
+    ]
+   },
+   {
+    "name": "NOUNIT",
+    "kind": "number",
+    "unit": null,
+    "role": null
+   }
+  ],
+  "z_range": [
+   -12.0,
+   33.0
+  ]
+ },
+ "cases": {
+  "minimal": {
+   "body": {},
+   "canonical": {
+    "model_id": null,
+    "elements": [],
+    "density": null,
+    "default_density": null,
+    "rocks": {
+     "by": null,
+     "types": []
+    },
+    "mining": {
+     "c_m0": null,
+     "z_ref": null,
+     "h_gl": 10.0,
+     "c_gl": 0.0
+    },
+    "rf": [
+     0.3,
+     0.35,
+     0.4,
+     0.45,
+     0.5,
+     0.55,
+     0.6,
+     0.65,
+     0.7,
+     0.75,
+     0.8,
+     0.85,
+     0.9,
+     0.95,
+     1.0,
+     1.05,
+     1.1,
+     1.15,
+     1.2,
+     1.25,
+     1.3,
+     1.35,
+     1.4,
+     1.45,
+     1.5
+    ],
+    "slopes": {
+     "table": [
+      {
+       "az": 0.0,
+       "angle": 45.0
+      }
+     ],
+     "domain_field": null,
+     "domains": [],
+     "tolerance": 2.5
+    },
+    "k": null,
+    "terrain_id": null,
+    "filter_id": null,
+    "restrict": null,
+    "calendar": {
+     "q_ore": null,
+     "q_mass": null,
+     "rate": 0.08
+    },
+    "prefix": "",
+    "solver": "auto"
+   },
+   "resolved": {
+    "model_id": null,
+    "elements": [],
+    "density": "SG",
+    "default_density": null,
+    "rocks": {
+     "by": null,
+     "types": []
+    },
+    "mining": {
+     "c_m0": null,
+     "z_ref": 33.0,
+     "h_gl": 10.0,
+     "c_gl": 0.0
+    },
+    "rf": [
+     0.3,
+     0.35,
+     0.4,
+     0.45,
+     0.5,
+     0.55,
+     0.6,
+     0.65,
+     0.7,
+     0.75,
+     0.8,
+     0.85,
+     0.9,
+     0.95,
+     1.0,
+     1.05,
+     1.1,
+     1.15,
+     1.2,
+     1.25,
+     1.3,
+     1.35,
+     1.4,
+     1.45,
+     1.5
+    ],
+    "slopes": {
+     "table": [
+      {
+       "az": 0.0,
+       "angle": 45.0
+      }
+     ],
+     "domain_field": null,
+     "domains": [],
+     "tolerance": 2.5
+    },
+    "k": null,
+    "terrain_id": null,
+    "filter_id": null,
+    "restrict": null,
+    "calendar": {
+     "q_ore": null,
+     "q_mass": null,
+     "rate": 0.08
+    },
+    "prefix": "",
+    "solver": "auto"
+   }
+  },
+  "t8117": {
+   "body": {
+    "model_id": 12,
+    "elements": [
+     {
+      "field": "au",
+      "unit": "г/т",
+      "price": 2000,
+      "sales": 5
+     }
+    ],
+    "density": "2,7",
+    "rocks": {
+     "types": [
+      {
+       "name": "Все породы",
+       "c_p": 20,
+       "rec": {
+        "AU": 0.9
+       }
+      }
+     ]
+    },
+    "mining": {
+     "c_m0": 2.5
+    }
+   },
+   "canonical": {
+    "model_id": 12,
+    "elements": [
+     {
+      "field": "au",
+      "unit": "g/t",
+      "price": 2000.0,
+      "sales": 5.0,
+      "royalty": 0.0
+     }
+    ],
+    "density": 2.7,
+    "default_density": null,
+    "rocks": {
+     "by": null,
+     "types": [
+      {
+       "name": "Все породы",
+       "c_p": 20.0,
+       "c_mr": 0.0,
+       "rec": {
+        "au": 0.9
+       },
+       "waste_only": false,
+       "air": false
+      }
+     ]
+    },
+    "mining": {
+     "c_m0": 2.5,
+     "z_ref": null,
+     "h_gl": 10.0,
+     "c_gl": 0.0
+    },
+    "rf": [
+     0.3,
+     0.35,
+     0.4,
+     0.45,
+     0.5,
+     0.55,
+     0.6,
+     0.65,
+     0.7,
+     0.75,
+     0.8,
+     0.85,
+     0.9,
+     0.95,
+     1.0,
+     1.05,
+     1.1,
+     1.15,
+     1.2,
+     1.25,
+     1.3,
+     1.35,
+     1.4,
+     1.45,
+     1.5
+    ],
+    "slopes": {
+     "table": [
+      {
+       "az": 0.0,
+       "angle": 45.0
+      }
+     ],
+     "domain_field": null,
+     "domains": [],
+     "tolerance": 2.5
+    },
+    "k": null,
+    "terrain_id": null,
+    "filter_id": null,
+    "restrict": null,
+    "calendar": {
+     "q_ore": null,
+     "q_mass": null,
+     "rate": 0.08
+    },
+    "prefix": "",
+    "solver": "auto"
+   },
+   "resolved": {
+    "model_id": 12,
+    "elements": [
+     {
+      "field": "AU",
+      "unit": "g/t",
+      "price": 2000.0,
+      "sales": 5.0,
+      "royalty": 0.0
+     }
+    ],
+    "density": 2.7,
+    "default_density": null,
+    "rocks": {
+     "by": null,
+     "types": [
+      {
+       "name": "Все породы",
+       "c_p": 20.0,
+       "c_mr": 0.0,
+       "rec": {
+        "AU": 0.9
+       },
+       "waste_only": false,
+       "air": false
+      }
+     ]
+    },
+    "mining": {
+     "c_m0": 2.5,
+     "z_ref": 33.0,
+     "h_gl": 10.0,
+     "c_gl": 0.0
+    },
+    "rf": [
+     0.3,
+     0.35,
+     0.4,
+     0.45,
+     0.5,
+     0.55,
+     0.6,
+     0.65,
+     0.7,
+     0.75,
+     0.8,
+     0.85,
+     0.9,
+     0.95,
+     1.0,
+     1.05,
+     1.1,
+     1.15,
+     1.2,
+     1.25,
+     1.3,
+     1.35,
+     1.4,
+     1.45,
+     1.5
+    ],
+    "slopes": {
+     "table": [
+      {
+       "az": 0.0,
+       "angle": 45.0
+      }
+     ],
+     "domain_field": null,
+     "domains": [],
+     "tolerance": 2.5
+    },
+    "k": null,
+    "terrain_id": null,
+    "filter_id": null,
+    "restrict": null,
+    "calendar": {
+     "q_ore": null,
+     "q_mass": null,
+     "rate": 0.08
+    },
+    "prefix": "",
+    "solver": "auto"
+   }
+  },
+  "rocks_field": {
+   "body": {
+    "model_id": 12,
+    "elements": [
+     {
+      "field": "AU",
+      "price": 2000,
+      "sales": 5,
+      "royalty": 0.03
+     },
+     {
+      "field": "CU",
+      "unit": "%",
+      "price": 9000,
+      "sales": 300
+     }
+    ],
+    "rocks": {
+     "by": {
+      "kind": "field",
+      "field": "rock"
+     },
+     "types": [
+      {
+       "name": "первичная",
+       "c_p": 18,
+       "c_mr": 0.5,
+       "rec": {
+        "AU": 0.85,
+        "cu": 0.9
+       }
+      },
+      {
+       "name": "Окисленная",
+       "c_p": 12,
+       "rec": {
+        "AU": 0.7,
+        "CU": 0.5
+       }
+      },
+      {
+       "name": "(пусто)",
+       "waste_only": true
+      }
+     ]
+    },
+    "mining": {
+     "c_m0": 2.5,
+     "c_gl": 0.02,
+     "h_gl": 10,
+     "z_ref": 30
+    },
+    "default_density": 2.6
+   },
+   "canonical": {
+    "model_id": 12,
+    "elements": [
+     {
+      "field": "AU",
+      "unit": null,
+      "price": 2000.0,
+      "sales": 5.0,
+      "royalty": 0.03
+     },
+     {
+      "field": "CU",
+      "unit": "%",
+      "price": 9000.0,
+      "sales": 300.0,
+      "royalty": 0.0
+     }
+    ],
+    "density": null,
+    "default_density": 2.6,
+    "rocks": {
+     "by": {
+      "kind": "field",
+      "field": "rock"
+     },
+     "types": [
+      {
+       "name": "(пусто)",
+       "c_p": null,
+       "c_mr": 0.0,
+       "rec": {},
+       "waste_only": true,
+       "air": false
+      },
+      {
+       "name": "Окисленная",
+       "c_p": 12.0,
+       "c_mr": 0.0,
+       "rec": {
+        "AU": 0.7,
+        "CU": 0.5
+       },
+       "waste_only": false,
+       "air": false
+      },
+      {
+       "name": "первичная",
+       "c_p": 18.0,
+       "c_mr": 0.5,
+       "rec": {
+        "AU": 0.85,
+        "CU": 0.9
+       },
+       "waste_only": false,
+       "air": false
+      }
+     ]
+    },
+    "mining": {
+     "c_m0": 2.5,
+     "z_ref": 30.0,
+     "h_gl": 10.0,
+     "c_gl": 0.02
+    },
+    "rf": [
+     0.3,
+     0.35,
+     0.4,
+     0.45,
+     0.5,
+     0.55,
+     0.6,
+     0.65,
+     0.7,
+     0.75,
+     0.8,
+     0.85,
+     0.9,
+     0.95,
+     1.0,
+     1.05,
+     1.1,
+     1.15,
+     1.2,
+     1.25,
+     1.3,
+     1.35,
+     1.4,
+     1.45,
+     1.5
+    ],
+    "slopes": {
+     "table": [
+      {
+       "az": 0.0,
+       "angle": 45.0
+      }
+     ],
+     "domain_field": null,
+     "domains": [],
+     "tolerance": 2.5
+    },
+    "k": null,
+    "terrain_id": null,
+    "filter_id": null,
+    "restrict": null,
+    "calendar": {
+     "q_ore": null,
+     "q_mass": null,
+     "rate": 0.08
+    },
+    "prefix": "",
+    "solver": "auto"
+   },
+   "resolved": {
+    "model_id": 12,
+    "elements": [
+     {
+      "field": "AU",
+      "unit": "g/t",
+      "price": 2000.0,
+      "sales": 5.0,
+      "royalty": 0.03
+     },
+     {
+      "field": "CU",
+      "unit": "%",
+      "price": 9000.0,
+      "sales": 300.0,
+      "royalty": 0.0
+     }
+    ],
+    "density": "SG",
+    "default_density": 2.6,
+    "rocks": {
+     "by": {
+      "kind": "field",
+      "field": "ROCK"
+     },
+     "types": [
+      {
+       "name": "(пусто)",
+       "c_p": null,
+       "c_mr": 0.0,
+       "rec": {},
+       "waste_only": true,
+       "air": false
+      },
+      {
+       "name": "Окисленная",
+       "c_p": 12.0,
+       "c_mr": 0.0,
+       "rec": {
+        "AU": 0.7,
+        "CU": 0.5
+       },
+       "waste_only": false,
+       "air": false
+      },
+      {
+       "name": "Первичная",
+       "c_p": 18.0,
+       "c_mr": 0.5,
+       "rec": {
+        "AU": 0.85,
+        "CU": 0.9
+       },
+       "waste_only": false,
+       "air": false
+      }
+     ]
+    },
+    "mining": {
+     "c_m0": 2.5,
+     "z_ref": 30.0,
+     "h_gl": 10.0,
+     "c_gl": 0.02
+    },
+    "rf": [
+     0.3,
+     0.35,
+     0.4,
+     0.45,
+     0.5,
+     0.55,
+     0.6,
+     0.65,
+     0.7,
+     0.75,
+     0.8,
+     0.85,
+     0.9,
+     0.95,
+     1.0,
+     1.05,
+     1.1,
+     1.15,
+     1.2,
+     1.25,
+     1.3,
+     1.35,
+     1.4,
+     1.45,
+     1.5
+    ],
+    "slopes": {
+     "table": [
+      {
+       "az": 0.0,
+       "angle": 45.0
+      }
+     ],
+     "domain_field": null,
+     "domains": [],
+     "tolerance": 2.5
+    },
+    "k": null,
+    "terrain_id": null,
+    "filter_id": null,
+    "restrict": null,
+    "calendar": {
+     "q_ore": null,
+     "q_mass": null,
+     "rate": 0.08
+    },
+    "prefix": "",
+    "solver": "auto"
+   }
+  },
+  "rocks_rules": {
+   "body": {
+    "model_id": 12,
+    "elements": [
+     "AU"
+    ],
+    "rocks": {
+     "by": {
+      "rules": [
+       {
+        "name": "Богатая",
+        "rules": {
+         "expr": "AU > 2"
+        }
+       },
+       {
+        "name": "Воздух",
+        "rules": {
+         "expr": "AU < 0"
+        }
+       }
+      ]
+     },
+     "types": [
+      {
+       "name": "Богатая",
+       "c_p": 20,
+       "rec": {
+        "AU": 0.9
+       }
+      },
+      {
+       "name": "Воздух",
+       "air": true
+      },
+      {
+       "name": "Прочие",
+       "waste_only": true
+      }
+     ]
+    }
+   },
+   "canonical": {
+    "model_id": 12,
+    "elements": [
+     {
+      "field": "AU",
+      "unit": null,
+      "price": null,
+      "sales": 0.0,
+      "royalty": 0.0
+     }
+    ],
+    "density": null,
+    "default_density": null,
+    "rocks": {
+     "by": {
+      "kind": "rules",
+      "rules": [
+       {
+        "name": "Богатая",
+        "rules": {
+         "expr": "AU > 2"
+        }
+       },
+       {
+        "name": "Воздух",
+        "rules": {
+         "expr": "AU < 0"
+        }
+       }
+      ]
+     },
+     "types": [
+      {
+       "name": "Богатая",
+       "c_p": 20.0,
+       "c_mr": 0.0,
+       "rec": {
+        "AU": 0.9
+       },
+       "waste_only": false,
+       "air": false
+      },
+      {
+       "name": "Воздух",
+       "c_p": null,
+       "c_mr": 0.0,
+       "rec": {},
+       "waste_only": false,
+       "air": true
+      },
+      {
+       "name": "Прочие",
+       "c_p": null,
+       "c_mr": 0.0,
+       "rec": {},
+       "waste_only": true,
+       "air": false
+      }
+     ]
+    },
+    "mining": {
+     "c_m0": null,
+     "z_ref": null,
+     "h_gl": 10.0,
+     "c_gl": 0.0
+    },
+    "rf": [
+     0.3,
+     0.35,
+     0.4,
+     0.45,
+     0.5,
+     0.55,
+     0.6,
+     0.65,
+     0.7,
+     0.75,
+     0.8,
+     0.85,
+     0.9,
+     0.95,
+     1.0,
+     1.05,
+     1.1,
+     1.15,
+     1.2,
+     1.25,
+     1.3,
+     1.35,
+     1.4,
+     1.45,
+     1.5
+    ],
+    "slopes": {
+     "table": [
+      {
+       "az": 0.0,
+       "angle": 45.0
+      }
+     ],
+     "domain_field": null,
+     "domains": [],
+     "tolerance": 2.5
+    },
+    "k": null,
+    "terrain_id": null,
+    "filter_id": null,
+    "restrict": null,
+    "calendar": {
+     "q_ore": null,
+     "q_mass": null,
+     "rate": 0.08
+    },
+    "prefix": "",
+    "solver": "auto"
+   },
+   "resolved": {
+    "model_id": 12,
+    "elements": [
+     {
+      "field": "AU",
+      "unit": "g/t",
+      "price": null,
+      "sales": 0.0,
+      "royalty": 0.0
+     }
+    ],
+    "density": "SG",
+    "default_density": null,
+    "rocks": {
+     "by": {
+      "kind": "rules",
+      "rules": [
+       {
+        "name": "Богатая",
+        "rules": {
+         "expr": "AU > 2"
+        }
+       },
+       {
+        "name": "Воздух",
+        "rules": {
+         "expr": "AU < 0"
+        }
+       }
+      ]
+     },
+     "types": [
+      {
+       "name": "Богатая",
+       "c_p": 20.0,
+       "c_mr": 0.0,
+       "rec": {
+        "AU": 0.9
+       },
+       "waste_only": false,
+       "air": false
+      },
+      {
+       "name": "Воздух",
+       "c_p": null,
+       "c_mr": 0.0,
+       "rec": {},
+       "waste_only": false,
+       "air": true
+      },
+      {
+       "name": "Прочие",
+       "c_p": null,
+       "c_mr": 0.0,
+       "rec": {},
+       "waste_only": true,
+       "air": false
+      }
+     ]
+    },
+    "mining": {
+     "c_m0": null,
+     "z_ref": 33.0,
+     "h_gl": 10.0,
+     "c_gl": 0.0
+    },
+    "rf": [
+     0.3,
+     0.35,
+     0.4,
+     0.45,
+     0.5,
+     0.55,
+     0.6,
+     0.65,
+     0.7,
+     0.75,
+     0.8,
+     0.85,
+     0.9,
+     0.95,
+     1.0,
+     1.05,
+     1.1,
+     1.15,
+     1.2,
+     1.25,
+     1.3,
+     1.35,
+     1.4,
+     1.45,
+     1.5
+    ],
+    "slopes": {
+     "table": [
+      {
+       "az": 0.0,
+       "angle": 45.0
+      }
+     ],
+     "domain_field": null,
+     "domains": [],
+     "tolerance": 2.5
+    },
+    "k": null,
+    "terrain_id": null,
+    "filter_id": null,
+    "restrict": null,
+    "calendar": {
+     "q_ore": null,
+     "q_mass": null,
+     "rate": 0.08
+    },
+    "prefix": "",
+    "solver": "auto"
+   }
+  },
+  "sectors_domains": {
+   "body": {
+    "model_id": 12,
+    "slopes": {
+     "table": [
+      {
+       "az": 180,
+       "angle": 50
+      },
+      {
+       "az": 0,
+       "angle": 40
+      },
+      {
+       "az": 90,
+       "angle": 45
+      }
+     ],
+     "domain_field": "dom",
+     "domains": [
+      {
+       "label": "b",
+       "table": [
+        {
+         "angle": 35
+        }
+       ]
+      },
+      {
+       "label": "A",
+       "table": [
+        {
+         "az": 270,
+         "angle": 55
+        },
+        {
+         "az": 90,
+         "angle": 45
+        }
+       ]
+      }
+     ],
+     "tolerance": "2,0"
+    },
+    "k": 12
+   },
+   "canonical": {
+    "model_id": 12,
+    "elements": [],
+    "density": null,
+    "default_density": null,
+    "rocks": {
+     "by": null,
+     "types": []
+    },
+    "mining": {
+     "c_m0": null,
+     "z_ref": null,
+     "h_gl": 10.0,
+     "c_gl": 0.0
+    },
+    "rf": [
+     0.3,
+     0.35,
+     0.4,
+     0.45,
+     0.5,
+     0.55,
+     0.6,
+     0.65,
+     0.7,
+     0.75,
+     0.8,
+     0.85,
+     0.9,
+     0.95,
+     1.0,
+     1.05,
+     1.1,
+     1.15,
+     1.2,
+     1.25,
+     1.3,
+     1.35,
+     1.4,
+     1.45,
+     1.5
+    ],
+    "slopes": {
+     "table": [
+      {
+       "az": 0.0,
+       "angle": 40.0
+      },
+      {
+       "az": 90.0,
+       "angle": 45.0
+      },
+      {
+       "az": 180.0,
+       "angle": 50.0
+      }
+     ],
+     "domain_field": "dom",
+     "domains": [
+      {
+       "label": "A",
+       "table": [
+        {
+         "az": 90.0,
+         "angle": 45.0
+        },
+        {
+         "az": 270.0,
+         "angle": 55.0
+        }
+       ]
+      },
+      {
+       "label": "b",
+       "table": [
+        {
+         "az": 0.0,
+         "angle": 35.0
+        }
+       ]
+      }
+     ],
+     "tolerance": 2.0
+    },
+    "k": 12,
+    "terrain_id": null,
+    "filter_id": null,
+    "restrict": null,
+    "calendar": {
+     "q_ore": null,
+     "q_mass": null,
+     "rate": 0.08
+    },
+    "prefix": "",
+    "solver": "auto"
+   },
+   "resolved": {
+    "model_id": 12,
+    "elements": [],
+    "density": "SG",
+    "default_density": null,
+    "rocks": {
+     "by": null,
+     "types": []
+    },
+    "mining": {
+     "c_m0": null,
+     "z_ref": 33.0,
+     "h_gl": 10.0,
+     "c_gl": 0.0
+    },
+    "rf": [
+     0.3,
+     0.35,
+     0.4,
+     0.45,
+     0.5,
+     0.55,
+     0.6,
+     0.65,
+     0.7,
+     0.75,
+     0.8,
+     0.85,
+     0.9,
+     0.95,
+     1.0,
+     1.05,
+     1.1,
+     1.15,
+     1.2,
+     1.25,
+     1.3,
+     1.35,
+     1.4,
+     1.45,
+     1.5
+    ],
+    "slopes": {
+     "table": [
+      {
+       "az": 0.0,
+       "angle": 40.0
+      },
+      {
+       "az": 90.0,
+       "angle": 45.0
+      },
+      {
+       "az": 180.0,
+       "angle": 50.0
+      }
+     ],
+     "domain_field": "DOM",
+     "domains": [
+      {
+       "label": "A",
+       "table": [
+        {
+         "az": 90.0,
+         "angle": 45.0
+        },
+        {
+         "az": 270.0,
+         "angle": 55.0
+        }
+       ]
+      },
+      {
+       "label": "B",
+       "table": [
+        {
+         "az": 0.0,
+         "angle": 35.0
+        }
+       ]
+      }
+     ],
+     "tolerance": 2.0
+    },
+    "k": 12,
+    "terrain_id": null,
+    "filter_id": null,
+    "restrict": null,
+    "calendar": {
+     "q_ore": null,
+     "q_mass": null,
+     "rate": 0.08
+    },
+    "prefix": "",
+    "solver": "auto"
+   }
+  },
+  "rf_range": {
+   "body": {
+    "model_id": 12,
+    "rf": {
+     "from": 0.5,
+     "to": 1.5,
+     "step": 0.25
+    }
+   },
+   "canonical": {
+    "model_id": 12,
+    "elements": [],
+    "density": null,
+    "default_density": null,
+    "rocks": {
+     "by": null,
+     "types": []
+    },
+    "mining": {
+     "c_m0": null,
+     "z_ref": null,
+     "h_gl": 10.0,
+     "c_gl": 0.0
+    },
+    "rf": [
+     0.5,
+     0.75,
+     1.0,
+     1.25,
+     1.5
+    ],
+    "slopes": {
+     "table": [
+      {
+       "az": 0.0,
+       "angle": 45.0
+      }
+     ],
+     "domain_field": null,
+     "domains": [],
+     "tolerance": 2.5
+    },
+    "k": null,
+    "terrain_id": null,
+    "filter_id": null,
+    "restrict": null,
+    "calendar": {
+     "q_ore": null,
+     "q_mass": null,
+     "rate": 0.08
+    },
+    "prefix": "",
+    "solver": "auto"
+   },
+   "resolved": {
+    "model_id": 12,
+    "elements": [],
+    "density": "SG",
+    "default_density": null,
+    "rocks": {
+     "by": null,
+     "types": []
+    },
+    "mining": {
+     "c_m0": null,
+     "z_ref": 33.0,
+     "h_gl": 10.0,
+     "c_gl": 0.0
+    },
+    "rf": [
+     0.5,
+     0.75,
+     1.0,
+     1.25,
+     1.5
+    ],
+    "slopes": {
+     "table": [
+      {
+       "az": 0.0,
+       "angle": 45.0
+      }
+     ],
+     "domain_field": null,
+     "domains": [],
+     "tolerance": 2.5
+    },
+    "k": null,
+    "terrain_id": null,
+    "filter_id": null,
+    "restrict": null,
+    "calendar": {
+     "q_ore": null,
+     "q_mass": null,
+     "rate": 0.08
+    },
+    "prefix": "",
+    "solver": "auto"
+   }
+  },
+  "rf_list": {
+   "body": {
+    "model_id": 12,
+    "rf": [
+     1.2,
+     "0,8",
+     1.0,
+     0.8,
+     5
+    ]
+   },
+   "canonical": {
+    "model_id": 12,
+    "elements": [],
+    "density": null,
+    "default_density": null,
+    "rocks": {
+     "by": null,
+     "types": []
+    },
+    "mining": {
+     "c_m0": null,
+     "z_ref": null,
+     "h_gl": 10.0,
+     "c_gl": 0.0
+    },
+    "rf": [
+     0.8,
+     1.0,
+     1.2,
+     5.0
+    ],
+    "slopes": {
+     "table": [
+      {
+       "az": 0.0,
+       "angle": 45.0
+      }
+     ],
+     "domain_field": null,
+     "domains": [],
+     "tolerance": 2.5
+    },
+    "k": null,
+    "terrain_id": null,
+    "filter_id": null,
+    "restrict": null,
+    "calendar": {
+     "q_ore": null,
+     "q_mass": null,
+     "rate": 0.08
+    },
+    "prefix": "",
+    "solver": "auto"
+   },
+   "resolved": {
+    "model_id": 12,
+    "elements": [],
+    "density": "SG",
+    "default_density": null,
+    "rocks": {
+     "by": null,
+     "types": []
+    },
+    "mining": {
+     "c_m0": null,
+     "z_ref": 33.0,
+     "h_gl": 10.0,
+     "c_gl": 0.0
+    },
+    "rf": [
+     0.8,
+     1.0,
+     1.2,
+     5.0
+    ],
+    "slopes": {
+     "table": [
+      {
+       "az": 0.0,
+       "angle": 45.0
+      }
+     ],
+     "domain_field": null,
+     "domains": [],
+     "tolerance": 2.5
+    },
+    "k": null,
+    "terrain_id": null,
+    "filter_id": null,
+    "restrict": null,
+    "calendar": {
+     "q_ore": null,
+     "q_mass": null,
+     "rate": 0.08
+    },
+    "prefix": "",
+    "solver": "auto"
+   }
+  },
+  "restricted": {
+   "body": {
+    "model_id": 12,
+    "terrain_id": 5,
+    "filter_id": 5,
+    "restrict": {
+     "op": "and",
+     "items": [
+      {
+       "cond": {
+        "field": "DOM",
+        "op": "=",
+        "value": "A"
+       }
+      },
+      {
+       "expr": "AU > 0.1"
+      }
+     ]
+    },
+    "prefix": "V1_",
+    "solver": "hpf",
+    "calendar": {
+     "q_ore": 1000000,
+     "q_mass": null,
+     "rate": 0.1
+    }
+   },
+   "canonical": {
+    "model_id": 12,
+    "elements": [],
+    "density": null,
+    "default_density": null,
+    "rocks": {
+     "by": null,
+     "types": []
+    },
+    "mining": {
+     "c_m0": null,
+     "z_ref": null,
+     "h_gl": 10.0,
+     "c_gl": 0.0
+    },
+    "rf": [
+     0.3,
+     0.35,
+     0.4,
+     0.45,
+     0.5,
+     0.55,
+     0.6,
+     0.65,
+     0.7,
+     0.75,
+     0.8,
+     0.85,
+     0.9,
+     0.95,
+     1.0,
+     1.05,
+     1.1,
+     1.15,
+     1.2,
+     1.25,
+     1.3,
+     1.35,
+     1.4,
+     1.45,
+     1.5
+    ],
+    "slopes": {
+     "table": [
+      {
+       "az": 0.0,
+       "angle": 45.0
+      }
+     ],
+     "domain_field": null,
+     "domains": [],
+     "tolerance": 2.5
+    },
+    "k": null,
+    "terrain_id": 5,
+    "filter_id": 5,
+    "restrict": {
+     "op": "and",
+     "items": [
+      {
+       "cond": {
+        "field": "DOM",
+        "op": "=",
+        "value": "A"
+       }
+      },
+      {
+       "expr": "AU > 0.1"
+      }
+     ]
+    },
+    "calendar": {
+     "q_ore": 1000000.0,
+     "q_mass": null,
+     "rate": 0.1
+    },
+    "prefix": "V1_",
+    "solver": "hpf"
+   },
+   "resolved": {
+    "model_id": 12,
+    "elements": [],
+    "density": "SG",
+    "default_density": null,
+    "rocks": {
+     "by": null,
+     "types": []
+    },
+    "mining": {
+     "c_m0": null,
+     "z_ref": 33.0,
+     "h_gl": 10.0,
+     "c_gl": 0.0
+    },
+    "rf": [
+     0.3,
+     0.35,
+     0.4,
+     0.45,
+     0.5,
+     0.55,
+     0.6,
+     0.65,
+     0.7,
+     0.75,
+     0.8,
+     0.85,
+     0.9,
+     0.95,
+     1.0,
+     1.05,
+     1.1,
+     1.15,
+     1.2,
+     1.25,
+     1.3,
+     1.35,
+     1.4,
+     1.45,
+     1.5
+    ],
+    "slopes": {
+     "table": [
+      {
+       "az": 0.0,
+       "angle": 45.0
+      }
+     ],
+     "domain_field": null,
+     "domains": [],
+     "tolerance": 2.5
+    },
+    "k": null,
+    "terrain_id": 5,
+    "filter_id": 5,
+    "restrict": {
+     "op": "and",
+     "items": [
+      {
+       "cond": {
+        "field": "DOM",
+        "op": "=",
+        "value": "A"
+       }
+      },
+      {
+       "expr": "AU > 0.1"
+      }
+     ]
+    },
+    "calendar": {
+     "q_ore": 1000000.0,
+     "q_mass": null,
+     "rate": 0.1
+    },
+    "prefix": "V1_",
+    "solver": "hpf"
+   }
+  }
+ },
+ "invalid": [
+  {
+   "name": "params_not_object",
+   "body": [
+    1
+   ],
+   "param": "params"
+  },
+  {
+   "name": "model_id_zero",
+   "body": {
+    "model_id": 0
+   },
+   "param": "model_id"
+  },
+  {
+   "name": "model_id_bool",
+   "body": {
+    "model_id": true
+   },
+   "param": "model_id"
+  },
+  {
+   "name": "elements_not_list",
+   "body": {
+    "elements": "AU"
+   },
+   "param": "elements"
+  },
+  {
+   "name": "elements_21",
+   "body": {
+    "elements": [
+     "E0",
+     "E1",
+     "E2",
+     "E3",
+     "E4",
+     "E5",
+     "E6",
+     "E7",
+     "E8",
+     "E9",
+     "E10",
+     "E11",
+     "E12",
+     "E13",
+     "E14",
+     "E15",
+     "E16",
+     "E17",
+     "E18",
+     "E19",
+     "E20"
+    ]
+   },
+   "param": "elements"
+  },
+  {
+   "name": "element_repeat",
+   "body": {
+    "elements": [
+     "AU",
+     "au"
+    ]
+   },
+   "param": "elements.1"
+  },
+  {
+   "name": "element_unit_unknown",
+   "body": {
+    "elements": [
+     {
+      "field": "AU",
+      "unit": "oz/t"
+     }
+    ]
+   },
+   "param": "elements.0.unit"
+  },
+  {
+   "name": "price_negative",
+   "body": {
+    "elements": [
+     {
+      "field": "AU",
+      "price": -1
+     }
+    ]
+   },
+   "param": "elements.0.price"
+  },
+  {
+   "name": "price_text",
+   "body": {
+    "elements": [
+     {
+      "field": "AU",
+      "price": "много"
+     }
+    ]
+   },
+   "param": "elements.0.price"
+  },
+  {
+   "name": "sales_negative",
+   "body": {
+    "elements": [
+     {
+      "field": "AU",
+      "sales": -5
+     }
+    ]
+   },
+   "param": "elements.0.sales"
+  },
+  {
+   "name": "royalty_one",
+   "body": {
+    "elements": [
+     {
+      "field": "AU",
+      "royalty": 1
+     }
+    ]
+   },
+   "param": "elements.0.royalty"
+  },
+  {
+   "name": "royalty_negative",
+   "body": {
+    "elements": [
+     {
+      "field": "AU",
+      "royalty": -0.1
+     }
+    ]
+   },
+   "param": "elements.0.royalty"
+  },
+  {
+   "name": "density_zero",
+   "body": {
+    "density": 0
+   },
+   "param": "density"
+  },
+  {
+   "name": "default_density_field",
+   "body": {
+    "default_density": "SG"
+   },
+   "param": "default_density"
+  },
+  {
+   "name": "default_density_zero",
+   "body": {
+    "default_density": 0
+   },
+   "param": "default_density"
+  },
+  {
+   "name": "rf_over_200_range",
+   "body": {
+    "rf": {
+     "from": 0.01,
+     "to": 5,
+     "step": 0.02
+    }
+   },
+   "param": "rf.step"
+  },
+  {
+   "name": "rf_over_200_list",
+   "body": {
+    "rf": [
+     0.01,
+     0.02,
+     0.03,
+     0.04,
+     0.05,
+     0.06,
+     0.07,
+     0.08,
+     0.09,
+     0.1,
+     0.11,
+     0.12,
+     0.13,
+     0.14,
+     0.15,
+     0.16,
+     0.17,
+     0.18,
+     0.19,
+     0.2,
+     0.21,
+     0.22,
+     0.23,
+     0.24,
+     0.25,
+     0.26,
+     0.27,
+     0.28,
+     0.29,
+     0.3,
+     0.31,
+     0.32,
+     0.33,
+     0.34,
+     0.35,
+     0.36,
+     0.37,
+     0.38,
+     0.39,
+     0.4,
+     0.41,
+     0.42,
+     0.43,
+     0.44,
+     0.45,
+     0.46,
+     0.47,
+     0.48,
+     0.49,
+     0.5,
+     0.51,
+     0.52,
+     0.53,
+     0.54,
+     0.55,
+     0.56,
+     0.57,
+     0.58,
+     0.59,
+     0.6,
+     0.61,
+     0.62,
+     0.63,
+     0.64,
+     0.65,
+     0.66,
+     0.67,
+     0.68,
+     0.69,
+     0.7,
+     0.71,
+     0.72,
+     0.73,
+     0.74,
+     0.75,
+     0.76,
+     0.77,
+     0.78,
+     0.79,
+     0.8,
+     0.81,
+     0.82,
+     0.83,
+     0.84,
+     0.85,
+     0.86,
+     0.87,
+     0.88,
+     0.89,
+     0.9,
+     0.91,
+     0.92,
+     0.93,
+     0.94,
+     0.95,
+     0.96,
+     0.97,
+     0.98,
+     0.99,
+     1.0,
+     1.01,
+     1.02,
+     1.03,
+     1.04,
+     1.05,
+     1.06,
+     1.07,
+     1.08,
+     1.09,
+     1.1,
+     1.11,
+     1.12,
+     1.13,
+     1.14,
+     1.15,
+     1.16,
+     1.17,
+     1.18,
+     1.19,
+     1.2,
+     1.21,
+     1.22,
+     1.23,
+     1.24,
+     1.25,
+     1.26,
+     1.27,
+     1.28,
+     1.29,
+     1.3,
+     1.31,
+     1.32,
+     1.33,
+     1.34,
+     1.35,
+     1.36,
+     1.37,
+     1.38,
+     1.39,
+     1.4,
+     1.41,
+     1.42,
+     1.43,
+     1.44,
+     1.45,
+     1.46,
+     1.47,
+     1.48,
+     1.49,
+     1.5,
+     1.51,
+     1.52,
+     1.53,
+     1.54,
+     1.55,
+     1.56,
+     1.57,
+     1.58,
+     1.59,
+     1.6,
+     1.61,
+     1.62,
+     1.63,
+     1.64,
+     1.65,
+     1.66,
+     1.67,
+     1.68,
+     1.69,
+     1.7,
+     1.71,
+     1.72,
+     1.73,
+     1.74,
+     1.75,
+     1.76,
+     1.77,
+     1.78,
+     1.79,
+     1.8,
+     1.81,
+     1.82,
+     1.83,
+     1.84,
+     1.85,
+     1.86,
+     1.87,
+     1.88,
+     1.89,
+     1.9,
+     1.91,
+     1.92,
+     1.93,
+     1.94,
+     1.95,
+     1.96,
+     1.97,
+     1.98,
+     1.99,
+     2.0,
+     2.01
+    ]
+   },
+   "param": "rf"
+  },
+  {
+   "name": "rf_below",
+   "body": {
+    "rf": [
+     0.005
+    ]
+   },
+   "param": "rf.0"
+  },
+  {
+   "name": "rf_above",
+   "body": {
+    "rf": [
+     5.01
+    ]
+   },
+   "param": "rf.0"
+  },
+  {
+   "name": "rf_empty",
+   "body": {
+    "rf": []
+   },
+   "param": "rf"
+  },
+  {
+   "name": "rf_step_zero",
+   "body": {
+    "rf": {
+     "from": 0.3,
+     "to": 1.5,
+     "step": 0
+    }
+   },
+   "param": "rf.step"
+  },
+  {
+   "name": "rf_to_below_from",
+   "body": {
+    "rf": {
+     "from": 1.5,
+     "to": 0.3,
+     "step": 0.1
+    }
+   },
+   "param": "rf.to"
+  },
+  {
+   "name": "rf_range_without_step",
+   "body": {
+    "rf": {
+     "from": 0.3,
+     "to": 1.5
+    }
+   },
+   "param": "rf.step"
+  },
+  {
+   "name": "sectors_17",
+   "body": {
+    "slopes": {
+     "table": [
+      {
+       "az": 0,
+       "angle": 45
+      },
+      {
+       "az": 20,
+       "angle": 45
+      },
+      {
+       "az": 40,
+       "angle": 45
+      },
+      {
+       "az": 60,
+       "angle": 45
+      },
+      {
+       "az": 80,
+       "angle": 45
+      },
+      {
+       "az": 100,
+       "angle": 45
+      },
+      {
+       "az": 120,
+       "angle": 45
+      },
+      {
+       "az": 140,
+       "angle": 45
+      },
+      {
+       "az": 160,
+       "angle": 45
+      },
+      {
+       "az": 180,
+       "angle": 45
+      },
+      {
+       "az": 200,
+       "angle": 45
+      },
+      {
+       "az": 220,
+       "angle": 45
+      },
+      {
+       "az": 240,
+       "angle": 45
+      },
+      {
+       "az": 260,
+       "angle": 45
+      },
+      {
+       "az": 280,
+       "angle": 45
+      },
+      {
+       "az": 300,
+       "angle": 45
+      },
+      {
+       "az": 320,
+       "angle": 45
+      }
+     ]
+    }
+   },
+   "param": "slopes.table"
+  },
+  {
+   "name": "sectors_empty",
+   "body": {
+    "slopes": {
+     "table": []
+    }
+   },
+   "param": "slopes.table"
+  },
+  {
+   "name": "sector_az_360",
+   "body": {
+    "slopes": {
+     "table": [
+      {
+       "az": 360,
+       "angle": 45
+      }
+     ]
+    }
+   },
+   "param": "slopes.table.0.az"
+  },
+  {
+   "name": "sector_az_repeat",
+   "body": {
+    "slopes": {
+     "table": [
+      {
+       "az": 90,
+       "angle": 45
+      },
+      {
+       "az": 90,
+       "angle": 50
+      }
+     ]
+    }
+   },
+   "param": "slopes.table.1.az"
+  },
+  {
+   "name": "sector_az_missing",
+   "body": {
+    "slopes": {
+     "table": [
+      {
+       "az": 0,
+       "angle": 45
+      },
+      {
+       "angle": 45
+      }
+     ]
+    }
+   },
+   "param": "slopes.table.1.az"
+  },
+  {
+   "name": "angle_9",
+   "body": {
+    "slopes": {
+     "table": [
+      {
+       "az": 0,
+       "angle": 9.9
+      }
+     ]
+    }
+   },
+   "param": "slopes.table.0.angle"
+  },
+  {
+   "name": "angle_81",
+   "body": {
+    "slopes": {
+     "table": [
+      {
+       "az": 0,
+       "angle": 81
+      }
+     ]
+    }
+   },
+   "param": "slopes.table.0.angle"
+  },
+  {
+   "name": "domains_17",
+   "body": {
+    "slopes": {
+     "domain_field": "DOM",
+     "domains": [
+      {
+       "label": "D0",
+       "table": [
+        {
+         "angle": 45
+        }
+       ]
+      },
+      {
+       "label": "D1",
+       "table": [
+        {
+         "angle": 45
+        }
+       ]
+      },
+      {
+       "label": "D2",
+       "table": [
+        {
+         "angle": 45
+        }
+       ]
+      },
+      {
+       "label": "D3",
+       "table": [
+        {
+         "angle": 45
+        }
+       ]
+      },
+      {
+       "label": "D4",
+       "table": [
+        {
+         "angle": 45
+        }
+       ]
+      },
+      {
+       "label": "D5",
+       "table": [
+        {
+         "angle": 45
+        }
+       ]
+      },
+      {
+       "label": "D6",
+       "table": [
+        {
+         "angle": 45
+        }
+       ]
+      },
+      {
+       "label": "D7",
+       "table": [
+        {
+         "angle": 45
+        }
+       ]
+      },
+      {
+       "label": "D8",
+       "table": [
+        {
+         "angle": 45
+        }
+       ]
+      },
+      {
+       "label": "D9",
+       "table": [
+        {
+         "angle": 45
+        }
+       ]
+      },
+      {
+       "label": "D10",
+       "table": [
+        {
+         "angle": 45
+        }
+       ]
+      },
+      {
+       "label": "D11",
+       "table": [
+        {
+         "angle": 45
+        }
+       ]
+      },
+      {
+       "label": "D12",
+       "table": [
+        {
+         "angle": 45
+        }
+       ]
+      },
+      {
+       "label": "D13",
+       "table": [
+        {
+         "angle": 45
+        }
+       ]
+      },
+      {
+       "label": "D14",
+       "table": [
+        {
+         "angle": 45
+        }
+       ]
+      },
+      {
+       "label": "D15",
+       "table": [
+        {
+         "angle": 45
+        }
+       ]
+      },
+      {
+       "label": "D16",
+       "table": [
+        {
+         "angle": 45
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "param": "slopes.domains"
+  },
+  {
+   "name": "domain_repeat",
+   "body": {
+    "slopes": {
+     "domain_field": "DOM",
+     "domains": [
+      {
+       "label": "A",
+       "table": [
+        {
+         "angle": 45
+        }
+       ]
+      },
+      {
+       "label": "a",
+       "table": [
+        {
+         "angle": 40
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "param": "slopes.domains.1"
+  },
+  {
+   "name": "domains_without_field",
+   "body": {
+    "slopes": {
+     "domains": [
+      {
+       "label": "A",
+       "table": [
+        {
+         "angle": 45
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "param": "slopes.domain_field"
+  },
+  {
+   "name": "tolerance_low",
+   "body": {
+    "slopes": {
+     "tolerance": 0.4
+    }
+   },
+   "param": "slopes.tolerance"
+  },
+  {
+   "name": "tolerance_high",
+   "body": {
+    "slopes": {
+     "tolerance": 10.1
+    }
+   },
+   "param": "slopes.tolerance"
+  },
+  {
+   "name": "k_zero",
+   "body": {
+    "k": 0
+   },
+   "param": "k"
+  },
+  {
+   "name": "k_21",
+   "body": {
+    "k": 21
+   },
+   "param": "k"
+  },
+  {
+   "name": "k_fraction",
+   "body": {
+    "k": 8.5
+   },
+   "param": "k"
+  },
+  {
+   "name": "rate_over",
+   "body": {
+    "calendar": {
+     "rate": 0.51
+    }
+   },
+   "param": "calendar.rate"
+  },
+  {
+   "name": "rate_negative",
+   "body": {
+    "calendar": {
+     "rate": -0.01
+    }
+   },
+   "param": "calendar.rate"
+  },
+  {
+   "name": "q_ore_zero",
+   "body": {
+    "calendar": {
+     "q_ore": 0
+    }
+   },
+   "param": "calendar.q_ore"
+  },
+  {
+   "name": "h_gl_zero",
+   "body": {
+    "mining": {
+     "h_gl": 0
+    }
+   },
+   "param": "mining.h_gl"
+  },
+  {
+   "name": "c_m0_negative",
+   "body": {
+    "mining": {
+     "c_m0": -1
+    }
+   },
+   "param": "mining.c_m0"
+  },
+  {
+   "name": "rec_over_one",
+   "body": {
+    "elements": [
+     "AU"
+    ],
+    "rocks": {
+     "types": [
+      {
+       "name": "X",
+       "rec": {
+        "AU": 1.1
+       }
+      }
+     ]
+    }
+   },
+   "param": "rocks.types.0.rec.AU"
+  },
+  {
+   "name": "rec_unknown_element",
+   "body": {
+    "elements": [
+     "AU"
+    ],
+    "rocks": {
+     "types": [
+      {
+       "name": "X",
+       "rec": {
+        "CU": 0.5
+       }
+      }
+     ]
+    }
+   },
+   "param": "rocks.types.0.rec.CU"
+  },
+  {
+   "name": "type_repeat",
+   "body": {
+    "rocks": {
+     "types": [
+      {
+       "name": "X"
+      },
+      {
+       "name": "x"
+      }
+     ]
+    }
+   },
+   "param": "rocks.types.1"
+  },
+  {
+   "name": "type_air_and_waste",
+   "body": {
+    "rocks": {
+     "types": [
+      {
+       "name": "X",
+       "air": true,
+       "waste_only": true
+      }
+     ]
+    }
+   },
+   "param": "rocks.types.0.air"
+  },
+  {
+   "name": "type_c_p_negative",
+   "body": {
+    "rocks": {
+     "types": [
+      {
+       "name": "X",
+       "c_p": -1
+      }
+     ]
+    }
+   },
+   "param": "rocks.types.0.c_p"
+  },
+  {
+   "name": "rock_by_unknown_kind",
+   "body": {
+    "rocks": {
+     "by": {
+      "kind": "wires"
+     }
+    }
+   },
+   "param": "rocks.by"
+  },
+  {
+   "name": "rock_rules_empty",
+   "body": {
+    "rocks": {
+     "by": {
+      "kind": "rules",
+      "rules": []
+     }
+    }
+   },
+   "param": "rocks.by.rules"
+  },
+  {
+   "name": "rock_rule_other",
+   "body": {
+    "rocks": {
+     "by": {
+      "rules": [
+       {
+        "name": "прочие",
+        "rules": {
+         "expr": "AU > 1"
+        }
+       }
+      ]
+     }
+    }
+   },
+   "param": "rocks.by.rules.0.name"
+  },
+  {
+   "name": "rock_rule_without_tree",
+   "body": {
+    "rocks": {
+     "by": {
+      "rules": [
+       {
+        "name": "X"
+       }
+      ]
+     }
+    }
+   },
+   "param": "rocks.by.rules.0.rules"
+  },
+  {
+   "name": "restrict_not_object",
+   "body": {
+    "restrict": "AU > 1"
+   },
+   "param": "restrict"
+  },
+  {
+   "name": "terrain_zero",
+   "body": {
+    "terrain_id": 0
+   },
+   "param": "terrain_id"
+  },
+  {
+   "name": "prefix_bad",
+   "body": {
+    "prefix": "V 1!"
+   },
+   "param": "prefix"
+  },
+  {
+   "name": "prefix_long",
+   "body": {
+    "prefix": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+   },
+   "param": "prefix"
+  },
+  {
+   "name": "solver_unknown",
+   "body": {
+    "solver": "gurobi"
+   },
+   "param": "solver"
+  }
+ ],
+ "validate": {
+  "new_scenario": {
+   "body": {},
+   "context": {
+    "fields": [
+     {
+      "name": "AU",
+      "kind": "number",
+      "unit": "г/т",
+      "role": "grade"
+     },
+     {
+      "name": "CU",
+      "kind": "number",
+      "unit": "%",
+      "role": "grade"
+     },
+     {
+      "name": "SG",
+      "kind": "number",
+      "unit": null,
+      "role": "density",
+      "stats": {
+       "min": 2.4,
+       "max": 3.1
+      }
+     },
+     {
+      "name": "ROCK",
+      "kind": "category",
+      "unit": null,
+      "role": null,
+      "labels": [
+       "Окисленная",
+       "Первичная"
+      ]
+     },
+     {
+      "name": "DOM",
+      "kind": "category",
+      "unit": null,
+      "role": null,
+      "labels": [
+       "A",
+       "B",
+       "C"
+      ]
+     },
+     {
+      "name": "NOUNIT",
+      "kind": "number",
+      "unit": null,
+      "role": null
+     }
+    ]
+   },
+   "first_missing": "model_id"
+  },
+  "no_price": {
+   "body": {
+    "model_id": 12,
+    "elements": [
+     {
+      "field": "AU"
+     }
+    ],
+    "density": 2.7,
+    "rocks": {
+     "types": [
+      {
+       "name": "Все породы",
+       "c_p": 20,
+       "rec": {
+        "AU": 0.9
+       }
+      }
+     ]
+    },
+    "mining": {
+     "c_m0": 2.5
+    }
+   },
+   "context": {
+    "fields": [
+     {
+      "name": "AU",
+      "kind": "number",
+      "unit": "г/т",
+      "role": "grade"
+     },
+     {
+      "name": "CU",
+      "kind": "number",
+      "unit": "%",
+      "role": "grade"
+     },
+     {
+      "name": "SG",
+      "kind": "number",
+      "unit": null,
+      "role": "density",
+      "stats": {
+       "min": 2.4,
+       "max": 3.1
+      }
+     },
+     {
+      "name": "ROCK",
+      "kind": "category",
+      "unit": null,
+      "role": null,
+      "labels": [
+       "Окисленная",
+       "Первичная"
+      ]
+     },
+     {
+      "name": "DOM",
+      "kind": "category",
+      "unit": null,
+      "role": null,
+      "labels": [
+       "A",
+       "B",
+       "C"
+      ]
+     },
+     {
+      "name": "NOUNIT",
+      "kind": "number",
+      "unit": null,
+      "role": null
+     }
+    ]
+   },
+   "first_missing": "elements.0.price"
+  },
+  "t8117_ready": {
+   "body": {
+    "model_id": 12,
+    "elements": [
+     {
+      "field": "au",
+      "unit": "г/т",
+      "price": 2000,
+      "sales": 5
+     }
+    ],
+    "density": "2,7",
+    "rocks": {
+     "types": [
+      {
+       "name": "Все породы",
+       "c_p": 20,
+       "rec": {
+        "AU": 0.9
+       }
+      }
+     ]
+    },
+    "mining": {
+     "c_m0": 2.5
+    }
+   },
+   "context": {
+    "fields": [
+     {
+      "name": "AU",
+      "kind": "number",
+      "unit": "г/т",
+      "role": "grade"
+     },
+     {
+      "name": "CU",
+      "kind": "number",
+      "unit": "%",
+      "role": "grade"
+     },
+     {
+      "name": "SG",
+      "kind": "number",
+      "unit": null,
+      "role": "density",
+      "stats": {
+       "min": 2.4,
+       "max": 3.1
+      }
+     },
+     {
+      "name": "ROCK",
+      "kind": "category",
+      "unit": null,
+      "role": null,
+      "labels": [
+       "Окисленная",
+       "Первичная"
+      ]
+     },
+     {
+      "name": "DOM",
+      "kind": "category",
+      "unit": null,
+      "role": null,
+      "labels": [
+       "A",
+       "B",
+       "C"
+      ]
+     },
+     {
+      "name": "NOUNIT",
+      "kind": "number",
+      "unit": null,
+      "role": null
+     }
+    ]
+   },
+   "first_missing": null
+  },
+  "type_without_rec": {
+   "body": {
+    "model_id": 12,
+    "elements": [
+     {
+      "field": "AU",
+      "price": 2000
+     },
+     {
+      "field": "CU",
+      "price": 9000
+     }
+    ],
+    "rocks": {
+     "by": {
+      "field": "ROCK"
+     },
+     "types": [
+      {
+       "name": "Окисленная",
+       "c_p": 12,
+       "rec": {
+        "AU": 0.7
+       }
+      },
+      {
+       "name": "Первичная",
+       "waste_only": true
+      }
+     ]
+    },
+    "mining": {
+     "c_m0": 2.5
+    }
+   },
+   "context": {
+    "fields": [
+     {
+      "name": "AU",
+      "kind": "number",
+      "unit": "г/т",
+      "role": "grade"
+     },
+     {
+      "name": "CU",
+      "kind": "number",
+      "unit": "%",
+      "role": "grade"
+     },
+     {
+      "name": "SG",
+      "kind": "number",
+      "unit": null,
+      "role": "density",
+      "stats": {
+       "min": 2.4,
+       "max": 3.1
+      }
+     },
+     {
+      "name": "ROCK",
+      "kind": "category",
+      "unit": null,
+      "role": null,
+      "labels": [
+       "Окисленная",
+       "Первичная"
+      ]
+     },
+     {
+      "name": "DOM",
+      "kind": "category",
+      "unit": null,
+      "role": null,
+      "labels": [
+       "A",
+       "B",
+       "C"
+      ]
+     },
+     {
+      "name": "NOUNIT",
+      "kind": "number",
+      "unit": null,
+      "role": null
+     }
+    ]
+   },
+   "first_missing": "rocks.types.Окисленная.rec.CU"
+  },
+  "type_not_set": {
+   "body": {
+    "model_id": 12,
+    "elements": [
+     {
+      "field": "AU",
+      "price": 2000
+     }
+    ],
+    "rocks": {
+     "by": {
+      "field": "ROCK"
+     },
+     "types": [
+      {
+       "name": "Окисленная",
+       "c_p": 12,
+       "rec": {
+        "AU": 0.7
+       }
+      }
+     ]
+    },
+    "mining": {
+     "c_m0": 2.5
+    }
+   },
+   "context": {
+    "fields": [
+     {
+      "name": "AU",
+      "kind": "number",
+      "unit": "г/т",
+      "role": "grade"
+     },
+     {
+      "name": "CU",
+      "kind": "number",
+      "unit": "%",
+      "role": "grade"
+     },
+     {
+      "name": "SG",
+      "kind": "number",
+      "unit": null,
+      "role": "density",
+      "stats": {
+       "min": 2.4,
+       "max": 3.1
+      }
+     },
+     {
+      "name": "ROCK",
+      "kind": "category",
+      "unit": null,
+      "role": null,
+      "labels": [
+       "Окисленная",
+       "Первичная"
+      ]
+     },
+     {
+      "name": "DOM",
+      "kind": "category",
+      "unit": null,
+      "role": null,
+      "labels": [
+       "A",
+       "B",
+       "C"
+      ]
+     },
+     {
+      "name": "NOUNIT",
+      "kind": "number",
+      "unit": null,
+      "role": null
+     }
+    ]
+   },
+   "first_missing": "rocks.types.Первичная"
+  },
+  "no_c_m0": {
+   "body": {
+    "model_id": 12,
+    "elements": [
+     {
+      "field": "AU",
+      "price": 2000
+     }
+    ],
+    "rocks": {
+     "types": [
+      {
+       "name": "Все породы",
+       "c_p": 20,
+       "rec": {
+        "AU": 0.9
+       }
+      }
+     ]
+    }
+   },
+   "context": {
+    "fields": [
+     {
+      "name": "AU",
+      "kind": "number",
+      "unit": "г/т",
+      "role": "grade"
+     },
+     {
+      "name": "CU",
+      "kind": "number",
+      "unit": "%",
+      "role": "grade"
+     },
+     {
+      "name": "SG",
+      "kind": "number",
+      "unit": null,
+      "role": "density",
+      "stats": {
+       "min": 2.4,
+       "max": 3.1
+      }
+     },
+     {
+      "name": "ROCK",
+      "kind": "category",
+      "unit": null,
+      "role": null,
+      "labels": [
+       "Окисленная",
+       "Первичная"
+      ]
+     },
+     {
+      "name": "DOM",
+      "kind": "category",
+      "unit": null,
+      "role": null,
+      "labels": [
+       "A",
+       "B",
+       "C"
+      ]
+     },
+     {
+      "name": "NOUNIT",
+      "kind": "number",
+      "unit": null,
+      "role": null
+     }
+    ]
+   },
+   "first_missing": "mining.c_m0"
+  },
+  "density_gaps": {
+   "body": {
+    "model_id": 12,
+    "elements": [
+     {
+      "field": "au",
+      "unit": "г/т",
+      "price": 2000,
+      "sales": 5
+     }
+    ],
+    "density": "SG",
+    "rocks": {
+     "types": [
+      {
+       "name": "Все породы",
+       "c_p": 20,
+       "rec": {
+        "AU": 0.9
+       }
+      }
+     ]
+    },
+    "mining": {
+     "c_m0": 2.5
+    }
+   },
+   "context": {
+    "fields": [
+     {
+      "name": "AU",
+      "kind": "number",
+      "unit": "г/т",
+      "role": "grade"
+     },
+     {
+      "name": "CU",
+      "kind": "number",
+      "unit": "%",
+      "role": "grade"
+     },
+     {
+      "name": "SG",
+      "kind": "number",
+      "unit": null,
+      "role": "density",
+      "stats": {
+       "min": 2.4,
+       "max": 3.1
+      }
+     },
+     {
+      "name": "ROCK",
+      "kind": "category",
+      "unit": null,
+      "role": null,
+      "labels": [
+       "Окисленная",
+       "Первичная"
+      ]
+     },
+     {
+      "name": "DOM",
+      "kind": "category",
+      "unit": null,
+      "role": null,
+      "labels": [
+       "A",
+       "B",
+       "C"
+      ]
+     },
+     {
+      "name": "NOUNIT",
+      "kind": "number",
+      "unit": null,
+      "role": null
+     }
+    ],
+    "missing_density_blocks": 7
+   },
+   "first_missing": "default_density"
+  },
+  "unit_unknown_in_model": {
+   "body": {
+    "model_id": 12,
+    "elements": [
+     {
+      "field": "NOUNIT",
+      "price": 1
+     }
+    ],
+    "rocks": {
+     "types": [
+      {
+       "name": "Все породы",
+       "c_p": 20,
+       "rec": {
+        "NOUNIT": 0.9
+       }
+      }
+     ]
+    },
+    "mining": {
+     "c_m0": 2.5
+    },
+    "density": 2.7
+   },
+   "context": {
+    "fields": [
+     {
+      "name": "AU",
+      "kind": "number",
+      "unit": "г/т",
+      "role": "grade"
+     },
+     {
+      "name": "CU",
+      "kind": "number",
+      "unit": "%",
+      "role": "grade"
+     },
+     {
+      "name": "SG",
+      "kind": "number",
+      "unit": null,
+      "role": "density",
+      "stats": {
+       "min": 2.4,
+       "max": 3.1
+      }
+     },
+     {
+      "name": "ROCK",
+      "kind": "category",
+      "unit": null,
+      "role": null,
+      "labels": [
+       "Окисленная",
+       "Первичная"
+      ]
+     },
+     {
+      "name": "DOM",
+      "kind": "category",
+      "unit": null,
+      "role": null,
+      "labels": [
+       "A",
+       "B",
+       "C"
+      ]
+     },
+     {
+      "name": "NOUNIT",
+      "kind": "number",
+      "unit": null,
+      "role": null
+     }
+    ]
+   },
+   "first_missing": "elements.0.unit"
+  },
+  "met_types_from_data": {
+   "body": {
+    "model_id": 12,
+    "elements": [
+     {
+      "field": "AU",
+      "price": 2000
+     }
+    ],
+    "mining": {
+     "c_m0": 2.5
+    },
+    "rocks": {
+     "by": {
+      "field": "ROCK"
+     },
+     "types": [
+      {
+       "name": "Окисленная",
+       "c_p": 12,
+       "rec": {
+        "AU": 0.7
+       }
+      },
+      {
+       "name": "Первичная",
+       "c_p": 18,
+       "rec": {
+        "AU": 0.8
+       }
+      }
+     ]
+    }
+   },
+   "context": {
+    "fields": [
+     {
+      "name": "AU",
+      "kind": "number",
+      "unit": "г/т",
+      "role": "grade"
+     },
+     {
+      "name": "CU",
+      "kind": "number",
+      "unit": "%",
+      "role": "grade"
+     },
+     {
+      "name": "SG",
+      "kind": "number",
+      "unit": null,
+      "role": "density",
+      "stats": {
+       "min": 2.4,
+       "max": 3.1
+      }
+     },
+     {
+      "name": "ROCK",
+      "kind": "category",
+      "unit": null,
+      "role": null,
+      "labels": [
+       "Окисленная",
+       "Первичная"
+      ]
+     },
+     {
+      "name": "DOM",
+      "kind": "category",
+      "unit": null,
+      "role": null,
+      "labels": [
+       "A",
+       "B",
+       "C"
+      ]
+     },
+     {
+      "name": "NOUNIT",
+      "kind": "number",
+      "unit": null,
+      "role": null
+     }
+    ],
+    "rock_types": [
+     "Окисленная",
+     "Первичная",
+     "(пусто)"
+    ]
+   },
+   "first_missing": "rocks.types.(пусто)"
+  }
+ }
+}
