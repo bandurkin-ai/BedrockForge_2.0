@@ -43,6 +43,8 @@ export interface CalendarBarProps {
   onApply: (c: Calendar) => void;
   onReset: () => void;
   onSave: (c: Calendar) => void;
+  /** why «Записать в сценарий» is unavailable (the project is read-only, the command is not bound): the button is off and says it */
+  saveReason?: string | null;
 }
 
 /** «Календарь для NPV»: the fields start from the calendar the report was made with; the key makes them start again when it changes. */
@@ -80,7 +82,7 @@ export function CalendarBar(p: CalendarBarProps) {
       <button type="button" className={css.btn} disabled={p.busy || !p.changed} data-testid="pit-calendar-reset" title="Вернуть календарь сценария" onClick={p.onReset}>
         Как в сценарии
       </button>
-      <button type="button" className={css.btn} disabled={p.busy} data-testid="pit-calendar-save" title="Записать этот календарь в сценарий (команда «Календарь»): результат не устаревает" onClick={() => run(p.onSave)}>
+      <button type="button" className={css.btn} disabled={p.busy || !!p.saveReason} data-testid="pit-calendar-save" title={p.saveReason ?? "Записать этот календарь в сценарий (команда «Календарь»): результат не устаревает"} onClick={() => run(p.onSave)}>
         Записать в сценарий
       </button>
       {issue && (

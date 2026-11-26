@@ -11,7 +11,7 @@ import { errorText } from "../../shell/props";
 import { closeWindow } from "../../shell/windows";
 import { calendarArgs } from "./formsCalendar";
 import mod from "./Pit.module.css";
-import { Fieldset, Issue, NumberField, useSel } from "./PitParts";
+import { Fieldset, FormNotice, Issue, NumberField, useFormScenario, useSel, useStaleForm } from "./PitParts";
 import { pitStore, setCalendarForm, setCalendarIssue } from "./state";
 
 export function CalendarWindow({ winId }: { winId: string }) {
@@ -21,10 +21,12 @@ export function CalendarWindow({ winId }: { winId: string }) {
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const reason = app.registry.reason("pit.calendar");
+  const target = useFormScenario("calendar");
+  const stale = useStaleForm("calendar");
 
   const apply = async () => {
     setNote(null);
-    const got = calendarArgs(form, scenario?.id ?? null);
+    const got = calendarArgs(form, target);
     if (!got.ok) return setCalendarIssue(got.issue);
     setBusy(true);
     try {
@@ -43,6 +45,7 @@ export function CalendarWindow({ winId }: { winId: string }) {
         <p className={mod.head} data-testid="pit-calendar-head">
           {scenario ? `Сценарий «${scenario.name}»` : "Сценарий не выбран"}
         </p>
+        <FormNotice kind="calendar" />
         <Fieldset title="Производительность" disabled={busy}>
           <div className={mod.pair}>
             <NumberField label="Q_р, т/год (руда)" value={form.qOre} onChange={(v) => setCalendarForm({ qOre: v })} placeholder="не задано" testId="pit-q-ore" hint="Производительность по руде; без неё NPV не считается" />
@@ -68,7 +71,7 @@ export function CalendarWindow({ winId }: { winId: string }) {
         </p>
       )}
       <div className={mod.footer}>
-        <button type="button" className={css.primary} disabled={busy || !!reason || !scenario} title={reason ?? (scenario ? "Сохранить календарь в сценарии" : "Выберите или создайте сценарий")} data-testid="pit-calendar-apply" onClick={() => void apply()}>
+        <button type="button" className={css.primary} disabled={busy || !!reason || !scenario || !!stale} title={reason ?? stale ?? (scenario ? "Сохранить календарь в сценарии" : "Выберите или создайте сценарий")} data-testid="pit-calendar-apply" onClick={() => void apply()}>
           Применить
         </button>
         <span className={mod.grow} />

@@ -11,7 +11,7 @@ import { Store } from "../../shell/store";
 import { blockById, blocksStore } from "../blocks/state";
 import { fieldsOf, type FieldInfo } from "../blocks/report/state";
 import { projectStore } from "../projects/state";
-import { loadDefaults, listScenarios, loadScenario, validateParams, type Refusal, type Started } from "./api";
+import { loadDefaults, listScenarios, loadScenario, refusalOf, validateParams, type Refusal, type Started } from "./api";
 import type { Defaults, ModelDefaults, RunSummary, ScenarioDetail, ScenarioRow, Validate } from "./answers";
 import type { CheckResult } from "./checkModel";
 import { EMPTY_ECONOMICS, EMPTY_SCENARIO, type EconomicsForm, type FormIssue, type ScenarioForm } from "./forms";
@@ -31,6 +31,9 @@ export const ROCKS_TITLE = "Породы карьера";
 export const SLOPES_TITLE = "Углы бортов карьера";
 export const CALENDAR_TITLE = "Календарь карьера";
 export const CHECK_TITLE = "Проверка шаблона карьера";
+
+/** The windows that keep a form read from a scenario. */
+export type FormKind = "econ" | "rocks" | "slopes" | "calendar";
 
 export type Phase = "idle" | "running" | "done" | "failed" | "cancelled";
 
@@ -70,6 +73,12 @@ export interface PitState {
   scenario: ScenarioDetail | null;
   /** `validate` of `scenario.params`; null — not read yet */
   validate: Validate | null;
+  /** `validate` by the number of the scenario: «Запустить» of the one the commands work on does not depend on which one the windows show */
+  validations: Record<number, Validate>;
+  /** why the scenario `id` could not be read (a lost network, a model that is gone): the Russian text of the core; null — no error */
+  loadError: { id: number; message: string } | null;
+  /** the scenario each window's form was read from: «Применить» of a window writes there, never into another scenario that was chosen after */
+  formFor: Partial<Record<FormKind, number>>;
   scenarioForm: ScenarioForm;
   scenarioIssue: FormIssue | null;
   econForm: EconomicsForm;
@@ -84,7 +93,7 @@ export interface PitState {
   run: PitRun;
 }
 
-const EMPTY: PitState = { defaults: null, models: {}, scenarios: [], scenariosLoaded: false, currentId: null, scenario: null, validate: null, scenarioForm: EMPTY_SCENARIO, scenarioIssue: null, econForm: EMPTY_ECONOMICS, econIssue: null, rocksForm: EMPTY_ROCKS, rocksIssue: null, slopesForm: EMPTY_SLOPES, slopesIssue: null, calendarForm: EMPTY_CALENDAR, calendarIssue: null, check: IDLE_CHECK, run: IDLE };
+const EMPTY: PitState = { defaults: null, models: {}, scenarios: [], scenariosLoaded: false, currentId: null, scenario: null, validate: null, validations: {}, loadError: null, formFor: {}, scenarioForm: EMPTY_SCENARIO, scenarioIssue: null, econForm: EMPTY_ECONOMICS, econIssue: null, rocksForm: EMPTY_ROCKS, rocksIssue: null, slopesForm: EMPTY_SLOPES, slopesIssue: null, calendarForm: EMPTY_CALENDAR, calendarIssue: null, check: IDLE_CHECK, run: IDLE };
 
 export const pitStore = new Store<PitState>(EMPTY);
 
@@ -207,27 +216,84 @@ export async function loadScenarios(): Promise<void> {
   }
 }
 
+/** The words of a refusal of the core for a line in a window: the message and the hint. */
+const refusalText = (r: Refusal): string => `${r.message} ${r.hint}`.trim();
+
+/** Does the window of `kind` take a form that came with a command for the scenario `id`? Only the form of that scenario (or one that has none yet): another scenario's data does not enter it. */
+export const formTakes = (kind: FormKind, id: number): boolean => {
+  const from = pitStore.get().formFor[kind];
+  return from === undefined || from === id;
+};
+
+/** Marks the scenario `id` as the one the windows' forms were read from (the windows of the kind write there only). */
+export const setFormFor = (kind: FormKind, id: number): void => pitStore.set((s) => ({ formFor: { ...s.formFor, [kind]: id } }));
+
+/**
+ * Why the form of a window cannot be applied now, or null: it was read from one scenario and another is chosen since — its data would overwrite the other scenario.
+ * A window that was never opened for a scenario (`formFor` empty) has nothing to compare.
+ */
+export function staleFormReason(s: PitState, kind: FormKind): string | null {
+  const from = s.formFor[kind];
+  if (from === undefined || s.scenario === null || s.scenario.id === from) return null;
+  const was = s.scenarios.find((r) => r.id === from)?.name ?? `№${from}`;
+  return `Форма прочитана из сценария «${was}», а выбран «${s.scenario.name}». Откройте окно командой ещё раз — форма прочитается из выбранного сценария.`;
+}
+
 /** The scenario `id` and its readiness (`validate` of its params); null — none (the windows then ask to create or to choose one). */
 export async function selectScenario(id: number | null): Promise<ScenarioDetail | null> {
   const mine = ++detailSeq;
   const uid = projectUid();
   const fresh = () => mine === detailSeq && uid === projectUid();
   if (id === null) {
-    pitStore.set({ currentId: null, scenario: null, validate: null });
+    pitStore.set({ currentId: null, scenario: null, validate: null, loadError: null });
     return null;
   }
-  pitStore.set((s) => ({ currentId: id, scenario: s.scenario?.id === id ? s.scenario : null, validate: s.scenario?.id === id ? s.validate : null }));
+  pitStore.set((s) => ({ currentId: id, loadError: null, scenario: s.scenario?.id === id ? s.scenario : null, validate: s.scenario?.id === id ? s.validate : null }));
+  let detail: ScenarioDetail;
+  try {
+    detail = await loadScenario(id);
+  } catch (e) {
+    if (!fresh()) return null;
+    const r = refusalOf(e);
+    // a scenario that is gone (deleted in another window) leaves the state; any other failure is told, the scenario read before stays
+    if (r.code === "pit_scenario_not_found") pitStore.set({ currentId: null, scenario: null, validate: null, loadError: null });
+    else pitStore.set({ loadError: { id, message: refusalText(r) } });
+    return null;
+  }
+  if (!fresh()) return null;
+  pitStore.set({ scenario: detail });
+  try {
+    const v = await validateParams(detail.params);
+    if (fresh()) pitStore.set((s) => ({ validate: v, validations: { ...s.validations, [id]: v } }));
+  } catch (e) {
+    // the scenario is read, its readiness is not (the model of the scenario is gone, the core is out of reach): the windows and «Запустить» say why
+    if (fresh()) pitStore.set((s) => ({ loadError: { id, message: refusalText(refusalOf(e)) }, validate: null, validations: dropKey(s.validations, id) }));
+    return detail;
+  }
+  return detail;
+}
+
+function dropKey<T>(m: Record<number, T>, id: number): Record<number, T> {
+  const rest = { ...m };
+  delete rest[id];
+  return rest;
+}
+
+/** The readiness of the scenario `id` is not known any more (it changed elsewhere): «Запустить» waits for the next read. */
+export const forgetValidation = (id: number | null): void => pitStore.set((s) => ({ validations: id === null ? {} : dropKey(s.validations, id) }));
+
+/**
+ * Reads the readiness of the scenario `id` without making it the one the windows show (a command of another scenario, the tree selection that is not the current):
+ * `validations[id]` only. A failure is told to `loadError` of that scenario.
+ */
+export async function refreshValidation(id: number): Promise<void> {
+  const uid = projectUid();
   try {
     const detail = await loadScenario(id);
-    if (!fresh()) return null;
-    pitStore.set({ scenario: detail });
     const v = await validateParams(detail.params);
-    if (fresh()) pitStore.set({ validate: v });
-    return detail;
-  } catch {
-    // a scenario that is gone (deleted in another window) leaves the state; a failed read of a live one is told by the command that asked
-    if (fresh()) pitStore.set({ currentId: null, scenario: null, validate: null });
-    return null;
+    if (uid === projectUid()) pitStore.set((s) => ({ validations: { ...s.validations, [id]: v } }));
+  } catch (e) {
+    if (uid === projectUid()) pitStore.set((s) => ({ loadError: { id, message: refusalText(refusalOf(e)) }, validations: dropKey(s.validations, id) }));
   }
 }
 
@@ -252,15 +318,17 @@ export function selectedScenario(app: App): number | null {
 /** The scenario the commands work on: `scenario_id` of the call is read by the caller; here the tree selection, else the one of the windows. */
 export const currentScenarioId = (app: App): number | null => selectedScenario(app) ?? pitStore.get().currentId;
 
-/** Why `pit.run` cannot run now, or null: no scenario, the scenario is not read yet, a missing parameter (the first `missing`), a run goes. */
+/** Why `pit.run` cannot run now, or null: no scenario, the scenario is not read yet (or why it cannot be), a missing parameter (the first `missing`), a run goes. */
 export function runReason(app: App): string | null {
   const id = currentScenarioId(app);
   if (id === null) return "Выберите или создайте сценарий карьера";
   if (app.store.get().projectReadOnly) return "Проект открыт только для чтения";
   if (isRunning()) return "Сценарий уже считается";
   const s = pitStore.get();
-  if (s.scenario?.id !== id || !s.validate) return "Сценарий загружается: подождите секунду";
-  if (s.scenario.state === "running") return "Сценарий уже считается";
-  if (!s.validate.ready) return s.validate.missing[0]?.message ?? "Сценарий не готов к расчёту";
+  if (s.loadError?.id === id) return s.loadError.message;
+  const v = s.validations[id];
+  if (!v) return "Сценарий загружается: подождите секунду";
+  if ((s.scenario?.id === id ? s.scenario.state : scenarioById(id)?.state) === "running") return "Сценарий уже считается";
+  if (!v.ready) return v.missing[0]?.message ?? "Сценарий не готов к расчёту";
   return null;
 }

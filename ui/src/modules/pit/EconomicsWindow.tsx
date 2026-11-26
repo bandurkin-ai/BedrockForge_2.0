@@ -15,7 +15,7 @@ import { DEFAULT_LIMITS } from "./answers";
 import { economicsArgs, proposedElements } from "./forms";
 import { DensityPart, ElementsPart, MiningPart, PrefixPart, RfPart } from "./EconomicsParts";
 import mod from "./Pit.module.css";
-import { useSel } from "./PitParts";
+import { FormNotice, useFormScenario, useSel, useStaleForm } from "./PitParts";
 import { modelFields, pitStore, setEconIssue } from "./state";
 
 export function EconomicsWindow({ winId }: { winId: string }) {
@@ -31,6 +31,8 @@ export function EconomicsWindow({ winId }: { winId: string }) {
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const reason = app.registry.reason("pit.economics");
+  const target = useFormScenario("econ");
+  const stale = useStaleForm("econ");
 
   const fields = useMemo(() => modelFields(modelId), [modelId, models, details]);
   const numbers = fields.filter((f) => f.kind === "number");
@@ -39,7 +41,7 @@ export function EconomicsWindow({ winId }: { winId: string }) {
 
   const apply = async () => {
     setNote(null);
-    const got = economicsArgs(form, scenario?.id ?? null, defaults?.gradeLabels, limits);
+    const got = economicsArgs(form, target, defaults?.gradeLabels, limits);
     if (!got.ok) return setEconIssue(got.issue);
     setBusy(true);
     try {
@@ -60,6 +62,7 @@ export function EconomicsWindow({ winId }: { winId: string }) {
           {scenario ? `Сценарий «${scenario.name}»` : "Сценарий не выбран"}
           {model ? ` · модель «${model}»` : modelId === null && scenario ? " · модель не выбрана" : ""}
         </p>
+        <FormNotice kind="econ" />
         <ElementsPart {...props} proposed={proposedElements(modelDefaults)} />
         <DensityPart {...props} auto={modelDefaults?.density ?? autoDensity(fields)} />
         <MiningPart {...props} zRef={modelDefaults?.z_ref ?? null} />
@@ -72,7 +75,7 @@ export function EconomicsWindow({ winId }: { winId: string }) {
         </p>
       )}
       <div className={mod.footer}>
-        <button type="button" className={css.primary} disabled={busy || !!reason || !scenario} title={reason ?? (scenario ? "Сохранить экономику в сценарии" : "Выберите или создайте сценарий")} data-testid="pit-econ-apply" onClick={() => void apply()}>
+        <button type="button" className={css.primary} disabled={busy || !!reason || !scenario || !!stale} title={reason ?? stale ?? (scenario ? "Сохранить экономику в сценарии" : "Выберите или создайте сценарий")} data-testid="pit-econ-apply" onClick={() => void apply()}>
           Применить
         </button>
         {validate && (

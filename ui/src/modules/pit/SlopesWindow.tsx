@@ -13,7 +13,7 @@ import { blocksStore } from "../blocks/state";
 import { DEFAULT_LIMITS } from "./answers";
 import { slopesArgs } from "./formsSlopes";
 import mod from "./Pit.module.css";
-import { Issue, useSel } from "./PitParts";
+import { FormNotice, Issue, useFormScenario, useSel, useStaleForm } from "./PitParts";
 import { DomainsPart, TablePart, TemplatePart } from "./SlopesParts";
 import { modelFields, pitStore, setSlopesIssue } from "./state";
 
@@ -29,6 +29,8 @@ export function SlopesWindow({ winId }: { winId: string }) {
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const reason = app.registry.reason("pit.slopes");
+  const target = useFormScenario("slopes");
+  const stale = useStaleForm("slopes");
   const checkReason = app.registry.reason("pit.check");
 
   const fields = useMemo(() => modelFields(modelId), [modelId, models, details]);
@@ -42,7 +44,7 @@ export function SlopesWindow({ winId }: { winId: string }) {
 
   const apply = async (check: boolean) => {
     setNote(null);
-    const got = slopesArgs(form, scenario?.id ?? null, limits);
+    const got = slopesArgs(form, target, limits);
     if (!got.ok) return setSlopesIssue(got.issue);
     setBusy(true);
     try {
@@ -50,7 +52,7 @@ export function SlopesWindow({ winId }: { winId: string }) {
       if (!r.ok) {
         if (!pitStore.get().slopesIssue) setNote(r.result);
       } else if (check) {
-        const c = await app.registry.execute("pit.check", scenario ? { scenario_id: scenario.id } : {}, "user");
+        const c = await app.registry.execute("pit.check", target !== null ? { scenario_id: target } : {}, "user");
         if (!c.ok) setNote(c.result);
       }
     } catch (e) {
@@ -68,6 +70,7 @@ export function SlopesWindow({ winId }: { winId: string }) {
           {scenario ? `Сценарий «${scenario.name}»` : "Сценарий не выбран"}
           {model ? ` · модель «${model}»` : modelId === null && scenario ? " · модель не выбрана" : ""}
         </p>
+        <FormNotice kind="slopes" />
         <TablePart form={form} disabled={busy} max={limits.sectors} />
         <DomainsPart form={form} disabled={busy} categories={categories} max={limits.domains} maxSectors={limits.sectors} />
         <TemplatePart form={form} disabled={busy} kAuto={modelDefaults?.k_auto ?? null} />
@@ -79,10 +82,10 @@ export function SlopesWindow({ winId }: { winId: string }) {
         </p>
       )}
       <div className={mod.footer}>
-        <button type="button" className={css.primary} disabled={busy || !!reason || !scenario} title={reason ?? (scenario ? "Сохранить углы бортов в сценарии" : "Выберите или создайте сценарий")} data-testid="pit-slopes-apply" onClick={() => void apply(false)}>
+        <button type="button" className={css.primary} disabled={busy || !!reason || !scenario || !!stale} title={reason ?? stale ?? (scenario ? "Сохранить углы бортов в сценарии" : "Выберите или создайте сценарий")} data-testid="pit-slopes-apply" onClick={() => void apply(false)}>
           Применить
         </button>
-        <button type="button" className={css.btn} disabled={busy || !!reason || !!checkReason || !scenario} title={reason ?? checkReason ?? "Сохранить и проверить шаблон: ошибка угла по азимутам"} data-testid="pit-slopes-check" onClick={() => void apply(true)}>
+        <button type="button" className={css.btn} disabled={busy || !!reason || !!checkReason || !scenario || !!stale} title={reason ?? stale ?? checkReason ?? "Сохранить и проверить шаблон: ошибка угла по азимутам"} data-testid="pit-slopes-check" onClick={() => void apply(true)}>
           Применить и проверить
         </button>
         <span className={mod.grow} />

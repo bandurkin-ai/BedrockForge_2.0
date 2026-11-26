@@ -1,6 +1,6 @@
 // The stub of the core for the tests of the pit optimisation (Э21, 21.16): the answers are read from `core/tests/data/pit/contract_answers.json`
-// (`defaults`, `validate_new`, `validate_ready`, `bad_param`, `pit_not_ready`, `refusals` are the real ones, written by `spec.py`; the other keys are
-// samples of the forms of docs/progress/e21-api.md until 21.11 writes the real answers — the tests read the forms, not the numbers of the samples)
+// (the answers of the core written by `core/tests/test_pit_spec.py`: the tests read the forms and the words, not the numbers; `surfaces_result` and `solid_result` are
+// written again by the lane of the core of 21.21б-2)
 // and from `params.json`. A request is answered by its path; the bodies sent are kept in `sent`; `force` makes the next request of a route answer
 // with a given refusal. The scenario of the stub keeps its params like the core does: a `PUT` replaces them and raises the version.
 import { readFileSync } from "node:fs";
@@ -35,7 +35,7 @@ export const answer = (key: string): Answer => FILE[key] as Answer;
 
 export const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status, headers: { "Content-Type": "application/json" } });
 
-export const ID = { model: 12, scenario: 17, noScenario: 999, runJob: { source: "project", id: 3 }, checkJob: { source: "project", id: 2 }, dtm: 41, filter: 5 };
+export const ID = { model: 12, scenario: 17, other: 18, noScenario: 999, runJob: { source: "project", id: 3 }, checkJob: { source: "project", id: 2 }, dtm: 41, filter: 5 };
 
 /** The model of the sample: the fields of `params.json` (`fixture.fields`) — grades AU, CU, the density SG, the categories ROCK and DOM. */
 export const MODEL = {
@@ -63,6 +63,8 @@ export interface Core {
   force: (route: string, a: Answer) => void;
   /** the params and the version of the scenario the stub keeps */
   scenario: { params: Record<string, unknown>; version: number; name: string; has_result: boolean };
+  /** the second scenario of the stub (`ID.other`): another name and the params of the case `rocks_rules` */
+  other: { params: Record<string, unknown>; version: number; name: string };
   /** the answer of `POST /pit/validate` */
   ready: boolean;
   /** the job of `pit.run`: the status and the result it answers with */
@@ -98,6 +100,7 @@ export function installCore(): Core {
     sent,
     force: (route, a) => void forced.set(route, a),
     scenario: { params: caseParams("t8117"), version: 2, name: "Сценарий карьера", has_result: false },
+    other: { params: caseParams("rocks_rules"), version: 5, name: "Второй сценарий" },
     ready: false,
     job: { status: "done", result: answer("run_result").body, error: null },
     checkJob: { status: "done", result: answer("check_result").body, error: null },
@@ -132,6 +135,13 @@ export function installCore(): Core {
         if (typeof body.name === "string") core.scenario.name = body.name;
         core.scenario.version += 1;
         return json({ id: ID.scenario, version: core.scenario.version, name: core.scenario.name, params_changed: core.scenario.has_result });
+      }
+      if (route === `GET /pit/scenarios/${ID.other}`) return json({ ...detail(), id: ID.other, name: core.other.name, version: core.other.version, params: core.other.params, has_result: false });
+      if (route === `PUT /pit/scenarios/${ID.other}`) {
+        if (body.expected_version !== core.other.version) return json({ code: "version_conflict", message: "Сценарий изменён.", hint: "Откройте его заново.", version: core.other.version }, 409);
+        if (body.params) core.other.params = body.params as Record<string, unknown>;
+        core.other.version += 1;
+        return json({ id: ID.other, version: core.other.version, name: core.other.name, params_changed: false });
       }
       if (route === `DELETE /pit/scenarios/${ID.scenario}`) return json(answer("scenario_delete").body);
       if (route === `POST /pit/scenarios/${ID.scenario}/run`) return json(ID.runJob);

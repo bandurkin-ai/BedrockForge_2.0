@@ -15,7 +15,7 @@ import { issue, type Args, type FormIssue } from "./forms";
 import { calendarFormOfArgs, calendarPatch, hasCalendar } from "./formsCalendar";
 import { hasRocks, rocksFormOfArgs, rocksPatch } from "./formsRocks";
 import { hasSlopes, slopesFormOfArgs, slopesPatch } from "./formsSlopes";
-import { CALENDAR_TITLE, pitStore, ROCKS_TITLE, SLOPES_TITLE, setCalendarIssue, setRocksIssue, setSlopesIssue } from "./state";
+import { CALENDAR_TITLE, formTakes, pitStore, ROCKS_TITLE, SLOPES_TITLE, setCalendarIssue, setFormFor, setRocksIssue, setSlopesIssue } from "./state";
 
 const limitsNow = () => pitStore.get().defaults?.limits ?? DEFAULT_LIMITS;
 
@@ -59,7 +59,10 @@ export async function runRocks(app: App, a: Args, source: CommandSource): Promis
   if (!got.ok) return fail(got.issue);
   const patch = rocksPatch(got.form, elementFields(detail.params), limitsNow());
   if (!patch.ok) return fail(patch.issue);
-  if (source === "user" || windowOfRocks()) pitStore.set({ rocksForm: got.form, rocksIssue: null });
+  if ((source === "user" || windowOfRocks()) && formTakes("rocks", id)) {
+    pitStore.set({ rocksForm: got.form, rocksIssue: null });
+    setFormFor("rocks", id);
+  }
   try {
     const r = await applyParams(id, patch.patch);
     setRocksIssue(null);
@@ -86,7 +89,10 @@ export async function runSlopes(app: App, a: Args, source: CommandSource): Promi
   if (!got.ok) return fail(got.issue);
   const patch = slopesPatch(got.form, limitsNow());
   if (!patch.ok) return fail(patch.issue);
-  if (source === "user" || windowOfSlopes()) pitStore.set({ slopesForm: got.form, slopesIssue: null });
+  if ((source === "user" || windowOfSlopes()) && formTakes("slopes", id)) {
+    pitStore.set({ slopesForm: got.form, slopesIssue: null });
+    setFormFor("slopes", id);
+  }
   try {
     const r = await applyParams(id, patch.patch);
     setSlopesIssue(null);
@@ -111,7 +117,10 @@ export async function runCalendar(app: App, a: Args, source: CommandSource): Pro
     setCalendarIssue(patch.issue);
     throw refusal("bad_param", patch.issue.message, patch.issue.hint);
   }
-  if (source === "user" || windowOfCalendar()) pitStore.set({ calendarForm: form, calendarIssue: null });
+  if ((source === "user" || windowOfCalendar()) && formTakes("calendar", id)) {
+    pitStore.set({ calendarForm: form, calendarIssue: null });
+    setFormFor("calendar", id);
+  }
   try {
     const r = await applyParams(id, patch.patch);
     setCalendarIssue(null);
