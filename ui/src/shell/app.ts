@@ -32,6 +32,7 @@ import { bindBlocks } from "../modules/blocks/bind";
 import { bindFilters } from "../modules/blocks/filters/bind";
 import { bindReport } from "../modules/blocks/report/bind";
 import { bindResources } from "../modules/resources/bind";
+import { bindEstimateCompare } from "../modules/blocks/compare/bind";
 import { bindBuild } from "../modules/blocks/build/bind";
 import { bindExport } from "../modules/blocks/export/bind";
 import { bindModelWindow } from "../modules/blocks/window/bind";
@@ -177,6 +178,7 @@ export function createApp(opts: { persist?: boolean } = {}): App {
   bindFilters(app);
   bindReport(app);
   bindResources(app);
+  bindEstimateCompare(app);
   bindBuild(app);
   bindExport(app);
   bindModelWindow(app);

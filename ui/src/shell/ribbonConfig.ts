@@ -20,6 +20,7 @@ import { EXCHANGE_BUTTONS, EXCHANGE_GROUP_TITLE } from "../modules/blocks/export
 import { SETTINGS_BUTTONS } from "../modules/blocks/window/commands";
 import { CREATE_BUTTONS, CREATE_GROUP_TITLE, FIELD_BUTTONS as BUILD_FIELD_BUTTONS } from "../modules/blocks/build/commands";
 import { FIELD_BUTTONS, FIELD_GROUP_TITLE } from "../modules/blocks/fields/commands";
+import { COMPARE_BUTTONS } from "../modules/blocks/compare/commands";
 import { RESOURCES_BUTTONS, RESOURCES_GROUP_TITLE } from "../modules/resources/commands";
 import { REPORT_BUTTONS } from "../modules/blocks/report/commands";
 import { CHART_BUTTONS, CHART_GROUP_TITLE } from "../modules/charts/commands";
@@ -304,7 +305,7 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState, series: Partial
     { id: "geostat", title: VARIO_TAB_TITLE, groups: [
       { title: VARIO_GROUP_TITLE, items: VARIO_BUTTONS.map((b): RibbonItem => ({ ...b })) },
       { title: ESTIMATE_GROUP_TITLE, items: ESTIMATE_BUTTONS.map((b): RibbonItem => ({ ...b })) },
-      { title: CHECK_GROUP_TITLE, items: CHECK_BUTTONS.map((b): RibbonItem => ({ ...b })) },
+      { title: CHECK_GROUP_TITLE, items: [...CHECK_BUTTONS, ...COMPARE_BUTTONS].map((b): RibbonItem => ({ ...b })) },
       { title: SIM_GROUP_TITLE, items: SIM_BUTTONS.map((b): RibbonItem => ({ ...b })) },
     ] },
     {

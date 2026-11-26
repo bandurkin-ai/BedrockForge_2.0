@@ -15,6 +15,8 @@ import { askImpact } from "../lineage/impactAsk";
 import { compareReports, deleteReport, loadExportJob, loadReport, refusalOf, startExport, waitJobEnd, type DrillBody, type ExportBody, type Refusal } from "./api";
 import { bindDrill, DRILL_TITLE, drillStore, showCell } from "./drill";
 import { compareText, curveText, drillText, fmtCount } from "./format";
+import { openCompareWindow, windowOfCompare } from "./compareBind";
+import { loadCompare, COMPARE_TITLE } from "./compareState";
 import { currentRun, loadReports, reportById, resourcesStore } from "./state";
 
 type Args = Record<string, unknown>;
@@ -120,10 +122,24 @@ export async function runDrill(app: App, a: Args): Promise<string> {
   return [drillText(answer, nameOf(id)), `Открыто окно «${DRILL_TITLE}»: таблица блоков ячейки, блок — в инспектор.`, shown, ...notes].filter(Boolean).join("\n");
 }
 
-/** `resources.compare {report_a, report_b}`: two reports row by row. */
-export async function runCompare(a: Args): Promise<string> {
+/**
+ * `resources.compare {report_a?, report_b?}`: without them the window «Сравнить отчёты» opens; with both from the interface the window opens and shows the
+ * comparison; from the assistant — the text (and the window, if it is open, shows the same). Two reports row by row; A = B gives 0 everywhere.
+ */
+export async function runCompare(a: Args, source: CommandSource): Promise<string> {
+  const given = [a.report_a, a.report_b].filter((x) => x !== undefined).length;
+  if (given === 0) {
+    openCompareWindow();
+    return `Открыто окно «${COMPARE_TITLE}»`;
+  }
+  if (given === 1) throw refusal("bad_param", "Нужны оба отчёта: report_a и report_b.", "Передайте номера двух отчётов или вызовите команду без параметров: откроется окно выбора.");
+  const ids: [number, number] = [a.report_a as number, a.report_b as number];
   try {
-    return compareText(await compareReports(a.report_a as number, a.report_b as number));
+    if (source === "user" || windowOfCompare()) {
+      if (source === "user") openCompareWindow();
+      return compareText(await loadCompare(...ids));
+    }
+    return compareText(await compareReports(...ids));
   } catch (e) {
     throw asError(refusalOf(e));
   }
@@ -136,5 +152,5 @@ export function bindOtherCommands(app: App): void {
   r.bind("resources.delete", noted(app, (a, s) => runDelete(app, a, s)), needWritable(app));
   r.bind("resources.drill", noted(app, (a) => runDrill(app, a)), needProject);
   bindDrill(app, nameOf);
-  r.bind("resources.compare", noted(app, (a) => runCompare(a)), needProject);
+  r.bind("resources.compare", noted(app, (a, s) => runCompare(a, s)), needProject);
 }
