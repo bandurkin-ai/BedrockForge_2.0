@@ -70,6 +70,7 @@ export function curveText(r: ReportResult, curve: Curve, points = 6): string {
 export function drillText(d: DrillAnswer, name: string): string {
   const lines = [`Ячейка отчёта «${name}»: блоков ${fmtCount(d.cell.blocks)}, объём ${fmt(d.cell.volume)} м³, тоннаж ${fmt(d.cell.tonnes)} т.`];
   if (d.stale) lines.push(`Отчёт устарел${d.stale_reason ? ` (${d.stale_reason})` : ""}: набор блоков может отличаться от показанного в таблице. Пересчитайте отчёт.`);
+  for (const w of d.warnings) lines.push(`Предупреждение: ${warningText(w)}`);
   lines.push(`Правила отбора блоков (для blocks.filter, restrict): ${JSON.stringify(d.rules)}`);
   return lines.join("\n");
 }

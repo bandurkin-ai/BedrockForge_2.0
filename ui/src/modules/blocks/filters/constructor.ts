@@ -38,7 +38,24 @@ export interface SurfaceBody {
   side: "above" | "below";
   by: "centre" | "frac";
 }
-export type Rule = { op: GroupOp; items: Rule[] } | { expr: string } | { cond: CondBody } | { wireframe: WireBody } | { surface: SurfaceBody };
+/** The layer of the core (`slab`, Э20): from ≤ c < to along an axis; `frame` — the angles of the swath frame of the axes u, v. Read-only here (the drill of 20.15 and the swath give it). */
+export interface SlabBody {
+  axis: "x" | "y" | "z" | "u" | "v";
+  from: number;
+  to: number;
+  by: "centre" | "share";
+  frame?: { azimuth: number; dip: number; roll: number };
+}
+export type Rule = { op: GroupOp; items: Rule[] } | { expr: string } | { cond: CondBody } | { wireframe: WireBody } | { surface: SurfaceBody } | { slab: SlabBody };
+
+const AXIS_TITLE: Record<SlabBody["axis"], string> = { x: "X", y: "Y", z: "Z", u: "U", v: "V" };
+const slabNum = (v: number): string => String(Math.round(v * 1e6) / 1e6).replace(".", ",");
+
+/** The layer in words: «Z от 0 до 10, по доле»; an axis of the swath frame names the angles. */
+export function slabTitle(s: SlabBody): string {
+  const frame = s.frame && (s.axis === "u" || s.axis === "v") ? `, система полосы: азимут ${slabNum(s.frame.azimuth)}°, падение ${slabNum(s.frame.dip)}°, поворот ${slabNum(s.frame.roll)}°` : "";
+  return `${AXIS_TITLE[s.axis] ?? s.axis} от ${slabNum(s.from)} до ${slabNum(s.to)}, ${s.by === "share" ? "по доле высоты" : "по центру"}${frame}`;
+}
 
 export const COND_OPS: readonly { op: CondOp; label: string }[] = [
   { op: "=", label: "равно" },
@@ -211,7 +228,7 @@ export interface DraftCond {
   value: string;
   list: string;
 }
-export type Draft = { op: GroupOp; items: Draft[] } | { expr: string } | { cond: DraftCond } | { wireframe: WireBody } | { surface: SurfaceBody };
+export type Draft = { op: GroupOp; items: Draft[] } | { expr: string } | { cond: DraftCond } | { wireframe: WireBody } | { surface: SurfaceBody } | { slab: SlabBody };
 
 const show = (v: Value): string => String(v);
 
@@ -301,6 +318,7 @@ export function checkDraft(draft: Draft): { ok: true; rule: Rule } | { ok: false
       if (w.m < 1 || w.m > 16 || !Number.isInteger(w.m)) return bad(`${path}.wireframe.m`, "Подсетка доли — целое от 1 до 16.", "Укажите m, по умолчанию 4.");
       return { wireframe: { ...w } };
     }
+    if ("slab" in d) return { slab: { ...d.slab, ...(d.slab.frame && { frame: { ...d.slab.frame } }) } }; // read-only: the layer goes as it came, `frame` kept
     return { surface: { ...d.surface } };
   };
   const out = walk(draft, "rules", 1);
