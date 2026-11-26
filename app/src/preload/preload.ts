@@ -21,6 +21,9 @@ contextBridge.exposeInMainWorld("bf", {
   pickFiles: (kind: string, multi: boolean) => ipcRenderer.invoke("bf:pick-files", String(kind), Boolean(multi)),
   showInFolder: (file: string) => ipcRenderer.send("bf:show-in-folder", String(file)),
   pathForFile: (file: File) => webUtils.getPathForFile(file),
+  claudeSeal: () => ipcRenderer.invoke("bf:claude-seal"),
+  claudeForget: () => ipcRenderer.invoke("bf:claude-forget"),
+  claudeStorage: () => ipcRenderer.sendSync("bf:claude-storage"),
   coreLog: () => ipcRenderer.sendSync("bf:core-log"),
   onCoreState: (cb: (state: unknown) => void) => {
     const listener = (_e: unknown, state: unknown) => cb(state);
