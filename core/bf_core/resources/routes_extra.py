@@ -105,17 +105,12 @@ def _exists(svc: Svc, report_id: int) -> str:
 
 @router.post("/reports/{report_id}/export")
 def export_report(svc: Svc, s: Sched, report_id: int, body: Payload) -> dict[str, Any]:
-    from bf_core.jobs.registry import KINDS
+    from . import export_job
 
-    from . import spec
-
-    raw = body_of(body)
-    req = spec.parse_export(raw)
+    cur = svc.require_current()
+    with dialect.read_tx(cur.engine) as conn:
+        params = export_job.request(conn, cur.folder, report_id, body_of(body))  # 404 / 409 / 422 before the job
     name = _exists(svc, report_id)
-    if EXPORT_KIND not in KINDS:
-        raise not_implemented("Выгрузка отчёта по ресурсам")
-    params = {"report_id": report_id, "format": req.format, "path": req.path, "template": req.template,
-              "cutoff": req.cutoff, "overwrite": req.overwrite}  # fmt: skip
     key, job_id = s.submit(EXPORT_KIND, params, title=f"Выгрузка отчёта «{name}»")
     return {"source": key, "id": job_id}
 

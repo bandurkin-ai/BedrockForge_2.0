@@ -62,6 +62,7 @@ HANDLER_MODULES: tuple[str, ...] = (
     "bf_core.blocks.jobs_fields",
     "bf_core.qaqc.jobs",
     "bf_core.resources.job",
+    "bf_core.resources.export_job",
 )
 
 Queue = str  # "heavy" | "quick"
