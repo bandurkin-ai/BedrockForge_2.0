@@ -126,4 +126,4 @@ class GenericObject(Provider):
 
 
 # The providers of the kinds of the project: imported here, in one place (ADR 0025 §1).
-from . import adapt_blocks, adapt_drill, adapt_estimate, adapt_implicit, adapt_objects, adapt_simulate  # noqa: E402, F401
+from . import adapt_blocks, adapt_drill, adapt_estimate, adapt_implicit, adapt_objects, adapt_planned, adapt_simulate  # noqa: E402, F401
