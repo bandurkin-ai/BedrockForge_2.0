@@ -318,6 +318,22 @@ def next_offset(offset: int, shown: int, total: int) -> int | None:
     return offset + shown if offset + shown < total else None
 
 
+def require_set(conn: Any, set_id: int) -> Any:
+    """The row `(id, name, version, crs, extent)` of a ready drillhole set; none - a text for the model."""
+    import sqlalchemy as sa
+
+    from bf_core.db.schema import objects
+
+    row = conn.execute(
+        sa.select(objects.c.id, objects.c.name, objects.c.version, objects.c.crs, objects.c.extent).where(
+            objects.c.id == set_id, objects.c.kind == "drillhole_set", objects.c.state == "ready"
+        )
+    ).first()
+    if row is None:
+        raise DataError(f"Набор скважин {set_id} не найден: номера наборов даёт data_summary.")
+    return row
+
+
 # --- the call ----------------------------------
 
 
@@ -393,6 +409,7 @@ __all__ = [
     "num",
     "offset_of",
     "register",
+    "require_set",
     "run",
     "sanitize",
     "title_of",
