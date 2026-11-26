@@ -50,7 +50,7 @@ class _ToolsBody(Body):
 def validate_ui_tools(raw: Any) -> list[ToolDefinition]:
     """The tools of the window checked by §5.1: a list; each name `^ui_[a-z0-9_]{1,60}$`; no repeats; at most 400; each
     description at most 2000 characters; each schema an object of properties of string / number / integer / boolean
-    (+ null) with `required` inside and `additionalProperties: false`; all of it at most 256 KB of JSON.
+    (+ null) with `required` inside and `additionalProperties: false`; all of it at most 512 KB of JSON.
     Raises ApiError 422 `assistant_bad_tools {detail}` (the detail names the tool and the rule, never its text)."""
     if not isinstance(raw, list):
         raise refuse("assistant_bad_tools", detail="tools: a list of tools")
@@ -101,6 +101,19 @@ def build_tools(
         for tool in out:
             _shorten(tool, description_limit, param_limit)
     return out
+
+
+# 23.9б (ADR 0029 decision 17, measure of 23.9: 342 KB / ~80 thousand tokens for 270 tools): what goes to the API is
+# shortened - a description of a tool to 300 characters, of a parameter to 120 (~290 KB); the palette keeps the full text.
+API_DESCRIPTION_LIMIT = 300
+API_PARAM_LIMIT = 120
+
+
+def build_api_tools(
+    ui_tools: Iterable[ToolDefinition | Mapping[str, Any]], data_tools: Iterable[Any] = ()
+) -> list[dict[str, Any]]:
+    """`build_tools` with the limits of 23.9б - the form in which the loop (23.10) sends the tools to the API."""
+    return build_tools(ui_tools, data_tools, description_limit=API_DESCRIPTION_LIMIT, param_limit=API_PARAM_LIMIT)
 
 
 def _shorten(tool: dict[str, Any], description_limit: int | None, param_limit: int | None) -> None:

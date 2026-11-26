@@ -77,7 +77,7 @@ def test_description_limit() -> None:
 
 def test_total_size_limit() -> None:
     big = [tool(name=f"ui_t{i}", description="я" * sb.TOOL_DESCRIPTION_MAX) for i in range(200)]  # ~800 KB of UTF-8
-    assert "256" in str(bad(big).extra["detail"])
+    assert "512" in str(bad(big).extra["detail"])
 
 
 @pytest.mark.parametrize(

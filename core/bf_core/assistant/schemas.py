@@ -311,14 +311,14 @@ class ToolDefinition(Body):
 
 
 def check_tools(tools: list[ToolDefinition]) -> list[ToolDefinition]:
-    """No repeated name, at most 400, at most 256 KB of JSON (otherwise 422 `assistant_bad_tools {detail}`)."""
+    """No repeated name, at most 400, at most 512 KB of JSON (otherwise 422 `assistant_bad_tools {detail}`)."""
     if len(tools) > TOOLS_MAX:
         raise _bad_tool(f"more than {TOOLS_MAX} tools")
     names = [t.name for t in tools]
     if len(set(names)) != len(names):
         raise _bad_tool("repeated name")
     if len(json.dumps([t.model_dump() for t in tools], ensure_ascii=False).encode()) > TOOLS_BYTES_MAX:
-        raise _bad_tool("more than 256 KB")
+        raise _bad_tool("more than 512 KB")
     return tools
 
 
