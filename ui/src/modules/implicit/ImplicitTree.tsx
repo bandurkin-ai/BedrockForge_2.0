@@ -18,6 +18,7 @@ import { useWatch } from "../lineage/hooks";
 import { LineageBadge } from "../lineage/LineageBadge";
 import type { LNode } from "../lineage/api";
 import { useSel } from "../estimation/hooks";
+import { projectStore } from "../projects/state";
 import { implicitStore, loadDetails, loadRows } from "./state";
 import { BRANCH_TITLES, branchMenu, groupMenu, groupTitle, modelMenu, modelTitleText, needsDetails, statsText, stateText, treeItems, type OpenState, type TreeItem } from "./treeModel";
 import { implicitViewStore, pointsShown } from "./viewState";
@@ -25,6 +26,17 @@ import { implicitViewStore, pointsShown } from "./viewState";
 export const NODE_KIND = "object:implicit_model";
 
 const groupNameOfOutput = (rows: readonly { id: number; group_list: { id: number | null; name: string }[] }[], model: number, group: number | null): string => rows.find((r) => r.id === model)?.group_list.find((g) => g.id === group)?.name ?? "Система жил";
+
+/** Reads the details of the expanded models that need them and have not been asked yet; a failed read is asked again next time. */
+export function askDetails(items: readonly TreeItem[], details: Record<number, { version: number } | undefined>, asked: Set<string>, uid: string | null, load: (id: number) => Promise<unknown>): void {
+  for (const it of items) {
+    if (it.kind !== "model" || !it.expanded || !needsDetails(it.row) || details[it.row.id]?.version === it.row.version) continue;
+    const key = `${uid ?? ""}:${it.row.id}:${it.row.version}`;
+    if (asked.has(key)) continue;
+    asked.add(key);
+    void load(it.row.id).catch(() => asked.delete(key));
+  }
+}
 
 const icon = (name: string): IconName => name as IconName;
 
@@ -38,17 +50,12 @@ export function ImplicitTree() {
   const details = useSel(implicitStore, (s) => s.details);
   const hidden = useSel(app.store, (s) => s.view.hidden);
   const items = useMemo(() => treeItems(rows, open, details), [rows, open, details]);
-  // the list has no relations, radii and lines: the models that show them are read once per version
+  // the list has no relations, radii and lines: the models that show them are read once per version (of one project: the key has its uid)
   const asked = useRef(new Set<string>());
+  const uid = useSel(projectStore, (s) => s.current?.uid ?? null);
   useEffect(() => {
-    for (const it of items) {
-      if (it.kind !== "model" || !it.expanded || !needsDetails(it.row) || details[it.row.id]?.version === it.row.version) continue;
-      const key = `${it.row.id}:${it.row.version}`;
-      if (asked.current.has(key)) continue;
-      asked.current.add(key);
-      void loadDetails(it.row.id).catch(() => asked.current.delete(key));
-    }
-  }, [items, details]);
+    askDetails(items, details, asked.current, uid, loadDetails);
+  }, [items, details, uid]);
   const nodes = useMemo<LNode[]>(() => rows.map((r) => ({ kind: NODE_KIND, id: r.id })), [rows]);
   useWatch(nodes); // the states of the whole section in one request (Д-35)
   if (!rows.length) return <div className={tree.none}>{error ? `Не прочитано: ${error}` : loaded ? "Нет моделей — «+» открывает мастер «Новая модель»" : "Нет объектов"}</div>;

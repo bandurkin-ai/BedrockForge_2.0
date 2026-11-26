@@ -118,6 +118,24 @@ describe("the list", () => {
     expect(rowById(AIM.id)).toBeUndefined();
   });
 
+  it("a planned hole event with an id reads that hole, not the whole list with the paths; a deleted one just leaves", async () => {
+    const lists = () => requests("GET /planned_holes").length;
+    const before = lists();
+    core.holes = core.holes.map((h) => (h.id === AIM.id ? { ...h, name: "Переименована" } : h));
+    emitCoreEvent("implicit.changed", JSON.stringify({ kind: "planned_hole", id: AIM.id }));
+    await waitFor(() => rowById(AIM.id)?.name === "Переименована");
+    expect(lists()).toBe(before);
+    expect(requests(`GET /planned_holes/${AIM.id}`)).toHaveLength(1);
+    expect(rowById(AIM.id)!.trajectory!.depth.length).toBeGreaterThan(1); // the path came with the hole
+    expect(plannedStore.get().rows.map((r) => r.id)).toEqual([FIRST.id, AIM.id]);
+    core.holes = core.holes.filter((h) => h.id !== AIM.id);
+    emitCoreEvent("implicit.changed", JSON.stringify({ kind: "planned_hole", id: AIM.id, deleted: true }));
+    await waitFor(() => rowById(AIM.id) === undefined);
+    expect(lists()).toBe(before);
+    emitCoreEvent("implicit.changed", JSON.stringify({ kind: "planned_hole" })); // no id: the whole list
+    await waitFor(() => lists() === before + 1);
+  });
+
   it("another project — a clean list and no window", async () => {
     await run("planned.open", { id: FIRST.id });
     expect(wins()).toHaveLength(1);
@@ -152,6 +170,14 @@ describe("planned.new", () => {
     expect(wins()).toHaveLength(1); // the same window
     expect(win().form).toMatchObject({ collar: ["10", "20", ""], azimuth: "90" });
     expect(win().dirty).toBe(true);
+  });
+
+  it("without arguments over the open window of a new hole keeps the form and does not make it «changed»", async () => {
+    await run("planned.new");
+    expect(win().dirty).toBe(false);
+    await run("planned.new");
+    expect(wins()).toHaveLength(1);
+    expect(win()).toMatchObject({ id: null, dirty: false });
   });
 
   it("with the collar and the direction writes the hole; the list is read again; the hole is chosen", async () => {
@@ -222,6 +248,18 @@ describe("planned.open and planned.save", () => {
     expect(win()).toMatchObject({ version: 2, dirty: false, saving: false, issue: null });
     expect(win().saved).toContain("версия 2");
     expect(win().form.name).toBe("ПС-1 (длиннее)");
+  });
+
+  it("a second «Сохранить» while the first is being written is refused: one write, not two", async () => {
+    await run("planned.open", { id: FIRST.id });
+    const { setForm } = await import("../src/modules/drillholes/plannedState");
+    setForm({ length: "120" });
+    plannedWin.set({ saving: true }); // the first write is on its way
+    const r = await run("planned.save");
+    expect(r.ok).toBe(false);
+    expect(r.result).toContain("уже записывается");
+    expect(requests(`PUT /planned_holes/${FIRST.id}`)).toHaveLength(0);
+    expect(win().saving).toBe(true); // the first write still owns the flag
   });
 
   it("a version that is not the stored one is a conflict: «Перечитать», nothing is lost", async () => {

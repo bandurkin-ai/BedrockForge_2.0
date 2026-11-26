@@ -27,12 +27,14 @@ import { deletePlanned, exportPlanned, getPlanned, refusalOf, createPlanned, typ
 import { bodyOf, compareLine, evaluateLine, EMPTY_FORM, exportName, formOfArgs, freeName, rowLine } from "./plannedModel";
 import { pickStore, startPick, stopPick, type PickWhat } from "./plannedPick";
 import {
+  checkSetOf,
   choose,
   clearPlanned,
   followRows,
   followWindow,
   isPlannedEvent,
   loadPlanned,
+  refreshPlanned,
   plannedCheck,
   plannedStore,
   plannedViewStore,
@@ -134,7 +136,7 @@ export async function openNew(a: Record<string, unknown>, source: CommandSource)
   const f = formOfArgs(a, open ? plannedWin.get().form : { ...EMPTY_FORM, name: freeName(plannedStore.get().rows.map((r) => r.name)) });
   if (isIssue(f)) throw refusal(f.code, f.message, f.hint);
   if (!open && !(await confirmDiscard(source))) return "Отменено";
-  if (open) plannedWin.set({ form: f, dirty: true });
+  if (open) plannedWin.set(Object.keys(a).length > 0 ? { form: f, dirty: true } : {}); // no arguments: the form stays as it is, and is not «changed»
   else {
     startNew();
     plannedWin.set({ form: f, dirty: Object.keys(a).length > 0 });
@@ -196,7 +198,8 @@ export async function runEvaluateCommand(a: Record<string, unknown>, source: Com
   }
   const meshes = idsOf(a.mesh_ids);
   const asked = typeof a.model_id === "number" || meshes.length > 0 || typeof a.set_id === "number";
-  if (typeof a.set_id === "number") setCheckSet(a.set_id);
+  const cur = plannedCheck.get();
+  if (typeof a.set_id === "number" && a.set_id !== checkSetOf(cur, plannedWin.get().form)) setCheckSet(a.set_id); // the same set: the hole of «План / факт» stays
   // the arguments are the request: no bodies named — only the nearest holes (what the window had chosen before stays for its own «Прогноз»)
   if (typeof a.model_id === "number") setSource({ kind: "model", modelId: a.model_id });
   else if (meshes.length) setSource({ kind: "meshes", meshIds: meshes });
@@ -369,7 +372,7 @@ export function bindPlanned(app: App): void {
       if (cur) void loadPlanned();
     }),
     onCoreEvent((event, data) => {
-      if (event === "implicit.changed" && projectStore.get().current && isPlannedEvent(data)) void loadPlanned();
+      if (event === "implicit.changed" && projectStore.get().current && isPlannedEvent(data)) void refreshPlanned(data);
     }),
     // a hole that is gone leaves the view; the window of a hole that is gone says so
     plannedStore.subscribe(() => {

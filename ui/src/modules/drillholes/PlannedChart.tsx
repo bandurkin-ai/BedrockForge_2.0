@@ -40,7 +40,7 @@ export function PlannedChart({ answer }: { answer: CompareAnswer }) {
         <g data-mark="max">
           <circle className={css.ring} cx={px(peak.x)} cy={py(peak.y)} r={5} />
           <text className={css.markLabel} x={Math.min(px(peak.x) + 8, BOX.x1 - 90)} y={Math.max(py(peak.y) - 8, BOX.y0 + 11)}>
-            {`max ${formatNumber(peak.y, 3)} м`}
+            {`макс. ${formatNumber(peak.y, 3)} м`}
           </text>
         </g>
       )}

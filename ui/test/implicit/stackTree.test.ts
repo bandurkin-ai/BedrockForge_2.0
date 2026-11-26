@@ -4,13 +4,13 @@
 // the tree of a model with 20 veins and 50 outputs.
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppContext } from "../../src/shell/AppContext";
 import type { App } from "../../src/shell/app";
 import { lineageStore } from "../../src/modules/lineage/state";
 import { readRow, type ModelInfo, type ModelRow, type OutputInfo } from "../../src/modules/implicit/api";
 import { ImplicitProps } from "../../src/modules/implicit/ImplicitProps";
-import { ImplicitTree } from "../../src/modules/implicit/ImplicitTree";
+import { askDetails, ImplicitTree } from "../../src/modules/implicit/ImplicitTree";
 import { faultRows, offsetRows, outputKindText, pairRows, pairsOf, stackSummary } from "../../src/modules/implicit/stackFacts";
 import { readVeinPairs } from "../../src/modules/implicit/stackApi";
 import { implicitStore, loadDetails, loadRows } from "../../src/modules/implicit/state";
@@ -291,5 +291,31 @@ describe("20 veins and 50 outputs", () => {
     console.log(`implicit tree, the model with 20 veins and 50 outputs: rows ${model.toFixed(2)} ms, section ${draw.toFixed(1)} ms`);
     expect(model).toBeLessThan(20);
     expect(draw).toBeLessThan(500);
+  });
+});
+
+describe("the details the tree asks for", () => {
+  it("are asked once per version of ONE project: the same model of another project (same id and version) is read again", () => {
+    const asked = new Set<string>();
+    const load = vi.fn(async () => undefined);
+    const items = treeItems(rows(), {}, {});
+    const need = items.filter((i) => i.kind === "model" && i.expanded && needsDetails(i.row)).length;
+    expect(need).toBeGreaterThan(0);
+    askDetails(items, {}, asked, "p1", load);
+    askDetails(items, {}, asked, "p1", load);
+    expect(load).toHaveBeenCalledTimes(need);
+    askDetails(items, {}, asked, "p2", load); // another project: the key has its uid, nothing is taken for «already asked»
+    expect(load).toHaveBeenCalledTimes(need * 2);
+  });
+
+  it("a read that failed is asked again", async () => {
+    const asked = new Set<string>();
+    const load = vi.fn(async () => {
+      throw new Error("нет");
+    });
+    const items = treeItems(rows(), {}, {});
+    askDetails(items, {}, asked, "p1", load);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(asked.size).toBe(0);
   });
 });

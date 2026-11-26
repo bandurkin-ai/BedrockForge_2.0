@@ -5,6 +5,9 @@
  * domain whose faults changed — the registry, the log and the assistant see the same writes. No React.
  */
 import type { App } from "../../shell/app";
+import type { CommandSource } from "../../shell/commands";
+import { askConfirm } from "../../shell/dialogs";
+import { CoreError } from "../../shell/api";
 import { refusal, viewport } from "../../shell/objectRun";
 import { Store } from "../../shell/store";
 import { closeWindow, focusWindow, openWindow, updateWindow, windowStore } from "../../shell/windows";
@@ -37,9 +40,14 @@ export const stackWindow = (): string | null => windowStore.get().windows.find((
 const titleOf = (name: string) => `${STACK_TITLE}: «${name}»`;
 
 /** `implicit.relations` without values: the window of the model (what is typed stays when the same model is open). */
-export async function openStack(id: number): Promise<string> {
+export async function openStack(id: number, source: CommandSource = "user"): Promise<string> {
   const info = await detailsOf(id);
   const s = stackStore.get();
+  // a draft that is not written is not thrown away by opening ANOTHER model: the person is asked (the same model keeps what is typed)
+  if (source === "user" && stackWindow() !== null && s.dirty && s.draft !== null && s.modelId !== id) {
+    const ok = await askConfirm({ title: STACK_TITLE, message: "В окне есть изменения стека, которые не записаны. Заменить их стеком другой модели?", okLabel: "Заменить", danger: true });
+    if (!ok) return "Отменено";
+  }
   const keep = stackWindow() !== null && s.modelId === id && s.dirty && s.draft !== null;
   stackStore.set(keep ? { error: null } : { modelId: id, version: info.version, draft: draftOf(info.meta), saving: false, error: null, saved: null, dirty: false, dragging: null });
   const win = stackWindow();
@@ -94,6 +102,10 @@ export async function applyStack(app: App): Promise<void> {
   const lines: string[] = [];
   try {
     const info = await detailsOf(id);
+    // the optimistic lock: the draft is of the version it was read at; a model changed meanwhile is not overwritten
+    if (s.version !== null && info.version !== s.version) {
+      throw refusal("version_conflict", "Модель изменена, перечитайте.", "Нажмите «Сбросить»: окно возьмёт стек модели как он сейчас; свои правки повторите.");
+    }
     if (relationsChanged(info.meta, draft)) {
       const r = await app.registry.execute("implicit.relations", { model_id: id, order: draft.order.join("; "), relations: draft.order.map((g) => `${g}=${draft.relations[g]}`).join("; ") }, "user");
       if (!r.ok) throw refusal("not_written", r.result, "Окно оставлено как есть: поправьте стек и нажмите «Применить» ещё раз.");
@@ -108,7 +120,7 @@ export async function applyStack(app: App): Promise<void> {
     const after = (await loadDetails(id)) ?? now;
     stackStore.set({ version: after.version, draft: draftOf(after.meta), dirty: false, saved: lines.length ? `Записано. Чтобы пересчитать поверхности и тела, выполните «Обновить» (версия ${after.version}).` : "Стек не менялся: записывать нечего." });
   } catch (e) {
-    const text = e instanceof Error ? e.message : String(e);
+    const text = e instanceof CoreError ? `${e.message} ${e.hint ?? ""}`.trim() : e instanceof Error ? e.message : String(e);
     stackStore.set({ error: text });
     app.store.set({ statusNote: text });
   } finally {
