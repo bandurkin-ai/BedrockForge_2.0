@@ -24,12 +24,12 @@ describe("the surfaces (§9): the answer of the job", () => {
     const r = readSurfaces(sample);
     expect(r?.scenario_id).toBe(17);
     expect(r?.wireframes.map((w) => [w.shell, w.rf, w.nodes, w.triangles])).toEqual([
-      [1, 0.8, 10000, 19602],
-      [2, 1, 10000, 19602],
-      [3, 1.2, 10000, 19602],
+      [1, 0.8, 168, 286],
+      [2, 1, 168, 286],
+      [3, 1.2, 168, 286],
     ]);
     expect(r?.wireframes[0].name).toBe("Сценарий карьера — RF 0,8");
-    expect(r?.folder_id).toBe(40);
+    expect(r?.folder).toBe("Карьер/Сценарий карьера"); // the real answer: the folder is a path of the project
   });
   it("the form the job writes (`dtm_job.py`): the folder is a path, `skipped`, `warnings` of the core, `replaced` of a DTM", () => {
     const r = readSurfaces({ ...sample, folder: "Карьер/Сценарий карьера", folder_id: undefined, skipped: [3], warnings: ["Оболочка 3: рельеф не покрывает план модели, ЦТМ не построена."], wireframes: (sample.wireframes as object[]).map((w) => ({ ...w, replaced: true })) });
@@ -53,7 +53,7 @@ describe("the solid (§10): the answer of the job", () => {
   const sample = answer("solid_result").body;
   it("the volume, the volume of the blocks, the difference in per cent, the parts, the method", () => {
     const r = readSolid(sample);
-    expect(r).toMatchObject({ scenario_id: 17, shell: 2, rf: 1, wireframe_id: 50, volume: 41000000, volume_blocks: 41200000, volume_diff_pct: 0.49, parts: 1, closed: true, method: "between" });
+    expect(r).toMatchObject({ scenario_id: 17, shell: 2, rf: 1, wireframe_id: 22, volume: 830500, volume_blocks: 918000, volume_diff_pct: 9.53, parts: 1, closed: true, method: "between" });
     expect(r?.name).toBe("Сценарий карьера — карьер RF 1,00");
   });
   it("the form the job writes: `folder`, `replaced`, `warnings`", () => {

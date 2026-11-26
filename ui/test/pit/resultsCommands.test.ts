@@ -199,8 +199,8 @@ describe("`pit.solid`", () => {
     const r = await run("pit.solid", { scenario_id: ID.scenario, shell: 2, name: " Мой каркас " });
     expect(r.ok).toBe(true);
     expect(sentTo("/solid").map((x) => [x.path, x.body])).toEqual([[`/pit/scenarios/${ID.scenario}/solid`, { shell: 2, name: "Мой каркас" }]]);
-    expect(r.result).toContain(`объём ${val(41000000)} м³, замкнут`);
-    expect(r.result).toContain(`объём блоков оболочки ${val(41200000)} м³, расхождение ${fmt(0.49)} %`);
+    expect(r.result).toContain(`объём ${val(830500)} м³, замкнут`);
+    expect(r.result).toContain(`объём блоков оболочки ${val(918000)} м³, расхождение ${fmt(9.53)} %`);
     expect(r.result).toContain("тело между рельефом и поверхностью оболочки");
     expect(resultsStore.get().solid.result?.parts).toBe(1);
   });
@@ -299,7 +299,7 @@ describe("the windows are drawn from the answers", () => {
     expect(h).toContain("pit-surf-result");
     expect(h).toContain("Построено ЦТМ: 3");
     expect(h).toContain("Сценарий карьера — RF 1,0");
-    expect(h).toContain("19 602".replace(" ", " "));
+    expect(h).toContain("286");
   });
   it("«Поверхности»: a pick of another scenario is not this one's", async () => {
     await selectScenario(ID.scenario);
@@ -312,7 +312,7 @@ describe("the windows are drawn from the answers", () => {
     await run("pit.solid", { scenario_id: ID.scenario, shell: 2 });
     const h = drawn("solid");
     for (const id of ["volume", "blocks", "diff", "parts", "method", "closed"]) expect(h).toContain(`pit-solid-r-${id}`);
-    expect(h).toContain(val(41000000));
+    expect(h).toContain(val(830500));
     expect(h).toContain("тело между рельефом и поверхностью оболочки");
     rc.jobs.solid = { status: "failed", result: null, error: { code: "pit_solid_failed", message: "Каркас не замкнут.", hint: "Выберите другую оболочку." } };
     await run("pit.solid", { scenario_id: ID.scenario, shell: 2 });
