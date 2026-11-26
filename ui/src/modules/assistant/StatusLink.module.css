@@ -1,0 +1,4 @@
+/* The link «Claude: …» of the status bar (ТЗ 7.0.5): as the other links of the bar. */
+.link { border: 0; background: transparent; color: var(--text-dim); cursor: pointer; padding: 0; text-decoration: underline dotted; font: inherit; }
+.link[data-tone="warn"] { color: var(--warn); }
+.link:hover { color: var(--text); }

@@ -1,0 +1,7 @@
+/* The mark of the account in the title bar (ТЗ 7.0.3): the dot is --ok when connected, --warn at a login or without the net, --text-faint when not connected. */
+.badge { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: transparent; cursor: pointer; }
+.badge:hover { background: var(--bg-hover); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); }
+.dot[data-tone="ok"] { background: var(--ok); }
+.dot[data-tone="warn"] { background: var(--warn); }
+.dot[data-tone="faint"] { background: var(--text-faint); }
