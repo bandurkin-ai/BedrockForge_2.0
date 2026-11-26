@@ -176,6 +176,12 @@ export async function deleteReport(id: number): Promise<void> {
   await api.del(`/resources/reports/${id}`);
 }
 
+/** `PUT /resources/reports/{id}`: the new name (409 `name_taken {param: "name"}`, `version_conflict`, `report_building`; 423 in a project open for reading). */
+export async function renameReport(id: number, name: string, expectedVersion: number): Promise<{ id: number; version: number; name: string }> {
+  const r = obj(await api.put(`/resources/reports/${id}`, { name, expected_version: expectedVersion }));
+  return { id: num(r.id) ?? id, version: num(r.version) ?? expectedVersion + 1, name: str(r.name) ?? name };
+}
+
 export async function listTemplates(): Promise<TemplateRow[]> {
   const r = obj(await api.get("/resources/templates"));
   return (Array.isArray(r.templates) ? r.templates : []).map(readTemplateRow).filter((x): x is TemplateRow => x !== null);
@@ -188,6 +194,8 @@ export interface ExportBody {
   path: string;
   template?: string;
   cutoff?: number | null;
+  /** CSV only: `table` (every row of the result, the default), `form` (the form of the template) or `both` (two files) */
+  what?: "table" | "form" | "both";
   overwrite?: boolean;
 }
 

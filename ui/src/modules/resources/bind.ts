@@ -20,6 +20,7 @@ import { loadReportJob, refusalOf, startReport, waitJobEnd, type Refusal } from 
 import { argsOfForm, formOfArgs, issueOfRefusal, paramsOfForm, type Args } from "./form";
 import { summaryText } from "./format";
 import { bindOtherCommands } from "./otherCommands";
+import { bindPanel } from "./panelBind";
 import { ReportWindow } from "./ReportWindow";
 import { beginRun, currentForm, currentRun, ensureDefaults, formForModel, isRunning, loadReports, loadTemplates, modelFields, patchRun, resetResources, resourcesEvent, resourcesStore, RESOURCES_WINDOW, setForm, setIssue, TITLE } from "./state";
 
@@ -149,6 +150,7 @@ export function bindResources(app: App): () => void {
     (ctx) => needProject(ctx) ?? (blocksStore.get().loaded && !blocksStore.get().list.length ? "В проекте нет блочных моделей" : null),
   );
   bindOtherCommands(app);
+  const offPanel = bindPanel(app);
   // the report belongs to the project: another project — a clean window and the lists read again
   let uid: string | null = projectStore.get().current?.uid ?? null;
   if (uid) void loadReports();
@@ -171,7 +173,7 @@ export function bindResources(app: App): () => void {
       else void loadReports();
     }),
   ];
-  return () => offs.forEach((off) => off());
+  return () => [...offs, offPanel].forEach((off) => off());
 }
 
 /** The window for the shell's window layer (`shell/Shell.tsx`); null — not this window. */

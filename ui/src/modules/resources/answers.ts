@@ -138,20 +138,35 @@ export interface FormCell {
 
 export interface FormColumn {
   key: string;
+  /** the title of the column as the core says it: «Руда, тыс. т», «Au, г/т» */
   label: string;
+  /** «Балансовые» / «Забалансовые» (the form with two blocks of columns), else null */
   group: string | null;
+  /** `balance` / `offbalance` of the block, else null */
+  part: string | null;
+  /** `tonnes`, `volume`, `grade`, `metal` */
+  metric: string | null;
+  element: string | null;
+  unit: string;
 }
 
 export interface FormRow {
+  /** `row` is a group of the template (`group` of the core), `subtotal` / `total` / `other` («Прочие») as they are */
   kind: "row" | "subtotal" | "total" | "other";
   label: string;
   cells: Record<string, FormCell>;
+  /** the groups a subtotal sums */
+  members: string[];
 }
 
 /** The form of the template (JORC, ГКЗ, own): the core makes the cells, the interface shows `text` as it is (ADR 0027 решение 19). */
 export interface Form {
   template_id: string;
+  template_name: string;
+  /** the cut-off of the form (`null` — «без борта» or the form with balance blocks) */
   cutoff: number | null;
+  /** the cut-offs of the report the form can show (the rows of kind `cutoff`) */
+  cutoffs: number[];
   columns: FormColumn[];
   sections: { label: string | null; rows: FormRow[] }[];
   warnings: Warning[];
@@ -189,6 +204,11 @@ export interface ReportResult {
   form: Form | null;
   warnings: Warning[];
   seconds: Record<string, number>;
+  /** a saved report only (`GET /resources/reports/{id}`): the state in the graph, the files written, the date */
+  stale: boolean;
+  stale_reason: string | null;
+  files: { format: string; path: string }[];
+  created_at: string | null;
 }
 
 function readCell(raw: unknown): ElementCell {
@@ -270,17 +290,24 @@ export function readForm(raw: unknown): Form | null {
   const f = obj(raw);
   const cols = list(f.columns);
   if (!cols.length) return null;
+  const tpl = obj(f.template);
+  const cut = f.cutoff && typeof f.cutoff === "object" ? num(obj(f.cutoff).value) : num(f.cutoff);
   return {
-    template_id: str(f.template_id) ?? "",
-    cutoff: num(f.cutoff),
-    columns: cols.map((c) => ({ key: str(obj(c).key) ?? "", label: str(obj(c).label) ?? "", group: str(obj(c).group) })),
+    template_id: str(f.template_id) ?? str(tpl.id) ?? "",
+    template_name: str(tpl.name) ?? str(f.template_id) ?? str(tpl.id) ?? "",
+    cutoff: cut,
+    cutoffs: list(f.cutoffs).filter(isNum),
+    columns: cols.map((c) => {
+      const x = obj(c);
+      return { key: str(x.key) ?? "", label: str(x.title) ?? str(x.label) ?? "", group: str(x.group), part: str(x.part), metric: str(x.metric), element: str(x.element), unit: str(x.unit) ?? "" };
+    }),
     sections: list(f.sections).map((s) => ({
-      label: str(obj(s).label),
+      label: str(obj(s).title) ?? str(obj(s).label),
       rows: list(obj(s).rows).map((r) => {
         const cells: Record<string, FormCell> = {};
         for (const [k, v] of Object.entries(obj(obj(r).cells))) cells[k] = { value: num(obj(v).value), text: str(obj(v).text) ?? "—" };
-        const kind = str(obj(r).kind);
-        return { kind: kind === "subtotal" || kind === "total" || kind === "other" ? kind : "row", label: str(obj(r).label) ?? "", cells };
+        const kind = str(obj(r).type) ?? str(obj(r).kind);
+        return { kind: kind === "subtotal" || kind === "total" || kind === "other" ? kind : "row", label: str(obj(r).label) ?? "", cells, members: list(obj(r).members).filter((m): m is string => typeof m === "string") };
       }),
     })),
     warnings: readWarnings(f.warnings),
@@ -332,6 +359,10 @@ export function readReportResult(raw: unknown): ReportResult | null {
     form: readForm(r.form),
     warnings: readWarnings(r.warnings),
     seconds,
+    stale: r.stale === true,
+    stale_reason: str(r.stale_reason),
+    files: list(r.files).map((x) => ({ format: str(obj(x).format) ?? "", path: str(obj(x).path) ?? "" })),
+    created_at: str(r.created_at),
   };
 }
 

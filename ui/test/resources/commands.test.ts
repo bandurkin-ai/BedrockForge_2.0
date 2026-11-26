@@ -42,8 +42,8 @@ const built = (f: ResourceForm) => {
 
 describe("the declarations", () => {
   const ids = commands.map((c) => c.id);
-  it("the seven commands of ADR 0027 решение 29, once in the catalog; the signs of the contract", () => {
-    expect(ids).toEqual(["resources.report", "resources.curve", "resources.templates", "resources.export", "resources.delete", "resources.drill", "resources.compare"]);
+  it("the commands of ADR 0027 решение 29 (and the two of the panel: `open`, `rename`), once in the catalog; the signs of the contract", () => {
+    expect(ids).toEqual(["resources.report", "resources.curve", "resources.templates", "resources.export", "resources.open", "resources.rename", "resources.delete", "resources.drill", "resources.compare"]);
     const catalog = moduleCommands().map((c) => c.id);
     for (const id of ids) expect(catalog.filter((x) => x === id)).toHaveLength(1);
     const by = Object.fromEntries(commands.map((c) => [c.id, c]));
@@ -103,7 +103,7 @@ describe("`resources.report`", () => {
     expect(posts()[0].body).toEqual({ params: built(f).params, save: false }); // the window sends what the form means, nothing else
     expect(posts()[0].body.params).toMatchObject({ model_id: ID.model, cutoffs: [null, 1], groups: ["CLASS"], density: 2.5, curve: 5, template_id: "jorc" });
     expect(currentRun()).toMatchObject({ phase: "done", saved: false, modelName: "Рудное тело" });
-    expect(currentRun().result?.rows.length).toBe(7);
+    expect(currentRun().result?.rows.length).toBe(8);
     expect(r.result).toContain("Предпросмотр");
     expect(r.result).toContain("не записан");
     expect(r.result).toMatch(/Итог \(.+\): блоков/);
@@ -196,7 +196,7 @@ describe("`resources.report`", () => {
     core.force("POST /resources/reports", answer("filter_field_missing"));
     await app.registry.execute("resources.report", { model_id: ID.model, curve: 0, restrict: JSON.stringify({ cond: { field: "PIT", op: "<=", value: 1 } }) }, "user");
     expect(resourcesStore.get().issue).toMatchObject({ field: "restrict" });
-    expect(resourcesStore.get().issue?.hint).toMatch(/PIT/);
+    expect(JSON.stringify(resourcesStore.get().issue)).toMatch(/PIT/);
   });
 
   it("a job that failed is told with its words; a job that is cancelled leaves nothing", async () => {

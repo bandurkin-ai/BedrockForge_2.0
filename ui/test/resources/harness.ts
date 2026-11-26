@@ -34,7 +34,7 @@ export const answer = (key: string): Answer => FILE[key] as Answer;
 
 export const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status, headers: { "Content-Type": "application/json" } });
 
-export const ID = { model: 12, report: 17, noReport: 999, reportJob: { source: "jobs", id: 41 }, exportJob: { source: "jobs", id: 42 }, filter: 5, dtm: 41, wire: 50 };
+export const ID = { model: 12, report: 2, noReport: 999, reportJob: { source: "jobs", id: 41 }, exportJob: { source: "jobs", id: 42 }, filter: 5, dtm: 41, wire: 50 };
 
 /** The model of the sample: the fields of `params.json` (`fixture.fields`) — grades AU, CU, the density SG, the categories CLASS and DOM. */
 export const MODEL = {
