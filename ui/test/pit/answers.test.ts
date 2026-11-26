@@ -124,10 +124,11 @@ describe("the results of the jobs", () => {
     const c = readCheckSummary(answer("check_result").body)!;
     expect(c).toMatchObject({ k: 8, k_auto: true, tolerance: 2.5 });
     expect(c.domains[0]).toMatchObject({ label: null, n_offsets: 17, error_max: 1.44, warning: false });
-    expect(typeof c.domains[0].error_mean).toBe("number"); // the value is the sample's until 21.11
+    expect(typeof c.domains[0].error_mean).toBe("number");
     expect(checkText(c)).toContain("смещений 17, ошибка угла до 1,44°");
     expect(readCheckSummary({})).toBeNull();
-    expect(fmt(null)).toBe("нет значения");
+    expect(fmt(null)).toBe("—");
+    expect(runText({ ...readRunSummary(answer("run_result").body)!, totals: { ore_t: null, waste_t: null, strip: null, cf: null }, seconds: null }).includes("нет значения")).toBe(false);
   });
 });
 

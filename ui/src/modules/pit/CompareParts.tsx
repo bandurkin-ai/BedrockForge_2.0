@@ -3,7 +3,7 @@
  * the heads of both scenarios, the parameters that differ as a list, the shells by RF side by side with the difference A − B (a shell only one scenario has is marked and
  * has «—», not 0), NPV of the best and the worst case of the last shell, the blocks only A / only B has. A value that is not known is «—». Presentation only.
  */
-import { fmtCount } from "../blocks/report/format";
+import { fmtCount } from "./format";
 import type { CompareAnswer, CompareSide } from "./resultsAnswers";
 import { compareRows, DASH, metricInfo, paramLabel, paramValue, rfText, STATUS_TEXT, val } from "./resultsModel";
 import type { ShellKey } from "./resultsAnswers";

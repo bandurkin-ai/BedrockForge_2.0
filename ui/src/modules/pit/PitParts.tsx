@@ -6,7 +6,7 @@ import { useSyncExternalStore, type ReactNode } from "react";
 import css from "../../shell/PropsParts.module.css";
 import type { Store } from "../../shell/store";
 import type { FormField, FormIssue } from "./forms";
-import { pitStore, type PitState } from "./state";
+import { pitStore, staleFormReason, type FormKind, type PitState } from "./state";
 
 export function useSel<T, R>(store: Store<T>, select: (s: T) => R): R {
   const get = () => select(store.get());
@@ -45,5 +45,31 @@ export function NumberField({ label, value, onChange, placeholder, testId, hint,
       <span>{label}</span>
       <input className={css.input} value={value} inputMode="decimal" placeholder={placeholder} aria-label={label} data-testid={testId} disabled={disabled} onChange={(e) => onChange(e.target.value)} />
     </label>
+  );
+}
+
+/** Why «Применить» of a window is blocked: its form was read from another scenario than the chosen one (null — the form is the chosen scenario's). */
+export const useStaleForm = (kind: FormKind): string | null => useSel(pitStore, (s) => staleFormReason(s, kind));
+
+/** The scenario a window writes into: the one its form was read from (a scenario chosen after cannot receive the form of another), else the chosen one. */
+export const useFormScenario = (kind: FormKind): number | null => useSel(pitStore, (s) => s.formFor[kind] ?? s.scenario?.id ?? null);
+
+/** Under the head of a window: why the scenario could not be read (the words of the core) and that the form belongs to another scenario than the chosen one. */
+export function FormNotice({ kind }: { kind: FormKind }) {
+  const stale = useStaleForm(kind);
+  const error = useSel(pitStore, (s) => (s.loadError && s.loadError.id === s.currentId ? s.loadError.message : null));
+  return (
+    <>
+      {error && (
+        <p className={css.error} role="alert" data-testid="pit-load-error">
+          Сценарий не прочитан: {error}
+        </p>
+      )}
+      {stale && (
+        <p className={css.warn} role="status" data-testid="pit-stale-form">
+          {stale}
+        </p>
+      )}
+    </>
   );
 }

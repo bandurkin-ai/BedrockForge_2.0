@@ -8,7 +8,7 @@ import { useMemo } from "react";
 import { useApp } from "../../shell/AppContext";
 import css from "../../shell/PropsParts.module.css";
 import { closeWindow } from "../../shell/windows";
-import { fmtCount } from "../blocks/report/format";
+import { fmt, fmtCount } from "./format";
 import { useSel } from "./PitParts";
 import mod from "./Pit.module.css";
 import res from "./Results.module.css";
@@ -76,11 +76,11 @@ export function SolidWindow({ winId }: { winId: string }) {
               <dt>Объём блоков оболочки, м³</dt>
               <dd data-testid="pit-solid-r-blocks">{val(result.volume_blocks)}</dd>
               <dt title="Объём блоков считается по сетке центров, поэтому небольшое расхождение — норма: оно показывается, а не считается ошибкой">Расхождение объёмов, %</dt>
-              <dd data-testid="pit-solid-r-diff">{val(result.volume_diff_pct)}</dd>
+              <dd data-testid="pit-solid-r-diff">{fmt(result.volume_diff_pct)}</dd>
               <dt>Частей</dt>
               <dd data-testid="pit-solid-r-parts">{result.parts === null ? DASH : fmtCount(result.parts)}</dd>
               <dt>Замкнут</dt>
-              <dd data-testid="pit-solid-r-closed">{result.closed ? "да" : "нет"}</dd>
+              <dd data-testid="pit-solid-r-closed">{result.closed === null ? DASH : result.closed ? "да" : "нет"}</dd>
               <dt>Метод</dt>
               <dd data-testid="pit-solid-r-method">{methodText(result.method)}</dd>
             </dl>

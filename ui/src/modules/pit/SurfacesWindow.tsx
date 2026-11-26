@@ -8,7 +8,7 @@ import { useMemo } from "react";
 import { useApp } from "../../shell/AppContext";
 import css from "../../shell/PropsParts.module.css";
 import { closeWindow } from "../../shell/windows";
-import { fmtCount } from "../blocks/report/format";
+import { fmtCount } from "./format";
 import { useSel } from "./PitParts";
 import mod from "./Pit.module.css";
 import res from "./Results.module.css";

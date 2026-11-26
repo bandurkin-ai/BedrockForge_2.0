@@ -15,7 +15,7 @@ import { sceneObjects } from "../scene/objects";
 import { DEFAULT_LIMITS } from "./answers";
 import { byKey, byKeyOfParams, encounteredTypes, rocksArgs, typeNamesOfMissing } from "./formsRocks";
 import mod from "./Pit.module.css";
-import { Issue, useSel } from "./PitParts";
+import { FormNotice, Issue, useFormScenario, useSel, useStaleForm } from "./PitParts";
 import { ByPart, TypesPart } from "./RocksParts";
 import { modelFields, pitStore, setRocksIssue } from "./state";
 
@@ -33,6 +33,8 @@ export function RocksWindow({ winId }: { winId: string }) {
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const reason = app.registry.reason("pit.rocks");
+  const target = useFormScenario("rocks");
+  const stale = useStaleForm("rocks");
 
   const fields = useMemo(() => modelFields(modelId), [modelId, models, details]);
   const categories = useMemo(() => fields.filter((f) => f.kind === "category"), [fields]);
@@ -54,7 +56,7 @@ export function RocksWindow({ winId }: { winId: string }) {
 
   const apply = async () => {
     setNote(null);
-    const got = rocksArgs(form, scenario?.id ?? null, elements, limits);
+    const got = rocksArgs(form, target, elements, limits);
     if (!got.ok) return setRocksIssue(got.issue);
     setBusy(true);
     try {
@@ -75,6 +77,7 @@ export function RocksWindow({ winId }: { winId: string }) {
           {scenario ? `Сценарий «${scenario.name}»` : "Сценарий не выбран"}
           {model ? ` · модель «${model}»` : modelId === null && scenario ? " · модель не выбрана" : ""}
         </p>
+        <FormNotice kind="rocks" />
         <ByPart form={form} disabled={busy} categories={categories} fields={fields.map((f) => f.name)} wireframes={closed} max={limits.rock_rules} />
         <TypesPart form={form} disabled={busy} elements={elements} met={met} open={open} limit={limits.rock_types} />
         <Issue which="rocks" field="general" />
@@ -85,7 +88,7 @@ export function RocksWindow({ winId }: { winId: string }) {
         </p>
       )}
       <div className={mod.footer}>
-        <button type="button" className={css.primary} disabled={busy || !!reason || !scenario} title={reason ?? (scenario ? "Сохранить породы в сценарии" : "Выберите или создайте сценарий")} data-testid="pit-rocks-apply" onClick={() => void apply()}>
+        <button type="button" className={css.primary} disabled={busy || !!reason || !scenario || !!stale} title={reason ?? stale ?? (scenario ? "Сохранить породы в сценарии" : "Выберите или создайте сценарий")} data-testid="pit-rocks-apply" onClick={() => void apply()}>
           Применить
         </button>
         {validate && (

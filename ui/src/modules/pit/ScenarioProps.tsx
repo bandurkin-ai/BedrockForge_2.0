@@ -17,15 +17,22 @@ import { list, num, obj, type ScenarioDetail } from "./answers";
 import { loadScenario } from "./api";
 import { formatNumber } from "./reportModel";
 import { NODE_KIND, scenarioActions, scenarioFacts } from "./scenarioModel";
+import { cancelRun } from "./bind";
 import { pitStore } from "./state";
 
 export function ScenarioProps({ id }: { id: number }) {
   const app = useApp();
   const row = useSelect(pitStore, (s) => s.scenarios.find((r) => r.id === id));
   const uid = useSelect(projectStore, (s) => s.current?.uid ?? null);
+  // what «Запустить» depends on: the readiness read of the scenario, the scenario of the windows, the run that goes, the error of the read — the buttons follow them
+  useSelect(pitStore, (s) => s.validations[id]);
+  useSelect(pitStore, (s) => s.scenario);
+  useSelect(pitStore, (s) => s.loadError);
+  const running = useSelect(pitStore, (s) => s.run.phase === "running" && s.run.scenarioId === id);
   const [detail, setDetail] = useState<ScenarioDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [shell, setShell] = useState<string>("");
+  const [cancelError, setCancelError] = useState<string | null>(null);
   const version = row ? `${row.version}:${row.has_result}:${row.params_changed}:${row.state}:${row.job_id ?? ""}` : "";
   useEffect(() => {
     let alive = true;
@@ -95,7 +102,17 @@ export function ScenarioProps({ id }: { id: number }) {
           {btn("Pit-by-pit", "props-pit-report", "Показать таблицу и график pit-by-pit в нижней панели")}
           {btn("Запустить", "props-pit-run", "Запустить оптимизацию карьера")}
           {btn("Перестроить", "props-pit-rebuild", "Перестроить сценарий: те же параметры, результат записывается поверх")}
+          {running && (
+            <button type="button" className={css.btn} title="Остановить расчёт между этапами: ничего не будет записано" data-testid="props-pit-cancel" onClick={() => void cancelRun().catch((e: unknown) => setCancelError(errorText(e)))}>
+              Отменить расчёт
+            </button>
+          )}
         </div>
+        {cancelError && (
+          <p className={css.error} role="alert" data-testid="props-pit-cancel-error">
+            {cancelError}
+          </p>
+        )}
         {shells.length > 0 && (
           <div className={css.row}>
             <label className={css.row}>

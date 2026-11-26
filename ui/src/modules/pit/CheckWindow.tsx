@@ -12,7 +12,7 @@ import { closeWindow } from "../../shell/windows";
 import { ChartToolbar } from "../../charts/core/ChartToolbar";
 import { seriesColor } from "../../charts/core/palette";
 import { domainTitle, exceeds, phiCsv, sectorRows, type CheckDomain, type CheckResult } from "./checkModel";
-import { fmt, fmtCount, NO_VALUE, warningText } from "./format";
+import { fmt, fmtCount, NO_VALUE, secondsText, warningText } from "./format";
 import mod from "./Pit.module.css";
 import { PhiChart } from "./PhiChart";
 import { useSel } from "./PitParts";
@@ -94,7 +94,7 @@ export function summaryLine(r: CheckResult): string {
     `K = ${r.k === null ? NO_VALUE : r.k}${r.kAuto ? " (подобран автоматически)" : ""}`,
     r.levels !== null && r.levels !== r.k ? `уровней в шаблоне ${r.levels}` : null,
     `допуск ${deg(r.tolerance)}`,
-    r.seconds === null ? null : `${fmt(r.seconds)} с`,
+    r.seconds === null ? null : `${secondsText(r.seconds)} с`,
   ];
   return parts.filter((p): p is string => p !== null).join(" · ");
 }

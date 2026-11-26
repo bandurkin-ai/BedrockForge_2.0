@@ -34,7 +34,7 @@ import { EconomicsWindow } from "./EconomicsWindow";
 import { RocksWindow } from "./RocksWindow";
 import { ScenarioWindow } from "./ScenarioWindow";
 import { SlopesWindow } from "./SlopesWindow";
-import { beginCheck, beginRun, CALENDAR_TITLE, CHECK_TITLE, currentRun, currentScenarioId, ECONOMICS_TITLE, ensureDefaults, ensureModelDefaults, isRunning, loadScenarios, patchCheck, patchRun, pitEvent, pitStore, PIT_CALENDAR_WINDOW, PIT_CHECK_WINDOW, PIT_ECONOMICS_WINDOW, PIT_ROCKS_WINDOW, PIT_SCENARIO_WINDOW, PIT_SLOPES_WINDOW, resetPit, ROCKS_TITLE, SLOPES_TITLE, runReason, scenarioById, SCENARIO_TITLE, selectedScenario, selectScenario, setEconIssue, setScenarioIssue, type PitState } from "./state";
+import { formTakes, beginCheck, beginRun, CALENDAR_TITLE, CHECK_TITLE, currentRun, currentScenarioId, ECONOMICS_TITLE, ensureDefaults, ensureModelDefaults, isRunning, loadScenarios, patchCheck, patchRun, pitEvent, pitStore, PIT_CALENDAR_WINDOW, PIT_CHECK_WINDOW, PIT_ECONOMICS_WINDOW, PIT_ROCKS_WINDOW, PIT_SCENARIO_WINDOW, PIT_SLOPES_WINDOW, refreshValidation, forgetValidation, resetPit, ROCKS_TITLE, setFormFor, type FormKind, SLOPES_TITLE, runReason, scenarioById, SCENARIO_TITLE, selectedScenario, selectScenario, setEconIssue, setScenarioIssue, type PitState } from "./state";
 
 /** A refusal as an error of the core that keeps the place in the params (`param`): the window marks the field with it. */
 export const asError = (r: Refusal) => {
@@ -76,6 +76,13 @@ export function readyText(): string {
   return `Для запуска не хватает: ${first}${v.missing.length > 1 ? ` (всего ${v.missing.length})` : ""}.`;
 }
 
+/** A scenario the commands changed is read again: the windows follow it only when it is the one they show (or they show none); another one is read for «Запустить» alone. */
+export async function followScenario(id: number): Promise<void> {
+  const shown = pitStore.get().currentId;
+  if (shown === null || shown === id) await selectScenario(id);
+  else await refreshValidation(id);
+}
+
 /**
  * Puts a part of the params into the scenario (`PUT`: the whole canonical params, the version of the read — the optimistic lock): for the commands of
  * the windows of this lane and of 21.17 (the rocks, the slopes, the calendar). The scenario is read again afterwards (its readiness too).
@@ -88,7 +95,7 @@ export async function applyParams(id: number, patch: Partial<PitParams>, extra: 
   } catch (e) {
     throw asError(refusalOf(e));
   }
-  await selectScenario(id);
+  await followScenario(id);
   void loadScenarios();
   const stale = r.params_changed && detail.has_result ? " Параметры изменены: результат устарел, нужен новый запуск." : "";
   return { text: `Сценарий «${r.name || nameOf(id, detail)}» обновлён (версия ${r.version}).${stale} ${readyText()}`.trim(), version: r.version };
@@ -118,10 +125,11 @@ export function showWindow(kind: string, title: string, size: "form" | "normal")
 export const openCheckWindow = (): string => showWindow(PIT_CHECK_WINDOW, CHECK_TITLE, "normal");
 
 /** The window of the rocks / the slopes / the calendar of a scenario: the form is read from the scenario, its readiness and the defaults of its model are read too. */
-async function openSetup(kind: string, base: string, id: number, form: (p: PitParams) => Partial<PitState>, size: "form" | "normal"): Promise<string> {
+async function openSetup(kind: string, base: string, form_for: FormKind, id: number, form: (p: PitParams) => Partial<PitState>, size: "form" | "normal"): Promise<string> {
   void ensureDefaults();
   const detail = await freshScenario(id);
   pitStore.set(form(detail.params));
+  setFormFor(form_for, id);
   if (detail.params.model_id !== null) {
     void loadBlockDetails(detail.params.model_id);
     void ensureModelDefaults(detail.params.model_id);
@@ -130,9 +138,9 @@ async function openSetup(kind: string, base: string, id: number, form: (p: PitPa
   return showWindow(kind, `${base} · ${detail.name}`, size);
 }
 
-export const openRocksWindow = (id: number): Promise<string> => openSetup(PIT_ROCKS_WINDOW, ROCKS_TITLE, id, (p) => ({ rocksForm: rocksFormOfParams(p), rocksIssue: null }), "normal");
-export const openSlopesWindow = (id: number): Promise<string> => openSetup(PIT_SLOPES_WINDOW, SLOPES_TITLE, id, (p) => ({ slopesForm: slopesFormOfParams(p), slopesIssue: null }), "form");
-export const openCalendarWindow = (id: number): Promise<string> => openSetup(PIT_CALENDAR_WINDOW, CALENDAR_TITLE, id, (p) => ({ calendarForm: calendarFormOfParams(p), calendarIssue: null }), "form");
+export const openRocksWindow = (id: number): Promise<string> => openSetup(PIT_ROCKS_WINDOW, ROCKS_TITLE, "rocks", id, (p) => ({ rocksForm: rocksFormOfParams(p), rocksIssue: null }), "normal");
+export const openSlopesWindow = (id: number): Promise<string> => openSetup(PIT_SLOPES_WINDOW, SLOPES_TITLE, "slopes", id, (p) => ({ slopesForm: slopesFormOfParams(p), slopesIssue: null }), "form");
+export const openCalendarWindow = (id: number): Promise<string> => openSetup(PIT_CALENDAR_WINDOW, CALENDAR_TITLE, "calendar", id, (p) => ({ calendarForm: calendarFormOfParams(p), calendarIssue: null }), "form");
 
 /** The model of a new scenario: the one selected in the tree, else the one the form has, else the first of the project. */
 export function defaultModel(app: App): number | null {
@@ -171,7 +179,9 @@ export async function openEconomicsWindow(id: number): Promise<string> {
   void ensureDefaults();
   const detail = await freshScenario(id);
   pitStore.set({ econForm: economicsOfParams(detail.params), econIssue: null });
+  setFormFor("econ", id);
   if (detail.params.model_id !== null) void ensureModelDefaults(detail.params.model_id);
+  await selectScenario(id); // the window works on the scenario it was opened for: its readiness and the model are read too
   const title = `${ECONOMICS_TITLE} · ${detail.name}`;
   const open = windowOfEconomics();
   if (open) {
@@ -233,7 +243,10 @@ export async function runEconomics(app: App, a: Args, source: CommandSource): Pr
     setEconIssue(patch.issue);
     throw refusal("bad_param", patch.issue.message, patch.issue.hint);
   }
-  if (source === "user" || windowOfEconomics()) pitStore.set({ econForm: form, econIssue: null });
+  if ((source === "user" || windowOfEconomics()) && formTakes("econ", id)) {
+    pitStore.set({ econForm: form, econIssue: null });
+    setFormFor("econ", id);
+  }
   try {
     const r = await applyParams(id, patch.patch);
     setEconIssue(null);
@@ -345,11 +358,11 @@ export async function runRun(app: App, a: Args): Promise<string> {
   if (!result) return fail({ code: "bad_answer", message: "Ядро вернуло расчёт без итога.", hint: "Повторите запуск; если повторится — обновите программу.", param: null });
   patchRun(seq, { phase: "done", result });
   void loadScenarios();
-  void selectScenario(id);
+  void followScenario(id);
   return runText(result);
 }
 
-/** «Отменить» of the window: the job of the run is cancelled between the stages; nothing is written (the record is one transaction). */
+/** «Отменить расчёт» of the properties of the scenario (`ScenarioProps`): the job of the run is cancelled between the stages; nothing is written (the record is one transaction). */
 export async function cancelRun(): Promise<void> {
   const job = currentRun().job;
   if (job && isRunning()) await cancelJob(job);
@@ -365,7 +378,7 @@ export async function runRename(app: App, a: Args): Promise<string> {
   const detail = await freshScenario(id);
   try {
     const r = await updateScenario(id, { name, expected_version: detail.version });
-    await selectScenario(id);
+    await followScenario(id);
     void loadScenarios();
     return `Сценарий «${detail.name}» переименован в «${r.name || name}»`;
   } catch (e) {
@@ -438,6 +451,10 @@ export function bindPit(app: App): () => void {
       void loadScenarios();
       const cur = pitStore.get().currentId;
       if (cur !== null && (e.id === null || e.id === cur)) void selectScenario(e.deleted ? null : cur);
+      // the readiness of another scenario that changed is not the one read before: the one of the tree is read again, the others are forgotten
+      const sel = selectedScenario(app);
+      if (sel !== null && sel !== cur && (e.id === null || e.id === sel) && !e.deleted) void refreshValidation(sel);
+      else if (e.id !== cur) forgetValidation(e.id);
     }),
   ];
   return () => offs.forEach((off) => off());

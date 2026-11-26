@@ -19,7 +19,7 @@ import { projectStore } from "../projects/state";
 import type { ScenarioRow } from "./answers";
 import { loadScenario } from "./api";
 import { NODE_KIND, rowTitle, scenarioActions, scenarioFacts, scenarioLabel, scenariosByName, selectScenarioRow } from "./scenarioModel";
-import { loadScenarios, pitStore } from "./state";
+import { loadScenarios, pitStore, selectScenario } from "./state";
 
 /** The DTMs of the shells and the solids of the pit: the wireframes built from the scenario (`graph.record`, depth 1 of the impact). */
 export const childrenOf = (nodes: readonly Dependent[]): Dependent[] => nodes.filter((n) => n.kind === "wireframe" && n.depth === 1);
@@ -67,10 +67,13 @@ export function ScenarioRows({ level = 3 }: { level?: number }) {
   }, [uid, loaded]);
   useWatch(useMemo(() => sorted.map((r) => ({ kind: NODE_KIND, id: r.id })), [sorted])); // the states of the whole part in one request
   if (!sorted.length) return <div className={tree.none}>{loaded ? "Нет сценариев — «Новый сценарий» в ленте «Карьер»" : "Чтение сценариев…"}</div>;
-  const menu = (r: ScenarioRow, e: MouseEvent) => {
+  // the menu opens when the scenario is read: «Запустить» is judged by its readiness, which is not known before
+  const menu = async (r: ScenarioRow, e: MouseEvent) => {
     e.preventDefault();
+    const { clientX, clientY } = e;
     selectScenarioRow(app, r.id);
-    openMenu(e.clientX, e.clientY, scenarioActions(app, r));
+    await selectScenario(r.id);
+    openMenu(clientX, clientY, scenarioActions(app, r));
   };
   const toggle = (id: number) => setOpen((o) => (o.includes(id) ? o.filter((x) => x !== id) : [...o, id]));
   return (
@@ -92,7 +95,7 @@ export function ScenarioRows({ level = 3 }: { level?: number }) {
               testId={`tree-pit-scenario-${r.id}`}
               glyph={<Glyph icon="report" />}
               after={<LineageBadge node={{ kind: NODE_KIND, id: r.id }} hideCurrent fallback={r.graph.stale || r.graph.source_lost ? <span className={tree.count}>{r.graph.source_lost ? "источник удалён" : "устарел"}</span> : null} />}
-              onContextMenu={(e) => menu(r, e)}
+              onContextMenu={(e) => void menu(r, e)}
             />
             {on && <ScenarioChildren row={r} level={level + 1} />}
           </Fragment>

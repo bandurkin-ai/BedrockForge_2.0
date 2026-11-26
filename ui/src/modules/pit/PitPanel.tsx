@@ -33,6 +33,8 @@ export interface PitViewProps {
   report: PitReport;
   panel: Pick<PitPanelState, "tab" | "mode" | "calendar" | "loading" | "error" | "note">;
   actions: PanelActions;
+  /** why the calendar cannot be written into the scenario now (`pit.calendar` is unavailable); null — it can */
+  saveReason?: string | null;
 }
 
 const facts = (r: PitReport): string => {
@@ -42,7 +44,7 @@ const facts = (r: PitReport): string => {
   return `модель «${r.model.name}» · оболочек ${r.shells.length}${rf} · версия ${r.version} · итог CF ${formatNumber(r.totals.cf, 0)} $`;
 };
 
-export function PitView({ report, panel, actions }: PitViewProps) {
+export function PitView({ report, panel, actions, saveReason = null }: PitViewProps) {
   const svg = useRef<SVGSVGElement | null>(null);
   const table = useMemo(() => viewTable(report, panel.mode), [report, panel.mode]);
   const tab = panel.tab;
@@ -58,7 +60,7 @@ export function PitView({ report, panel, actions }: PitViewProps) {
         <span className={css.grow} />
         {panel.loading && <span className={css.note}>Чтение…</span>}
       </div>
-      <CalendarBar key={key} calendar={report.calendar} changed={panel.calendar !== null} busy={panel.loading} onApply={(c) => actions.calendar(c)} onReset={() => actions.calendar(null)} onSave={actions.saveCalendar} />
+      <CalendarBar key={key} calendar={report.calendar} changed={panel.calendar !== null} busy={panel.loading} onApply={(c) => actions.calendar(c)} onReset={() => actions.calendar(null)} onSave={actions.saveCalendar} saveReason={saveReason} />
       {panel.note && (
         <p className={panel.note.error ? css.error : css.note} role={panel.note.error ? "alert" : "status"} data-testid="pit-panel-note">
           {panel.note.text}
@@ -117,6 +119,8 @@ export function PitPanel() {
   const app = useApp();
   const panel = useSelect(pitPanelStore, (s) => s);
   const projectOpen = useSelect(projectStore, (s) => s.current !== null);
+  useSelect(app.store, (s) => s.projectReadOnly); // `pit.calendar` is unavailable in a read-only project: the panel follows it
+  const saveReason = app.registry.reason("pit.calendar");
   const actions = useMemo<PanelActions>(
     () => ({
       tab: setTab,
@@ -156,5 +160,5 @@ export function PitPanel() {
       </div>
     );
   }
-  return <PitView report={panel.report} panel={panel} actions={actions} />;
+  return <PitView report={panel.report} panel={panel} actions={actions} saveReason={saveReason} />;
 }
