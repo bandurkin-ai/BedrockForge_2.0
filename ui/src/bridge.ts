@@ -8,6 +8,19 @@ export interface CoreInfo {
 
 export type SaveKind = "dat" | "csv" | "xlsx" | "str" | "dxf" | "las" | "jpg" | "png" | "tif" | "bmp" | "tridb" | "dwg" | "obj" | "stl" | "dtm" | "omf" | "parquet" | "any";
 
+/** Assistant «Claude» (ADR 0029): the key is encrypted by the main process (safeStorage), never by the window. */
+export interface ClaudeSealResult {
+  ok: boolean;
+  /** Russian reason when `ok` is false (e.g. «Хранилище ключей ОС недоступно: задайте ANTHROPIC_API_KEY»). */
+  message?: string;
+}
+
+export interface ClaudeStorageInfo {
+  /** The key can be kept on this machine; false — `claudeSeal` refuses (Linux `basic_text`, no DPAPI). */
+  secure: boolean;
+  backend: string;
+}
+
 export interface BfBridge {
   core(): CoreInfo | null;
   appVersion(): string;
@@ -40,6 +53,11 @@ export interface BfBridge {
   showInFolder(file: string): void;
   /** Disk path of a file dropped from Explorer. */
   pathForFile(file: File): string;
+  /** After a new connection (`seal_needed`): the main process takes the secret from the core and encrypts it. */
+  claudeSeal(): Promise<ClaudeSealResult>;
+  /** «Выйти»: removes the encrypted copy (the window calls `DELETE /assistant/connection` itself). */
+  claudeForget(): Promise<void>;
+  claudeStorage(): ClaudeStorageInfo;
   coreLog(): string;
   onCoreState(cb: (state: { status: "online" | "offline" | "starting"; info: CoreInfo | null; message?: string }) => void): () => void;
 }
