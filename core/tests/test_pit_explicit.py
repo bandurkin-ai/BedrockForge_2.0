@@ -160,6 +160,47 @@ def test_values_that_are_not_whole_at_nine_digits_are_refused(tmp_path):
         X.read_set(tmp_path / "f.upit")
 
 
+def test_values_are_read_as_decimal_strings_not_through_a_float(tmp_path):
+    """Review 21.21б, finding 6: 15+ significant digits stay exact (a float lost them and then refused the file), and a
+    digit beyond the 9th after the point is an error, not a rounding by an absolute tolerance."""
+    write_upit(tmp_path / "g.upit", ["123456789012.123456", "-0.000001", "5", "1.5e2", "2E-3"])
+    write_prec(tmp_path / "g.prec", [[], [], [], [], []])
+    p = X.read_set(tmp_path / "g.upit")
+    assert p.scale == 10**6
+    assert p.value.tolist() == [123456789012123456, -1, 5_000_000, 150_000_000, 2_000]
+    # 2⁵³ + 1 is not a float: the integers are exact too
+    write_upit(tmp_path / "h.upit", ["9007199254740993", "-7"])
+    write_prec(tmp_path / "h.prec", [[], []])
+    q = X.read_set(tmp_path / "h.upit")
+    assert q.scale == 1 and q.value.tolist() == [9007199254740993, -7]
+    # a value the old tolerance (1e−6 absolute) took for 0.1 and silently rounded
+    write_upit(tmp_path / "i.upit", ["0.1000000001", "1"])
+    write_prec(tmp_path / "i.prec", [[], []])
+    with pytest.raises(ApiError, match="целым") as e:
+        X.read_set(tmp_path / "i.upit")
+    assert e.value.code == "minelib_format" and e.value.hint
+
+
+@pytest.mark.parametrize("bad", ["nan", "inf", "-Infinity", "1e400", "12abc", "1e999999999", "5" * 25])
+def test_values_that_are_not_finite_numbers_or_do_not_fit_are_refused(tmp_path, bad):
+    write_upit(tmp_path / "j.upit", [bad, "1"])
+    write_prec(tmp_path / "j.prec", [[], []])
+    with pytest.raises(ApiError) as e:
+        X.read_set(tmp_path / "j.upit")
+    assert e.value.status == 422 and e.value.code == "minelib_format" and e.value.hint
+
+
+def test_the_sum_of_the_values_must_fit_64_bits(tmp_path):
+    write_upit(tmp_path / "k.upit", ["3000000000000000000", "-3000000000000000000"])
+    write_prec(tmp_path / "k.prec", [[], []])
+    with pytest.raises(ApiError, match="64 бита"):
+        X.read_set(tmp_path / "k.upit")
+    write_upit(tmp_path / "l.upit", ["3000000000000000000.5", "1"])
+    write_prec(tmp_path / "l.prec", [[], []])
+    with pytest.raises(ApiError, match="64 бита"):
+        X.read_set(tmp_path / "l.upit")
+
+
 # --- the solvers on the sets ------------------------------------------------------------------------------------------
 
 
