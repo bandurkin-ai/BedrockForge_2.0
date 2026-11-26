@@ -484,7 +484,7 @@ def test_contract_answers_spec_parts() -> None:
         _write(path, data)
     for key, value in want.items():
         assert data[key] == value, f"{key}: BF_REGEN_PIT=1 uv run pytest -q tests/test_pit_spec.py"
-    assert data["_status"] == "stub until 21.11" and data["_note"]
+    assert "_status" not in data and data["_note"]  # the stub went with 21.11 (`test_pit_contract.py`)
     for key, answer in data.items():
         if isinstance(answer, dict) and "status" in answer and answer["status"] >= 400:
             assert answer["body"]["code"] and answer["body"]["message"] and answer["body"]["hint"], key
