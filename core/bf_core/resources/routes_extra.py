@@ -138,9 +138,12 @@ def drill_rows(svc: Svc, report_id: int, body: Payload) -> dict[str, Any]:
 
 @router.post("/compare")
 def compare(svc: Svc, body: Payload) -> dict[str, Any]:
+    from bf_core.storage.blobs import BlobStore
+
+    from . import compare as cp
     from . import spec
 
     a, b = spec.parse_compare_reports(body_of(body))
-    _exists(svc, a)
-    _exists(svc, b)
-    raise not_implemented("Сравнение отчётов")
+    cur = svc.require_current()
+    with dialect.read_tx(cur.engine) as conn:
+        return cp.compare_reports(conn, BlobStore(cur.folder), a, b)
