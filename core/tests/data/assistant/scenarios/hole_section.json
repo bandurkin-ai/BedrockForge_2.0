@@ -1,0 +1,89 @@
+{
+  "steps": [
+    {
+      "match": {
+        "tool_result_for": "ui_section_through_hole",
+        "tool_result_error": true
+      },
+      "reply": {
+        "stream": true,
+        "content": [
+          {
+            "type": "text",
+            "text": "Не получилось: команда вернула ошибку, разрез не построен."
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 2900,
+          "output_tokens": 30,
+          "cache_read_input_tokens": 2400,
+          "cache_creation_input_tokens": 0
+        }
+      }
+    },
+    {
+      "match": {
+        "tool_result_for": "ui_section_through_hole"
+      },
+      "reply": {
+        "stream": true,
+        "content": [
+          {
+            "type": "text",
+            "text": "Готово: скважина DH-012 выбрана и показана на разрезе."
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 2900,
+          "output_tokens": 30,
+          "cache_read_input_tokens": 2400,
+          "cache_creation_input_tokens": 0
+        }
+      }
+    },
+    {
+      "match": {
+        "last_user_text": "Покажи скважину DH-012 на разрезе"
+      },
+      "reply": {
+        "stream": true,
+        "content": [
+          {
+            "type": "thinking",
+            "thinking": "Нужно выбрать скважину и открыть разрез через неё.",
+            "signature": "c2lnLW1vY2s="
+          },
+          {
+            "type": "text",
+            "text": "Выбираю скважину и строю разрез."
+          },
+          {
+            "type": "tool_use",
+            "id": "toolu_mock_select",
+            "name": "ui_hole_select",
+            "input": {
+              "hole_id": "DH-012"
+            }
+          },
+          {
+            "type": "tool_use",
+            "id": "toolu_mock_section",
+            "name": "ui_section_through_hole",
+            "input": {
+              "hole_id": "DH-012"
+            }
+          }
+        ],
+        "stop_reason": "tool_use",
+        "usage": {
+          "input_tokens": 2500,
+          "output_tokens": 140,
+          "cache_read_input_tokens": 0,
+          "cache_creation_input_tokens": 2400
+        }
+      }
+    }
+  ]
+}
