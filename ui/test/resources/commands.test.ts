@@ -73,8 +73,8 @@ describe("the declarations", () => {
     }
     expect(RESOURCES_BUTTONS[0].command).toBe("resources.report");
   });
-  it("`resources.templates` waits for its window (20.14): until it is bound the command says so", () => {
-    expect(app.registry.reason("resources.templates")).toMatch(/Э20/);
+  it("`resources.templates` is bound by `bindResources` (the window of 20.14): available with a project open", () => {
+    expect(app.registry.reason("resources.templates")).toBeNull();
   });
 });
 

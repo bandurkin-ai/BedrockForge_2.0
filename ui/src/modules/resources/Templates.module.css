@@ -1,0 +1,36 @@
+/* The window «Шаблоны форм отчёта» (ТЗ 8.10 «Формы»; ADR 0027): the list, the editor and the sample of the form; the theme tokens of the brand (docs/brand, ADR 0006). */
+.window { display: flex; flex-direction: column; height: 100%; min-height: 0; font-size: 13px; }
+.layout { display: grid; grid-template-columns: 190px minmax(280px, 1fr) minmax(260px, 1fr); gap: 10px; flex: 1; min-height: 0; padding: 8px 12px; overflow: hidden; }
+.side, .editor, .sample { display: flex; flex-direction: column; gap: 8px; min-height: 0; min-width: 0; overflow: auto; }
+.editor fieldset { margin: 0; }
+.list { display: flex; flex-direction: column; gap: 1px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); padding: 2px; overflow: auto; flex: 1; min-height: 80px; }
+.item { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border: 0; border-radius: var(--radius); background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; min-width: 0; }
+.item:hover { background: var(--bg-hover); }
+.item[aria-current="true"] { background: var(--bg-active); }
+.item > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.badge { color: var(--text-faint); font-size: 11px; white-space: nowrap; }
+.sideButtons { display: flex; gap: 6px; flex-wrap: wrap; }
+.rows { display: flex; flex-direction: column; gap: 3px; }
+.rowEdit { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; gap: 4px; padding: 1px; border-radius: var(--radius); }
+.rowEdit[data-over="true"] { outline: 1px dashed var(--accent); }
+.rowEdit[draggable="true"] { cursor: grab; }
+.rowBad { outline: 1px solid var(--danger); }
+.subtotal { display: flex; flex-direction: column; gap: 4px; border: 1px dashed var(--border); border-radius: var(--radius); padding: 4px 6px; }
+.members { display: flex; flex-wrap: wrap; gap: 2px 10px; }
+.members label { display: flex; align-items: center; gap: 4px; }
+.metric { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 6px; }
+.four { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 8px; }
+.head { margin: 0; font-family: var(--font-brand); font-weight: 600; }
+.empty { color: var(--text-faint); margin: 24px 8px; text-align: center; }
+.sampleTable th { text-align: right; }
+.sampleTable th:first-child { text-align: left; }
+.sampleTable td { text-align: right; }
+.sampleTable td:first-child { text-align: left; }
+.sampleTable tr[data-type="subtotal"] td { font-weight: 600; background: var(--bg-hover); }
+.sampleTable tr[data-type="total"] td { font-weight: 700; border-top: 1px solid var(--border-strong); }
+.sampleTable th[data-group="true"] { text-align: center; color: var(--text); }
+.sectionTitle { margin: 6px 0 2px; font-family: var(--font-brand); font-weight: 600; color: var(--text-dim); font-size: 12px; }
+.footer { display: flex; gap: 8px; align-items: center; flex: none; padding: 8px 12px 10px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.grow { flex: 1; min-width: 0; }
+.ok { color: var(--ok, var(--text-dim)); margin: 0; }
+@media (max-width: 900px) { .layout { grid-template-columns: 170px minmax(0, 1fr); overflow: auto; } .sample { grid-column: 1 / -1; } }

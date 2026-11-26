@@ -5,7 +5,7 @@
  * job `resources.report` (`save: false` — the preview, nothing is written, it works in a project open for reading), follows it (the stages,
  * «Отменить») and answers with the text of the result; the window shows the same run. The window does everything through the registry
  * (the log, the notice, the question of the assistant). The other commands (`resources.curve`, `.export`, `.delete`, `.drill`, `.compare`) —
- * `otherCommands.ts`; `resources.templates` waits for its window (20.14). One app at a time (the tests create several): `bindResources`
+ * `otherCommands.ts`; `resources.templates` — `bindTemplates.ts` (20.14). One app at a time (the tests create several): `bindResources`
  * answers the function that unbinds the listeners.
  */
 import { createElement, type ReactNode } from "react";
@@ -19,11 +19,14 @@ import { projectStore } from "../projects/state";
 import { loadReportJob, refusalOf, startReport, waitJobEnd, type Refusal } from "./api";
 import { argsOfForm, formOfArgs, issueOfRefusal, paramsOfForm, type Args } from "./form";
 import { summaryText } from "./format";
+import { bindTemplates } from "./bindTemplates";
 import { bindOtherCommands } from "./otherCommands";
 import { ReportWindow } from "./ReportWindow";
 import { beginRun, currentForm, currentRun, ensureDefaults, formForModel, isRunning, loadReports, loadTemplates, modelFields, patchRun, resetResources, resourcesEvent, resourcesStore, RESOURCES_WINDOW, setForm, setIssue, TITLE } from "./state";
 
-export const reportTitle = (model: string | null): string => (model ? `${TITLE} · ${model}` : TITLE);
+export { renderTemplatesWindow } from "./bindTemplates"; // the window «Шаблоны форм отчёта» (20.14)
+
+export const reportTitle =(model: string | null): string => (model ? `${TITLE} · ${model}` : TITLE);
 
 /** The window «Отчёт по ресурсам», if open. */
 export const windowOfReport = (): string | null => windowStore.get().windows.find((w) => w.kind === RESOURCES_WINDOW)?.id ?? null;
@@ -149,6 +152,7 @@ export function bindResources(app: App): () => void {
     (ctx) => needProject(ctx) ?? (blocksStore.get().loaded && !blocksStore.get().list.length ? "В проекте нет блочных моделей" : null),
   );
   bindOtherCommands(app);
+  bindTemplates(app);
   // the report belongs to the project: another project — a clean window and the lists read again
   let uid: string | null = projectStore.get().current?.uid ?? null;
   if (uid) void loadReports();

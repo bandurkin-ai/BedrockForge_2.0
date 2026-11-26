@@ -17,6 +17,7 @@ import { api, CoreError } from "../../shell/api";
 import type { Rule } from "../blocks/filters/constructor";
 import { startedOf, waitJob, type Started } from "../qaqc/setupApi";
 import { obj, num, readCompare, readDrill, readListRow, readReportResult, readTemplateRow, str, type CompareAnswer, type DrillAnswer, type ReportListRow, type ReportResult, type TemplateRow } from "./answers";
+import { readTemplate, type TemplateBody } from "./templates";
 
 export type { Started };
 export { refusalOf, type Refusal } from "../blocks/report/api";
@@ -179,6 +180,26 @@ export async function deleteReport(id: number): Promise<void> {
 export async function listTemplates(): Promise<TemplateRow[]> {
   const r = obj(await api.get("/resources/templates"));
   return (Array.isArray(r.templates) ? r.templates : []).map(readTemplateRow).filter((x): x is TemplateRow => x !== null);
+}
+
+/** `GET /resources/templates/{id}`: the whole template (404 `template_not_found`); the editor of 20.14 reads it. */
+export async function loadTemplate(id: string): Promise<TemplateBody> {
+  const t = readTemplate(await api.get(`/resources/templates/${encodeURIComponent(id)}`));
+  if (!t) throw new CoreError(0, "bad_answer", "Ядро вернуло шаблон без строк.", "Обновите программу.");
+  return t;
+}
+
+/** `PUT /resources/templates/{id}` `{template, expected_version?}` → `{id, version}`; a new template — without `expected_version`; 409 `version_conflict {version}`, 422 `bad_param {param}`, 423. */
+export async function putTemplate(id: string, template: Record<string, unknown>, expected?: number | null): Promise<{ id: string; version: number }> {
+  const body: Record<string, unknown> = { template };
+  if (expected !== undefined && expected !== null) body.expected_version = expected;
+  const r = obj(await api.put(`/resources/templates/${encodeURIComponent(id)}`, body));
+  return { id: str(r.id) ?? id, version: num(r.version) ?? 1 };
+}
+
+/** `DELETE /resources/templates/{id}?expected_version=`: a template of the user (the two of the box — 422); 409 `version_conflict`. */
+export async function deleteTemplate(id: string, expected: number): Promise<void> {
+  await api.del(`/resources/templates/${encodeURIComponent(id)}?expected_version=${expected}`);
 }
 
 // ---- export, drill, compare ----
