@@ -13,6 +13,7 @@ import { PropertiesPanel } from "./PropertiesPanel";
 import { useStore } from "./useStore";
 import { BOTTOM_TITLES, type BottomTab } from "./workspace";
 import css from "./Shell.module.css";
+import { ChatPanel } from "../modules/assistant/ChatPanel";
 
 export function BottomDock() {
   const app = useApp();
@@ -56,7 +57,7 @@ export function RightDock() {
         {tab === "properties" ? (
           <PropertiesPanel />
         ) : (
-          <div className={css.empty}>Ассистент Claude появится на этапе Э23. Без интернета ассистент недоступен, остальное работает.</div>
+          <ChatPanel />
         )}
       </div>
     </aside>
