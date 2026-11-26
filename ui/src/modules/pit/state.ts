@@ -13,12 +13,24 @@ import { fieldsOf, type FieldInfo } from "../blocks/report/state";
 import { projectStore } from "../projects/state";
 import { loadDefaults, listScenarios, loadScenario, validateParams, type Refusal, type Started } from "./api";
 import type { Defaults, ModelDefaults, RunSummary, ScenarioDetail, ScenarioRow, Validate } from "./answers";
+import type { CheckResult } from "./checkModel";
 import { EMPTY_ECONOMICS, EMPTY_SCENARIO, type EconomicsForm, type FormIssue, type ScenarioForm } from "./forms";
+import { EMPTY_CALENDAR, type CalendarForm } from "./formsCalendar";
+import { EMPTY_ROCKS, type RocksForm } from "./formsRocks";
+import { EMPTY_SLOPES, type SlopesForm } from "./formsSlopes";
 
 export const PIT_SCENARIO_WINDOW = "pit-scenario";
 export const PIT_ECONOMICS_WINDOW = "pit-economics";
 export const SCENARIO_TITLE = "Сценарий карьера";
 export const ECONOMICS_TITLE = "Экономика карьера";
+export const PIT_ROCKS_WINDOW = "pit-rocks";
+export const PIT_SLOPES_WINDOW = "pit-slopes";
+export const PIT_CALENDAR_WINDOW = "pit-calendar";
+export const PIT_CHECK_WINDOW = "pit-check";
+export const ROCKS_TITLE = "Породы карьера";
+export const SLOPES_TITLE = "Углы бортов карьера";
+export const CALENDAR_TITLE = "Календарь карьера";
+export const CHECK_TITLE = "Проверка шаблона карьера";
 
 export type Phase = "idle" | "running" | "done" | "failed" | "cancelled";
 
@@ -32,6 +44,18 @@ export interface PitRun {
   result: RunSummary | null;
   error: Refusal | null;
 }
+
+/** The check of the template (`pit.check`) the window «Проверка шаблона» shows; `seq` — a check that was overtaken does not write its end. */
+export interface PitCheck {
+  phase: "idle" | "running" | "done" | "failed";
+  seq: number;
+  scenarioId: number | null;
+  scenarioName: string;
+  result: CheckResult | null;
+  error: Refusal | null;
+}
+
+export const IDLE_CHECK: PitCheck = { phase: "idle", seq: 0, scenarioId: null, scenarioName: "", result: null, error: null };
 
 export const IDLE: PitRun = { phase: "idle", seq: 0, scenarioId: null, scenarioName: "", job: null, result: null, error: null };
 
@@ -50,10 +74,17 @@ export interface PitState {
   scenarioIssue: FormIssue | null;
   econForm: EconomicsForm;
   econIssue: FormIssue | null;
+  rocksForm: RocksForm;
+  rocksIssue: FormIssue | null;
+  slopesForm: SlopesForm;
+  slopesIssue: FormIssue | null;
+  calendarForm: CalendarForm;
+  calendarIssue: FormIssue | null;
+  check: PitCheck;
   run: PitRun;
 }
 
-const EMPTY: PitState = { defaults: null, models: {}, scenarios: [], scenariosLoaded: false, currentId: null, scenario: null, validate: null, scenarioForm: EMPTY_SCENARIO, scenarioIssue: null, econForm: EMPTY_ECONOMICS, econIssue: null, run: IDLE };
+const EMPTY: PitState = { defaults: null, models: {}, scenarios: [], scenariosLoaded: false, currentId: null, scenario: null, validate: null, scenarioForm: EMPTY_SCENARIO, scenarioIssue: null, econForm: EMPTY_ECONOMICS, econIssue: null, rocksForm: EMPTY_ROCKS, rocksIssue: null, slopesForm: EMPTY_SLOPES, slopesIssue: null, calendarForm: EMPTY_CALENDAR, calendarIssue: null, check: IDLE_CHECK, run: IDLE };
 
 export const pitStore = new Store<PitState>(EMPTY);
 
@@ -69,6 +100,22 @@ export function setEconForm(patch: Partial<EconomicsForm>): void {
   pitStore.set((s) => ({ econForm: { ...s.econForm, ...patch }, econIssue: null }));
 }
 
+export function setRocksForm(patch: Partial<RocksForm> | ((f: RocksForm) => RocksForm)): void {
+  pitStore.set((s) => ({ rocksForm: typeof patch === "function" ? patch(s.rocksForm) : { ...s.rocksForm, ...patch }, rocksIssue: null }));
+}
+
+export function setSlopesForm(patch: Partial<SlopesForm> | ((f: SlopesForm) => SlopesForm)): void {
+  pitStore.set((s) => ({ slopesForm: typeof patch === "function" ? patch(s.slopesForm) : { ...s.slopesForm, ...patch }, slopesIssue: null }));
+}
+
+export function setCalendarForm(patch: Partial<CalendarForm>): void {
+  pitStore.set((s) => ({ calendarForm: { ...s.calendarForm, ...patch }, calendarIssue: null }));
+}
+
+export const setRocksIssue = (i: FormIssue | null): void => pitStore.set({ rocksIssue: i });
+export const setSlopesIssue = (i: FormIssue | null): void => pitStore.set({ slopesIssue: i });
+export const setCalendarIssue = (i: FormIssue | null): void => pitStore.set({ calendarIssue: i });
+
 export const setScenarioIssue = (i: FormIssue | null): void => pitStore.set({ scenarioIssue: i });
 export const setEconIssue = (i: FormIssue | null): void => pitStore.set({ econIssue: i });
 
@@ -76,7 +123,7 @@ export const setEconIssue = (i: FormIssue | null): void => pitStore.set({ econIs
 export function resetPit(): void {
   detailSeq++;
   listSeq++;
-  pitStore.set((s) => ({ ...EMPTY, defaults: s.defaults, run: { ...IDLE, seq: s.run.seq + 1 } }));
+  pitStore.set((s) => ({ ...EMPTY, defaults: s.defaults, run: { ...IDLE, seq: s.run.seq + 1 }, check: { ...IDLE_CHECK, seq: s.check.seq + 1 } }));
 }
 
 /** The fields of the model as the windows list them: the details (labels, statistics) when read, else the list of the models. */
@@ -98,6 +145,22 @@ export function beginRun(scenarioId: number, scenarioName: string): number {
 export function patchRun(seq: number, patch: Partial<PitRun>): boolean {
   if (pitStore.get().run.seq !== seq) return false;
   pitStore.set((s) => ({ run: { ...s.run, ...patch } }));
+  return true;
+}
+
+// ---- the check of the template ----
+
+/** A check begins: the old result goes (a result of another scenario must not stand beside the new one). */
+export function beginCheck(scenarioId: number, scenarioName: string): number {
+  const seq = pitStore.get().check.seq + 1;
+  pitStore.set({ check: { phase: "running", seq, scenarioId, scenarioName, result: null, error: null } });
+  return seq;
+}
+
+/** Writes into the check `seq` (a newer check is not touched). */
+export function patchCheck(seq: number, patch: Partial<PitCheck>): boolean {
+  if (pitStore.get().check.seq !== seq) return false;
+  pitStore.set((s) => ({ check: { ...s.check, ...patch } }));
   return true;
 }
 

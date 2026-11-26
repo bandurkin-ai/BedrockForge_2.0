@@ -24,3 +24,24 @@
 .ready { margin: 0; font-variant-numeric: tabular-nums; }
 .ready[data-ready="true"] { color: var(--text); }
 .ready[data-ready="false"] { color: var(--warn); }
+
+/* 21.17: the rocks (the rules, the table of the types), the slopes (the sectors, the domains), the check (the chart, the legend) */
+.rules { display: flex; flex-direction: column; gap: 6px; }
+.rule { display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); padding: 4px 6px; }
+.ruleHead { display: flex; align-items: center; gap: 4px; }
+.ruleHead input { flex: 1; min-width: 0; }
+.ruleNo { color: var(--text-faint); min-width: 18px; text-align: right; font-variant-numeric: tabular-nums; }
+.rocks { display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); padding: 4px; }
+.rock { display: grid; align-items: center; gap: 4px 6px; }
+.typeName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.add { display: flex; gap: 6px; align-items: center; }
+.add input { flex: 1; min-width: 0; }
+.sectors { display: flex; flex-direction: column; gap: 4px; }
+.sector { display: grid; grid-template-columns: 24px minmax(70px, 1fr) minmax(70px, 1fr) 24px; align-items: center; gap: 4px 6px; max-width: 360px; }
+.domains { display: flex; flex-direction: column; gap: 6px; max-height: 300px; overflow: auto; }
+.domain { display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 6px; }
+.chartBox { display: flex; flex-direction: column; gap: 6px; }
+.legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 12px; }
+.legendItem { display: inline-flex; align-items: center; gap: 4px; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
+.legendItem .swatch { margin-right: 0; }
