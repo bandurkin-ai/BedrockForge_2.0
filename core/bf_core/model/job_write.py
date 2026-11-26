@@ -29,6 +29,7 @@ from bf_core.db.schema import objects
 from . import store as st
 from . import store_base as sb
 from . import store_blobs as bl
+from . import store_lines
 from .job_stages import S_WRITE, Built, Part, Progress
 
 if TYPE_CHECKING:
@@ -50,18 +51,28 @@ AT_STAGE, AT_COMMIT = 0.94, 0.99
 class Files:
     blobs: dict[str, bl.Staged] = field(default_factory=dict)
     wireframes: list[tuple[Output, str, StagedWireframe]] = field(default_factory=list)
+    lines: store_lines.Staged = field(default_factory=store_lines.Staged)
 
     def discard(self) -> None:
         bl.discard(self.blobs)
         for _o, _name, staged in self.wireframes:
             staged.discard()
+        self.lines.discard()
 
 
 def output_name(model: str, spec: ModelSpec, o: Output) -> str:
-    """«‹модель› · ‹группа›», «… · поверхность», «‹модель› · Прочее»; a shell — «… · ‹порог›» (e19-api §2)."""
+    """«‹модель› · ‹группа›», «… · поверхность», «‹модель› · Прочее»; a shell — «… · ‹порог›»; a wing — «…, крыло ‹N›»,
+    the space of a wing of a fault — «… (область)»; a vein of a system — «‹модель› · ‹система› · ‹жила›», its common
+    body — «… · общее тело» (e19-api §2, §10)."""
     if o.group is None:
         return f"{model} · {o.name}"
     group = spec.group(int(o.group)).name if any(g.id == o.group for g in spec.groups) else o.name
+    if o.stats.get("code") is not None:
+        return f"{model} · {group} · {o.name}"
+    if o.stats.get("common"):
+        return f"{model} · {group} · общее тело"
+    if o.wing is not None:
+        group = f"{group}, крыло {o.wing}" + (" (область)" if o.stats.get("region") else "")
     if o.kind == "surface":
         return f"{model} · {group} · поверхность"
     if o.threshold is not None:
@@ -69,10 +80,39 @@ def output_name(model: str, spec: ModelSpec, o: Output) -> str:
     return f"{model} · {group}"
 
 
-def _points_columns(points: Points) -> dict[str, Any]:
-    return {"x": points.xyz[:, 0], "y": points.xyz[:, 1], "z": points.xyz[:, 2], "f": points.f, "kind": points.kind,
-            "group": points.group, "wing": points.wing, "src": points.src, "from": points.span[:, 0],
-            "to": points.span[:, 1], "vertex": points.vertex}  # fmt: skip
+def rows_of_parts(points: Points, parts: list[Part]) -> tuple[Any, Any] | None:
+    """(the rows of `points`, the wing of every row) of the table `implicit_points` when a field was solved from some
+    of the rows of its group or lies on a wing (the stack and the faults, `job_stack`); None — the table is the load
+    as it is. The rows go by (group, wing) as the fields do, a field of several thresholds (a shell) has its rows
+    once, a point on a fault is in the rows of both wings."""
+    if not any(p.rows is not None or p.wing >= 0 for p in parts):
+        return None
+    rows: list[Any] = []
+    wings: list[Any] = []
+    seen: set[tuple[int, int]] = set()
+    for p in sorted(parts, key=lambda p: (p.group, p.wing)):
+        if (p.group, p.wing) in seen:
+            continue
+        seen.add((p.group, p.wing))
+        r = np.flatnonzero(points.group == p.group) if p.rows is None else np.asarray(p.rows, dtype=np.int64)
+        rows.append(r)
+        wings.append(np.full(len(r), p.wing, dtype=np.int8))
+    return (np.concatenate(rows) if rows else np.zeros(0, np.int64),
+            np.concatenate(wings) if wings else np.zeros(0, np.int8))
+
+
+def _points_columns(points: Points, parts: list[Part] | None = None) -> dict[str, Any]:
+    cols: dict[str, Any] = {
+        "x": points.xyz[:, 0], "y": points.xyz[:, 1], "z": points.xyz[:, 2], "f": points.f, "kind": points.kind,
+        "group": points.group, "wing": points.wing, "src": points.src, "from": points.span[:, 0],
+        "to": points.span[:, 1], "vertex": points.vertex}  # fmt: skip
+    picked = None if parts is None else rows_of_parts(points, parts)
+    if picked is None:
+        return cols
+    rows, wings = picked
+    out = {k: np.ascontiguousarray(v[rows]) for k, v in cols.items()}
+    out["wing"] = wings
+    return out
 
 
 def _field_columns(parts: list[Part]) -> tuple[dict[str, Any], Any]:
@@ -134,7 +174,7 @@ def stage_files(store: BlobStore, spec: ModelSpec, model_name: str, points: Poin
     try:
         prog(AT_STAGE, f"{S_WRITE}: файлы модели")
         gids = [int(g.id or 0) for g in spec.groups]
-        files.blobs[sb.ROLE_POINTS] = bl.stage_points(store, _points_columns(points), groups=gids,
+        files.blobs[sb.ROLE_POINTS] = bl.stage_points(store, _points_columns(points, built.parts), groups=gids,
                                                       sources=points.sources)  # fmt: skip
         patches, solution = _field_columns(built.parts)
         files.blobs[sb.ROLE_PATCHES] = bl.stage_patches(store, patches)
@@ -145,6 +185,7 @@ def stage_files(store: BlobStore, spec: ModelSpec, model_name: str, points: Poin
                               AT_STAGE + (AT_COMMIT - AT_STAGE) * (0.2 + 0.8 * (i + 1) / n))
             staged = wf.stage_wireframe(store, o.vertices, o.triangles, progress=_progress(win))
             files.wireframes.append((o, output_name(model_name, spec, o), staged))
+        files.lines = store_lines.stage(store, model_name, built.lines, lambda: prog(None, None))
     except BaseException:
         files.discard()
         raise
@@ -156,7 +197,13 @@ def stage_files(store: BlobStore, spec: ModelSpec, model_name: str, points: Poin
 
 def _key(entry: Mapping[str, Any]) -> tuple[Any, ...]:
     th = entry.get("threshold")
-    return (entry.get("kind"), entry.get("group"), entry.get("wing"), None if th is None else round(float(th), 12))
+    return (entry.get("kind"), entry.get("group"), entry.get("wing"), None if th is None else round(float(th), 12),
+            entry.get("code"), bool(entry.get("common")))  # fmt: skip
+
+
+def _extra(o: Output) -> dict[str, Any]:
+    """What an output of Э19б tells besides its group and wing (`store.EXTRA_KEYS`)."""
+    return {"code": o.stats.get("code"), "common": bool(o.stats.get("common")), "region": bool(o.stats.get("region"))}
 
 
 @dataclass
@@ -167,6 +214,8 @@ class Done:
     deleted: list[int]
     replaced: list[int]
     created: list[int]
+    line_layers: list[int] = field(default_factory=list)  # the layers of strings written
+    lines_gone: list[int] = field(default_factory=list)  # the layers of the last run that went
 
 
 def commit(engine: sa.Engine, store: BlobStore, model_id: int, files: Files, *, spec: ModelSpec, prep: Prepared,
@@ -196,17 +245,19 @@ def commit(engine: sa.Engine, store: BlobStore, model_id: int, files: Files, *, 
         replaced: list[int] = []
         created: list[int] = []
         for o, name, staged in files.wireframes:
-            entry_in = {"kind": o.kind, "group": o.group, "wing": o.wing, "threshold": o.threshold}
+            extra = _extra(o)
+            entry_in = {"kind": o.kind, "group": o.group, "wing": o.wing, "threshold": o.threshold, **extra}
             same = old.get(_key(entry_in))
             if same:
                 wid = same.pop(0)
                 entry, gone = st.replace_output(conn, store, staged, model_id, wid, name=name, kind=o.kind,
-                                                group=o.group, wing=o.wing, threshold=o.threshold)  # fmt: skip
+                                                group=o.group, wing=o.wing, threshold=o.threshold,
+                                                extra=extra)  # fmt: skip
                 removed.append(gone)
                 replaced.append(wid)
             else:
                 entry = st.commit_output(conn, store, staged, model_id, name=name, kind=o.kind, group=o.group,
-                                         wing=o.wing, threshold=o.threshold)  # fmt: skip
+                                         wing=o.wing, threshold=o.threshold, extra=extra)  # fmt: skip
                 created.append(int(entry["wireframe_id"]))
             outputs.append(entry)
         deleted: list[int] = []
@@ -216,9 +267,15 @@ def commit(engine: sa.Engine, store: BlobStore, model_id: int, files: Files, *, 
                 forget_surface(conn, wid)
                 lineage.forget(conn, lineage.Node("wireframe", wid))
                 deleted.append(wid)
+        lines_gone = [int(e["line_layer_id"]) for e in meta.get("outputs") or []
+                      if isinstance(e.get("line_layer_id"), int)]  # fmt: skip
+        store_lines.drop(conn, model_id)
+        line_entries = store_lines.commit(conn, store, model_id, str(row.name), files.lines)
+        outputs.extend(line_entries)
         st.record_run(conn, model_id, spec, last_run, prep.inputs, outputs=outputs, stats=stats, extent=prep.extent)
         version = int(sb.stored(conn, model_id).version)
-    return Done(version, outputs, removed, deleted, replaced, created)
+    layers = [int(e["line_layer_id"]) for e in line_entries]
+    return Done(version, outputs, removed, deleted, replaced, created, layers, lines_gone)
 
 
 def drop_levels(folder: Path, removed: list[dict[str, Any]]) -> None:
@@ -242,6 +299,10 @@ def events(model_id: int, done: Done | None) -> list[list[Any]]:
             out.append(["objects.changed", {"kind": "wireframe", "id": wid}])
         for wid in done.deleted:
             out.append(["objects.changed", {"kind": "wireframe", "id": wid, "deleted": True}])
+        for lid in done.lines_gone:
+            out.append(["objects.changed", {"kind": "line_layer", "id": lid, "deleted": True}])
+        for lid in done.line_layers:
+            out.append(["objects.changed", {"kind": "line_layer", "id": lid}])
     return out
 
 

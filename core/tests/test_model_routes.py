@@ -79,7 +79,7 @@ def test_row_crud_and_events(im) -> None:  # type: ignore[no-untyped-def]  # noq
     # `groups` is the whole list: the order, the deletion
     ok(im.put(f"{IMP}/models/{made['id']}", json={"expected_version": 2, "groups": [meta["groups"][1]]}))
     assert [g["name"] for g in get(im, made["id"])["meta"]["groups"]] == ["SS"]
-    assert ok(im.delete(f"{IMP}/models/{made['id']}")) == {"deleted": made["id"], "wireframes": []}
+    assert ok(im.delete(f"{IMP}/models/{made['id']}")) == {"deleted": made["id"], "wireframes": [], "line_layers": []}
     assert events(im)[-1] == {"kind": "implicit_model", "id": made["id"], "deleted": True}
     refused(im.get(f"{IMP}/models/{made['id']}"), 404, "model_not_found")
     refused(im.delete(f"{IMP}/models/{made['id']}"), 404, "model_not_found")

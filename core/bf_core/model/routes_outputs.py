@@ -2,12 +2,14 @@
 §5; подшаг 19.16):
 
   * `GET /models/{id}/outputs` → {outputs: [{wireframe_id, kind, group, wing, threshold, name, volume, area,
-    triangles}]} — the wireframes the last run wrote (those that are gone are left out); 404 `model_not_found`.
+    triangles}]} — the wireframes the last run wrote (those that are gone are left out) and, Э19б, the layers of
+    strings (`{line_layer_id, kind: "line", group, wing, threshold, name, lines, length}`); 404 `model_not_found`.
   * `POST /models/{id}/to_wireframe` {wireframe_id, name?} → {wireframe_id, name} — a copy of an output without a
     parent (it stays when the model goes, the levels of detail and the files are shared with the output), with the
     model as its input in the graph; 404 `wireframe_not_found` (not an output of this model), 409 `model_building`,
     423 `project_read_only`.
-  * `DELETE /models/{id}` → {deleted, wireframes: [id]} — the model, its outputs, its files and its cache
+  * `DELETE /models/{id}` → {deleted, wireframes: [id], line_layers: [id]} — the model, its outputs (the layers of
+    strings of the crossing of the veins too, Э19б), its files and its cache
     `cache/implicit/<id>`; 409 `model_building`, 409 `in_use {usage}` («Где используется» — the objects that refer to an
     output: nothing is deleted); the window asks `lineage.impact` first (askImpact). Publishes `implicit.changed
     {deleted}` and `objects.changed {kind: "wireframe", id, deleted}` of every output.
@@ -37,7 +39,7 @@ def outputs(svc: Svc, model_id: int) -> dict[str, Any]:
     project = svc.require_current()
     with dialect.read_tx(project.engine) as conn:
         row = sb.stored(conn, model_id)
-        return {"outputs": st.outputs_of(conn, dict(row.meta or {}))}
+        return {"outputs": st.outputs_of(conn, dict(row.meta or {}), lines=True)}
 
 
 # --- «В каркас» -------------------------------------------------------------------------------------------------------
@@ -136,4 +138,7 @@ def delete_model(svc: Svc, request: Request, model_id: int) -> dict[str, Any]:
     publish(request, model_id, deleted=True)
     for wid in out["wireframes"]:
         publish_wireframe(request, wid, deleted=True)
-    return {"deleted": out["deleted"], "wireframes": out["wireframes"]}
+    for kind, ids in (("line_layer", out["line_layers"]), ("line_file", out["line_files"])):
+        for i in ids:
+            request.app.state.core.events.publish("objects.changed", {"kind": kind, "id": i, "deleted": True})
+    return {"deleted": out["deleted"], "wireframes": out["wireframes"], "line_layers": out["line_layers"]}

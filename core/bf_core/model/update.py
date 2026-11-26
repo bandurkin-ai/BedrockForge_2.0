@@ -85,6 +85,8 @@ class Record:
     wing: int = -1
     reused: int = 0  # the patches taken from the cache
     matrices: list[F8] | None = None  # A_j of a structural trend, one per patch (None — global A or none)
+    xyz: F8 | None = None  # the points the field was solved from and their values (references, not copies): the job
+    f: F8 | None = None  # finds their rows in the table of the data when the stack or a fault left some out
 
 
 class PatchCache:
@@ -272,7 +274,8 @@ class CachingSolver:
         done = [s for s in out if s is not None]
         assert len(done) == m
         mats = None if matrices is None else [np.array(a, dtype=np.float64) for a in matrices]
-        self.records.append(Record(patches, hashes, done, int(pts.shape[0]), None, -1, m - len(miss), mats))
+        self.records.append(Record(patches, hashes, done, int(pts.shape[0]), None, -1, m - len(miss), mats, pts,
+                                   np.asarray(values, dtype=np.float64)))
         return done
 
     def last(self) -> Record | None:

@@ -5,8 +5,10 @@ end — one file, `core/tests/data/implicit/contract_answers.json`, with the sam
 
 Regenerate: `BF_REGEN_IMPLICIT=1 uv run pytest -q tests/test_implicit_contract.py` — the keys of this test replace
 the samples, the others stay as they are: `defaults`, `bad_param`, `refusals` are written by `spec.py`
-(`test_implicit_spec.py`); the structural trend (19.8) and the keys `*_b` (Э19б) are samples of the contract until
-their routes write them. The checks, the support, the comparison with the holes and `drillholes.from_model` (19.25)
+(`test_implicit_spec.py`); the structural trend (19.8) and the keys `*_b` (the planned holes) are samples of the
+contract until their routes write them. The keys of Э19б (`relations`, `fault_post`, `group_faults`,
+`vein_system_post`, `build_stack_result`, `vein_system_result`, …) are real answers since 19.36 (`stack_b` below). The
+checks, the support, the comparison with the holes and `drillholes.from_model` (19.25)
 are the real answers: the check by `sort=source` (the order of the residuals is a machine's), the vector of the
 support is cut to its first 12 numbers (`support_one`) or given as its bytes (`support_f4`). Without the variable the
 test checks that the core still answers what the file holds; the times, the fingerprints, the versions of the
@@ -29,24 +31,32 @@ from bf_core.db.schema import object_refs
 from tests import modapi_world as W
 from tests.estapi_util import finish, read_only
 from tests.modapi_world import IMP, body, im, reg  # noqa: F401 - the fixtures
+from tests.stack_world import fault_layers, fault_manual, veins_lithology
 from tests.test_import_job import API
 
 DATA = Path(__file__).parent / "data" / "implicit" / "contract_answers.json"
 REGEN = os.environ.get("BF_REGEN_IMPLICIT") == "1"
 NOTE = ("ЧАСТЬ КЛЮЧЕЙ — ответы настоящего ядра (BF_REGEN_IMPLICIT=1 uv run pytest -q tests/test_implicit_contract.py, "
-        "19.16, фикстура tests/modapi_world.py), части ключей — ЧЕРНОВИК форм (docs/progress/e19-api.md §5–§10): "
-        "trend_*, build_iso_error и ключи *_b пишут подшаги 19.8, "
-        "19.32+; defaults, bad_param, refusals пишет spec.py (BF_REGEN_IMPLICIT=1 uv run pytest -q "
-        "tests/test_implicit_spec.py). Интерфейс принимается только на настоящих ответах.")  # fmt: skip
+        "19.16, 19.36, фикстура tests/modapi_world.py), части ключей — ЧЕРНОВИК форм (docs/progress/e19-api.md "
+        "§5–§10): trend_*, build_iso_error и ключи *_b (проектные скважины) пишут подшаги 19.8, 19.37+; "
+        "ключи Э19б (relations, fault_*, group_faults*, vein_system_*, build_stack_*, model_stack, model_veins, "
+        "delete_veins) — настоящие ответы 19.36; defaults, bad_param, refusals пишет spec.py "
+        "(BF_REGEN_IMPLICIT=1 uv run pytest -q tests/test_implicit_spec.py). Интерфейс принимается только на "
+        "настоящих ответах.")  # fmt: skip
 #: the keys this test writes, in the order of the file (the samples of the others follow)
 KEYS = ("defaults", "bad_param", "refusals", "models", "model_post", "name_taken", "model_not_found",
         "model_put", "model_put_conflict", "group_post", "group_put", "group_delete", "group_not_found", "preview",
-        "preview_group", "preview_no_contacts", "not_ready", "build_submit", "model_building", "build_result", "model",
+        "preview_group", "preview_no_contacts", "build_submit", "model_building", "build_result", "model",
         "outputs", "model_stale", "update_submit", "update_result", "to_wireframe", "check", "check_csv", "check_bad",
         "support", "support_one", "support_f4", "support_mesh", "support_bad", "compare_holes", "compare_bad",
         "from_model_submit", "from_model_result", "from_model_exists", "from_model_bad", "build_failed", "model_error",
         "delete_conflict",
-        "delete", "read_only")  # fmt: skip
+        "delete", "read_only", "relations", "relations_bad", "fault_post", "fault_bad", "group_faults",
+        "group_faults_bad", "build_stack_submit", "build_stack_result", "model_stack", "update_stack_result",
+        "vein_system_post", "vein_system_bad", "vein_system_result", "model_veins", "outputs_veins",
+        "delete_veins")  # fmt: skip
+#: the samples that stood for answers the core now gives (or no more gives): dropped when the file is written
+DROPPED = ("not_ready", "relations_b", "fault_post_b", "vein_system_result_b")
 MINE = tuple(k for k in KEYS if k not in ("defaults", "bad_param", "refusals"))
 SKIP = ("versions", "seconds", "stages", "fp", "sha", "token", "params", "created_at", "updated_at", "at", "job")
 LOOSE = (
@@ -109,10 +119,6 @@ def build(c: Any) -> dict[str, Any]:  # noqa: PLR0915 - one scene, told in order
     out["preview_group"] = answer(c.post(url, json={"group": g, "limit": 5}))
     out["preview_no_contacts"] = answer(c.post(url, json={"group": {"name": "Призрак", "type": "domain",
                                                                     "codes": ["НЕТ"]}}))  # fmt: skip
-    fault = {"name": "Разлом", "type": "fault", "codes": ["VN"]}
-    added = c.post(f"{IMP}/models/{mid}/groups", json={"expected_version": 5, "group": fault})
-    out["not_ready"] = answer(c.post(f"{IMP}/models/{mid}/build", json={"expected_version": 6}))
-    c.delete(f"{IMP}/models/{mid}/groups/{added.json()['group']['id']}", params={"expected_version": 6})
     # the run
     run = c.post(f"{IMP}/models/{mid}/build", json={"expected_version": version(c, mid), "threads": 2})
     out["build_submit"] = {"status": 200, "body": {"source": "project", "id": run.json()["id"]}}
@@ -150,7 +156,51 @@ def build(c: Any) -> dict[str, Any]:  # noqa: PLR0915 - one scene, told in order
     back = read_only(c)
     out["read_only"] = answer(c.post(f"{IMP}/models", json=body(w, name="Только просмотр")))
     back()
+    stack_b(c, out)
     return json.loads(json.dumps(out, ensure_ascii=False))  # type: ignore[no-any-return]
+
+
+def stack_b(c: Any, out: dict[str, Any]) -> None:
+    """Э19б (19.36): the relations and the order of the stack, a fault with its hand data, the faults of a group, the
+    run of a model with the wings (the job at its end, the model, the update), a system of two veins that cross (the
+    lines of the crossing are a layer of strings), the deletion that takes it."""
+    w = c.w
+    small = {"h": 10.0, "pou": {"n_patch": 300, "n_min": 100, "delta": 0.25}}
+    mid = c.post(f"{IMP}/models", json=body(w, "INT", "ALV", "SS", "SH", name="Стек и разлом", **small)).json()["id"]
+    url = f"{IMP}/models/{mid}"
+    out["relations"] = answer(c.put(f"{url}/relations", json={
+        "expected_version": 1, "order": [1, 2, 3, 4], "relations": {"1": "intrusion"}}))  # fmt: skip
+    out["relations_bad"] = answer(c.put(f"{url}/relations", json={"expected_version": 2,
+                                                                   "relations": {"2": "sideways"}}))  # fmt: skip
+    manual = [{"layer_id": x["layer_id"], "role": x["role"]} for x in fault_manual(fault_layers(w))]
+    fault = {"name": "Разлом", "type": "fault", "params": {"radius": None}}
+    out["fault_post"] = answer(c.post(f"{url}/faults", json={"expected_version": 2, "group": fault, "manual": manual}))
+    out["fault_bad"] = answer(c.post(f"{url}/faults", json={"expected_version": 3, "group": {"name": "Пустой"}}))
+    fid = out["fault_post"]["body"]["group"]["id"]
+    out["group_faults"] = answer(c.put(f"{url}/groups/3/faults", json={"expected_version": 3, "fault_ids": [fid]}))
+    out["group_faults_bad"] = answer(c.put(f"{url}/groups/3/faults", json={"expected_version": 4, "fault_ids": [4]}))
+    submit, result = job_answer(c, c.post(f"{url}/build", json={"expected_version": 4, "threads": 2}))
+    out["build_stack_submit"], out["build_stack_result"] = submit, result
+    out["model_stack"] = answer(c.get(url))
+    _, again = job_answer(c, c.post(f"{url}/update", json={"expected_version": 4, "threads": 2}))
+    out["update_stack_result"] = again
+    # the system of veins: the codes of the second vein are in a table of its own (the lithology with VN2)
+    table = c.w._table("Литология жил", "interval", veins_lithology(), "CODE", "text")  # noqa: SLF001
+    data = {"set_id": w.set_id, "table": str(table), "field": "CODE", "d_max": 30, "step": 5}
+    vid = c.post(f"{IMP}/models", json=body(w, "SS", name="Система жил", data=data, **small)).json()["id"]
+    veins = [{"code": "VN", "name": "Жила VN"}, {"code": "VN2", "name": "Жила VN2", "offset": 0.0, "t_min": 0.0}]
+    group = {"name": "Жилы", "type": "vein_system", "params": {"veins": veins}}
+    out["vein_system_post"] = answer(c.post(f"{IMP}/models/{vid}/vein_system", json={"expected_version": 1,
+                                                                                      "group": group}))  # fmt: skip
+    one = {"name": "Одна", "type": "vein_system", "params": {"veins": veins[:1]}}
+    out["vein_system_bad"] = answer(c.post(f"{IMP}/models/{vid}/vein_system", json={"expected_version": 2,
+                                                                                     "group": one}))  # fmt: skip
+    _, built = job_answer(c, c.post(f"{IMP}/models/{vid}/build", json={"expected_version": 2, "threads": 2}))
+    out["vein_system_result"] = built
+    out["model_veins"] = answer(c.get(f"{IMP}/models/{vid}"))
+    out["outputs_veins"] = answer(c.get(f"{IMP}/models/{vid}/outputs"))
+    out["delete_veins"] = answer(c.delete(f"{IMP}/models/{vid}"))
+    c.delete(url)
 
 
 def checks(c: Any, mid: int, out: dict[str, Any]) -> None:
@@ -237,7 +287,7 @@ def test_the_answers_are_what_the_core_answers(im) -> None:  # type: ignore[no-u
         merged: dict[str, Any] = {"_note": NOTE}
         for k in KEYS:
             merged[k] = built[k] if k in built else old[k]
-        merged.update({k: v for k, v in old.items() if k not in merged})  # the samples of the other substeps
+        merged.update({k: v for k, v in old.items() if k not in merged and k not in DROPPED})  # the other samples
         DATA.write_text(json.dumps(merged, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
         return
     for key in MINE:
