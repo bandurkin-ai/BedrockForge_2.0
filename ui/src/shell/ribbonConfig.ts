@@ -20,6 +20,7 @@ import { EXCHANGE_BUTTONS, EXCHANGE_GROUP_TITLE } from "../modules/blocks/export
 import { SETTINGS_BUTTONS } from "../modules/blocks/window/commands";
 import { CREATE_BUTTONS, CREATE_GROUP_TITLE, FIELD_BUTTONS as BUILD_FIELD_BUTTONS } from "../modules/blocks/build/commands";
 import { FIELD_BUTTONS, FIELD_GROUP_TITLE } from "../modules/blocks/fields/commands";
+import { RESOURCES_BUTTONS, RESOURCES_GROUP_TITLE } from "../modules/resources/commands";
 import { REPORT_BUTTONS } from "../modules/blocks/report/commands";
 import { CHART_BUTTONS, CHART_GROUP_TITLE } from "../modules/charts/commands";
 import { STATS_BUTTONS } from "../modules/stats/commands";
@@ -321,6 +322,7 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState, series: Partial
         { title: EXCHANGE_GROUP_TITLE, items: EXCHANGE_BUTTONS.map((b): RibbonItem => ({ ...b })) },
         { title: CREATE_GROUP_TITLE, items: CREATE_BUTTONS.map((b): RibbonItem => ({ ...b })) },
         { title: FIELD_GROUP_TITLE, items: [...FIELD_BUTTONS, ...BUILD_FIELD_BUTTONS, ...REPORT_BUTTONS].map((b): RibbonItem => ({ ...b })) },
+        { title: RESOURCES_GROUP_TITLE, items: RESOURCES_BUTTONS.map((b): RibbonItem => ({ ...b })) },
         {
           title: "Обслуживание",
           items: [{ command: "jobs.clear_finished", label: "Очистить выполненные задания", icon: "clear", hint: "Убрать из списка «Задания» готовые и отменённые задания с их журналами" }],
