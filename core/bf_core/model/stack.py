@@ -14,6 +14,11 @@ solution and the mask of the data of the stack. The groups of `spec.groups` go b
                               cut, not the surface of the older layer); the older body is the older minus the younger
     onlap        «Налегание»  the younger group lies on the older ones: it drops its data points BELOW the older surface
                               (f_older < 0); the younger body is the younger ∩ {f_older ≥ 0}, so the OLDER body wins
+    intrusion    «Интрузия»   (Д-31) the younger group is a closed body {f_I < 0} that replaces the volumes of ALL the
+                              older groups: every older group drops its data points strictly INSIDE the body
+                              (f_I < −tol; the contact on the surface of I is the contact of the older layer with I
+                              and stays); the body of I is subtracted from the older ones, and it is itself cut by the
+                              groups younger than I (their own relation decides how: «Согласно» / «Эрозия» — they win)
 
 The mask is by the VALUE of the field of the other group at the data point (`Fit.field`, the unbounded RBF), never by
 the wireframe: a point outside the boundary, or under a third body, is still on its side of the surface. The
@@ -23,9 +28,11 @@ contacts to that): a contact shared by two groups is not thrown out by the round
 The order of the solution is the order of the winners: a pair (younger i, older j) has the winner i for `conformable`
 / `erode` and j for `onlap`; the groups are solved, and the bodies are subtracted, in a topological order of these
 pairs (the smallest position first: the youngest). A group is masked by the groups that have been solved before it,
-so the field it looks at is never a field that needs it. A cycle is refused (`bad_relations`); the relations of one
-group are uniform towards all the older ones, so the carrier-by-carrier graph has none, but faults (19.33) and the
-intrusion (19.34) put their own edges into `precedence`.
+so the field it looks at is never a field that needs it. The intrusion is in front of the older groups (it wins them)
+and behind the younger ones that win it (their relation: `conformable` / `erode`), so a young cover that erodes the top
+of the intrusion is solved first, then the intrusion, then the host rock. A cycle is refused (`bad_relations`); the
+relations of one group are uniform towards all the older ones, so the carrier-by-carrier graph has none, but faults
+(19.33) put their own edges into `precedence`.
 
 Only the domains are in the stack; shells, veins and expansions are made by their own modules, faults by `faults`
 (19.33). The dropped points are in the journal (the group, how many of how many, by whose surface and relation) and in
@@ -63,8 +70,10 @@ Tick = Callable[[float, str], None]
 
 TOL_REL = 1e-9  # the least tolerance of «on the surface», in h̄ (the median distance between the data points)
 NAMES = {"conformable": "Согласно", "erode": "Эрозия", "onlap": "Налегание", "intrusion": "Интрузия"}
-#: the relations this module builds (the intrusion is 19.34)
-BUILT = ("conformable", "erode", "onlap")
+#: the relations this module builds
+BUILT = ("conformable", "erode", "onlap", "intrusion")
+#: the relations of a YOUNGER group that mask the data of an older one, with the side that is dropped
+MASKING = ("erode", "intrusion")
 
 
 def _bad(code: str, message: str, hint: str, **extra: Any) -> ApiError:
@@ -102,7 +111,7 @@ def domains_of(spec: ModelSpec, relations: Mapping[int, str] | None = None) -> t
 
 def precedence(groups: Sequence[Group]) -> list[tuple[int, int]]:
     """The pairs (winner, loser) of positions in `groups` (the youngest first): for the relation of the younger group
-    towards every older one — the younger wins for `conformable` / `erode`, the older for `onlap`."""
+    towards every older one — the younger wins for `conformable` / `erode` / `intrusion`, the older for `onlap`."""
     edges: list[tuple[int, int]] = []
     for i, g in enumerate(groups):
         for j in range(i + 1, len(groups)):
@@ -154,17 +163,17 @@ class StackPlan:
         return all(g.relation == "conformable" for g in self.groups)
 
     def sources(self, group: Group, solved: Sequence[Solved]) -> list[tuple[Solved, str]]:
-        """The solved groups that mask `group` and how: (the group, `erode` | `onlap`), in the order of the solution."""
+        """The solved groups that mask `group` and how: (the group, `erode` | `intrusion` | `onlap`), in the order of
+        the solution."""
         me = self.pos[int(group.id or 0)]
-        found: list[tuple[Solved, str]] = []
-        for s in solved:
-            j = self.pos[int(s.group.id or 0)]
-            if j < me and self.groups[j].relation == "erode":
-                found.append((s, "erode"))
-            elif j > me and self.groups[me].relation == "onlap":
-                found.append((s, "onlap"))
-        need = sum(1 for j in range(len(self.groups)) if (j < me and self.groups[j].relation == "erode")
-                   or (j > me and self.groups[me].relation == "onlap"))  # fmt: skip
+
+        def kind(j: int) -> str | None:
+            if j < me and self.groups[j].relation in MASKING:
+                return self.groups[j].relation
+            return "onlap" if j > me and self.groups[me].relation == "onlap" else None
+
+        found = [(s, k) for s in solved if (k := kind(self.pos[int(s.group.id or 0)])) is not None]
+        need = sum(1 for j in range(len(self.groups)) if kind(j) is not None)
         if need != len(found):  # the order of the solution must put the masking groups first
             raise _bad("bad_relations", f"Порядок расчёта группы «{group.name}» нарушен.",
                        "Это ошибка вызова: повторите построение.", group=group.id)  # fmt: skip
@@ -172,7 +181,8 @@ class StackPlan:
 
     def mask(self, group: Group, points: Points, solved: Sequence[Solved], journal: list[str]) -> NDArray[np.bool_]:
         """The data points of `group` that take part in its solution (the rule of the module text); the dropped ones go
-        to the journal and to `self.dropped`. 422 `no_contacts` when nothing is left to define the surface."""
+        to the journal and to `self.dropped` (`relation`: erode / onlap / intrusion — the relation of the group `by`).
+        422 `no_contacts` when nothing is left to define the surface."""
         keep = np.ones(points.n, dtype=bool)
         for source, kind in self.sources(group, solved):
             rows = np.flatnonzero(keep)
@@ -182,7 +192,7 @@ class StackPlan:
             f = np.asarray(fit.field(points.xyz[rows], threads=self.threads), dtype=np.float64)
             tol = max(TOL_REL * fit.h_bar, float(fit.stats.get("max_residual", 0.0)))
             with np.errstate(invalid="ignore"):  # NaN (no patch reaches the point) is neither above nor below
-                drop = f < tol if kind == "erode" else f < -tol
+                drop = f < tol if kind == "erode" else f < -tol  # the cut drops its own contacts, the others keep them
             lost = int(drop.sum())
             nan = int(np.isnan(f).sum())
             keep[rows[drop]] = False
@@ -190,7 +200,9 @@ class StackPlan:
                 self.dropped.append({"group": group.id, "by": source.group.id, "relation": kind, "points": lost,
                                      "of": int(rows.size), "undefined": nan})  # fmt: skip
             if lost:
-                where = "внутри тела или на поверхности" if kind == "erode" else "ниже поверхности"
+                where = {"erode": "внутри тела или на поверхности", "intrusion": "внутри тела"}.get(
+                    kind, "ниже поверхности"
+                )
                 journal.append(
                     f"Группа «{group.name}»: {NAMES[kind].lower()} группы «{source.group.name}» — "
                     f"отброшено точек {lost} из {rows.size} ({where} группы «{source.group.name}»)."
