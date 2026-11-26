@@ -74,6 +74,7 @@ import { renderLineageWindow } from "../modules/lineage/bind";
 import { renderSimulationWindow } from "../modules/simulation/bind";
 import { renderImplicitWindow } from "../modules/implicit/bind";
 import { renderPlannedWindow } from "../modules/drillholes/plannedBind";
+import { renderConnectionWindow } from "../modules/assistant/ConnectionWindow";
 
 const renderWindow: WindowRenderer = (w) => {
   switch (w.kind) {
@@ -122,7 +123,7 @@ const renderWindow: WindowRenderer = (w) => {
     case "model-report":
       return <ReportWindow winId={w.id} {...(w.props as unknown as ReportProps)} />;
     default:
-      return renderSeriesWindow(w) ?? renderLinesWindow(w) ?? renderDataManagerWindow(w) ?? renderCompositesWindow(w) ?? renderChartsWindow(w) ?? renderSwathWindow(w) ?? renderQaqcSetupWindow(w) ?? renderInterceptsWindow(w) ?? renderVariographyWindow(w) ?? renderEstimationWindow(w) ?? renderSimulationWindow(w) ?? renderImplicitWindow(w) ?? renderPlannedWindow(w) ?? renderLineageWindow(w) ?? renderTrendWindow(w) ?? renderFiltersWindow(w) ?? renderReportWindow(w) ?? renderResourcesWindow(w) ?? renderTemplatesWindow(w) ?? renderDrillWindow(w) ?? renderCompareWindow(w) ?? renderPitWindow(w) ?? renderEstimateCompareWindow(w) ?? renderBuildWindow(w) ?? renderExportWindow(w) ?? renderModelWindow(w) ?? renderFieldsWindow(w);
+      return renderSeriesWindow(w) ?? renderLinesWindow(w) ?? renderDataManagerWindow(w) ?? renderCompositesWindow(w) ?? renderChartsWindow(w) ?? renderSwathWindow(w) ?? renderQaqcSetupWindow(w) ?? renderInterceptsWindow(w) ?? renderVariographyWindow(w) ?? renderEstimationWindow(w) ?? renderSimulationWindow(w) ?? renderImplicitWindow(w) ?? renderPlannedWindow(w) ?? renderLineageWindow(w) ?? renderTrendWindow(w) ?? renderFiltersWindow(w) ?? renderReportWindow(w) ?? renderResourcesWindow(w) ?? renderTemplatesWindow(w) ?? renderDrillWindow(w) ?? renderCompareWindow(w) ?? renderPitWindow(w) ?? renderEstimateCompareWindow(w) ?? renderBuildWindow(w) ?? renderExportWindow(w) ?? renderModelWindow(w) ?? renderFieldsWindow(w) ?? renderConnectionWindow(w);
   }
 };
 
