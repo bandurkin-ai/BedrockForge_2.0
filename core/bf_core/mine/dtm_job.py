@@ -39,7 +39,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import sqlalchemy as sa
@@ -49,7 +49,6 @@ from bf_core.blocks.model import Model
 from bf_core.blocks.schema import GridV2, ijk_of
 from bf_core.db import dialect
 from bf_core.db.schema import objects
-from bf_core.geo import dz_kernels
 from bf_core.geo import solids as gs
 from bf_core.jobs.context import JobContext, JobError
 from bf_core.jobs.registry import handler
@@ -57,7 +56,10 @@ from bf_core.storage.blobs import BlobStore
 from bf_core.wireframes import store as wf
 
 from . import dtm_write as dw
-from . import fields, solid, spec, surfaces
+from . import fields, solid, spec
+
+if TYPE_CHECKING:  # numba is imported inside the functions (the handler modules do not load it, test_structure)
+    from bf_core.geo import dz_kernels
 from . import store as st
 from . import store_data as sd
 
@@ -177,6 +179,8 @@ def run_surfaces(engine: sa.Engine, folder: Any, scenario_id: int, shells: Seque
     """The body of `pit.surfaces` (the handler and the tests). Errors: `ApiError` (see the module)."""
     from bf_core.jobs.context import JobCancelled
 
+    from . import surfaces
+
     t0 = time.perf_counter()
     store = BlobStore(Path(folder))
     tick(0.02, "Чтение")
@@ -260,6 +264,8 @@ def _relief(conn: sa.Connection, store: BlobStore, terrain_id: Any) -> dz_kernel
                 "Задайте рельеф в параметрах сценария и запустите расчёт заново.",
             ) from exc
         raise
+    from bf_core.geo import dz_kernels
+
     return dz_kernels.surface_index(xyz, tri)
 
 
@@ -288,6 +294,8 @@ def mined_volume(model: Model, pit_field: str, shell: int, scenario_id: int, chu
 def run_solid(engine: sa.Engine, folder: Any, scenario_id: int, shell: Any, name: str | None = None, *,
               tick: Tick = _no_tick, force_difference: bool = False) -> dict[str, Any]:  # fmt: skip
     """The body of `pit.solid` (the handler and the tests). `force_difference` — only the fallback (the tests)."""
+    from . import surfaces
+
     t0 = time.perf_counter()
     store = BlobStore(Path(folder))
     tick(0.02, "Чтение")

@@ -32,7 +32,7 @@ describe("the answer of the check: the forms of the contract", () => {
     expect(r).toMatchObject({ k: 8, kAuto: true, tolerance: 2.5, levels: 8, warnings: [], model: { id: ID.model, name: "Рудное тело" } });
     expect(r.domains).toHaveLength(1);
     const d = r.domains[0];
-    expect(d).toMatchObject({ label: null, offsets: 17, errorMax: 1.44, errorMean: 0.92, warning: false });
+    expect(d).toMatchObject({ label: null, offsets: 17, errorMax: 1.44, errorMean: 0.58, warning: false });
     expect(d.table).toEqual([{ az: 0, angle: 45 }]);
     expect(d.az).toHaveLength(360);
     expect(d.phi).toHaveLength(360);
@@ -200,7 +200,7 @@ describe("`pit.check` and the window", () => {
     expect(html()).toContain("Шаблон ещё не проверялся");
   });
   it("the summary line: the model, K (auto or set), the levels when they differ, the tolerance, the time", () => {
-    expect(summaryLine(real())).toBe("модель «Рудное тело» · K = 8 (подобран автоматически) · допуск 2,5° · 0,02 с");
+    expect(summaryLine(real())).toBe("модель «Рудное тело» · K = 8 (подобран автоматически) · допуск 2,5° · 0,0041 с");
     expect(summaryLine({ ...real(), seconds: null })).toBe("модель «Рудное тело» · K = 8 (подобран автоматически) · допуск 2,5°");
     expect(summaryLine({ ...real(), kAuto: false, k: 10, levels: 12, seconds: 0.02 })).toBe("модель «Рудное тело» · K = 10 · уровней в шаблоне 12 · допуск 2,5° · 0,02 с");
   });

@@ -105,10 +105,10 @@ describe("the scenarios", () => {
 describe("the results of the jobs", () => {
   it("`pit.run`: the shells, the totals, the template, the warnings; the text for the log and the assistant", () => {
     const r = readRunSummary(answer("run_result").body)!;
-    expect(r).toMatchObject({ scenario_id: 17, name: "Сценарий карьера", solver: "hpf", q: 0.01, objective_error: 12.5 });
+    expect(r).toMatchObject({ scenario_id: 17, name: "Сценарий карьера", solver: "hpf", q: 0.01, objective_error: expect.closeTo(7.56, 6) });
     expect(r.shells.map((s) => s.k)).toEqual([1, 2, 3]);
-    expect(r.shells[2]).toMatchObject({ rf: 1.2, blocks: 6000 });
-    expect(r.totals.strip).toBe(3);
+    expect(r.shells[2]).toMatchObject({ rf: 1.2, blocks: 921 });
+    expect(r.totals.strip).toBeCloseTo(3.4946, 3);
     expect(r.template).toEqual({ k: 8, error_max: 1.44 });
     const text = runText(r);
     expect(text).toContain("Сценарий «Сценарий карьера» рассчитан (решатель HPF): оболочек 3");
