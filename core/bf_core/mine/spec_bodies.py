@@ -71,15 +71,16 @@ def parse_scenario_update(body: Any) -> ScenarioUpdate:
     from .spec import parse_params
 
     b = obj(body, "Запрос", "body")
-    if all(b.get(k) is None for k in ("name", "params", "calendar")):
-        raise bad("bad_param", "Нечего менять: не задано ни имя, ни параметры, ни календарь.",
-                  "Передайте name, params или calendar.", "body")  # fmt: skip
-    return ScenarioUpdate(
+    out = ScenarioUpdate(
         text_of(b.get("name"), "Имя сценария", "name", NAME_MAX, required=False),
         None if b.get("params") is None else parse_params(b["params"]),
         None if b.get("calendar") is None else parse_calendar(b["calendar"]),
         _version(b),
     )  # fmt: skip
+    if out.name is None and out.params is None and out.calendar is None:  # after the parse: `name: ""` is nothing too
+        raise bad("bad_param", "Нечего менять: не задано ни имя, ни параметры, ни календарь.",
+                  "Передайте name, params или calendar.", "body")  # fmt: skip
+    return out
 
 
 @dataclass(frozen=True)

@@ -1,13 +1,22 @@
 # Э21 — контракт оптимизации карьера (подшаг 21.1, контракт первым)
 
-**Состояние: контракт (подшаг 21.1), ядро и роутер ещё не написаны.** Источник истины — ADR 0028 (решения 1–12, 19–30, «API»,
-«Точность и приёмка», вопросы № 114–124), ТЗ 8.11, 8.0, 7.35 Д-21, Д-35 (граф); граф — ADR 0025. Что уже **код** (не менять без
-оркестратора): параметры — `core/bf_core/mine/spec.py` + `spec_parts.py` + `spec_parse.py` + `spec_bodies.py`, образцы —
-`core/tests/data/pit/params.json`, тесты — `core/tests/test_pit_spec.py`. Что **пока образец формы**: ответы заданий и маршрутов —
-`core/tests/data/pit/contract_answers.json` (`"_status": "stub until 21.11"`); настоящие ответы запишет подшаг 21.11
-(`BF_REGEN_PIT=1 uv run pytest -q tests/test_pit_contract.py`); интерфейс принимается только на настоящих ответах. Ключи,
-которые пишет `spec.py` и которые уже настоящие: `defaults`, `validate_new`, `validate_ready`, `bad_param`, `pit_not_ready`,
-`refusals` (`BF_REGEN_PIT=1 uv run pytest -q tests/test_pit_spec.py`). Изменение формы — только через оркестратора.
+**Состояние: контракт реализован ядром (21.1–21.15); ответы в `contract_answers.json` — настоящие, записаны ядром.** Источник истины — ADR 0028
+(решения 1–12, 19–30, «API», «Точность и приёмка», вопросы № 114–124), ТЗ 8.11, 8.0, 7.35 Д-21, Д-35 (граф); граф — ADR 0025. Код: параметры —
+`core/bf_core/mine/spec*.py`, образцы — `core/tests/data/pit/params.json`, тесты — `core/tests/test_pit_spec.py`; маршруты — `routes.py`, `routes_extra.py`,
+задания — `job.py`, `dtm_job.py`, хранение — `store*.py`. Ответы заданий и маршрутов — `core/tests/data/pit/contract_answers.json` (все ключи настоящие:
+`BF_REGEN_PIT=1 uv run pytest -q tests/test_pit_contract.py` пишет их, `…/test_pit_spec.py` — `defaults`, `validate_new`, `validate_ready`, `bad_param`,
+`pit_not_ready`, `refusals`; `surfaces_result` и `solid_result` — настоящие ответы заданий с 21.21б-2). Изменение формы — только через оркестратора.
+
+Отклонения настоящих ответов от образцов 21.1 (интерфейс читает настоящие):
+- `template.levels` = K (число уровней шаблона равно K), углы смещений и `error` округлены до 0,01°;
+- `defaults.model` дополнен `k_auto` (K для угла 45° по шагу сетки), `terrains` (ЦТМ проекта: `[{id, name}]`), `grid` (сетка модели: `counts`, `size`, …);
+- таблица отчёта (`report.table`) расширена столбцами по элементам (`‹элемент›:grade`, `:metal`, `:rec_metal`, накопленные `cum_…`);
+- `surfaces_result.folder` — путь папки текстом («Карьер/‹сценарий›», не `folder_id`), у каждой оболочки `replaced`, в итоге `skipped`, `warnings`, `stages`;
+  `solid_result` — `folder`, `replaced`, `warnings`, `stages`;
+- новый отказ 409 `pit_stale` (§13): рельеф сценария изменён после расчёта — каркас и поверхности отказываются, «Перезапустите расчёт сценария»;
+- новое поведение удаления (§15, п. 10) и импорта `.bfggis` (§8): удаление снимает `source.scenario_id` у полей PIT/ORE и ЦТМ/каркасов сценария;
+  импорт перенумеровывает `meta.source.scenario_id` ЦТМ и каркасов, так что повторное «Поверхности» заменяет их на месте;
+- 422 `pit_too_large` проверяется рано (§13): маршрут `/run` и стадия «Чтение»; `expected_version` заданий поверхностей и каркаса проверяется (409 `version_conflict`).
 Префикс маршрутов — `/api/v1/pit` (роутер `mine/router.py`: `routes.py`; регистрация `"mine"` в `api/modules.py` — оркестратор).
 
 Пути: `M/` = `core/bf_core/mine/`, `U/` = `ui/src/modules/pit/`. Единицы денег — «$» (валюта проекта не различается).
@@ -216,20 +225,23 @@ RF = 1 (руда — ORE), `value` — Σ v_b замыкания C_k при RF_k
 
 Вид объекта `pit_scenario` (родитель `NULL`, ≤ 200 в проекте): новый (без результата) → правка `params` (`version + 1`) → запись результата на месте
 (атомарно). Дерево: «Карьер → Сценарии» (параметры, хеш модели, K, ошибка угла, `LineageBadge`; дети — ЦТМ и каркасы). `.bfggis` туда-обратно
-(`mine/remap.py`: модель, фильтр, каркасы рельефа и ограничителя, ЦТМ-выходы; неизвестный id — DEAD_ID).
+(`mine/remap.py`: модель, фильтр, каркасы рельефа и ограничителя, ЦТМ-выходы; неизвестный id — DEAD_ID; номер сценария в `source.scenario_id` полей PIT/ORE
+(вместе с id в их `source.params`) и в `meta.source.scenario_id` ЦТМ и каркасов `pit_surface` / `pit_solid` — иначе повторное «Поверхности» делало бы копии).
 
 ## 9. Поверхности — `POST /pit/scenarios/{id}/surfaces {shells?}` → задание `pit.surfaces` (quick)
 
 `shells` — номера оболочек 1…N (нет — все, № 124; числа ≤ N проверяет маршрут: 422 `bad_param {shells.i}`). Из `sidecar:zgrid` строятся
 каркасы с `wireframes.dtm` (узлы — центры столбцов в осях проекта, 2 треугольника на клетку; z столбца — низ нижнего вынутого родителя, иначе
 рельеф в центре столбца, без рельефа — верх сетки; вне плана рельефа — узел не строится), имя «‹сценарий› — RF 0,85», папка сценария; вход в графе — сценарий.
-Итог: `{scenario_id, folder_id, wireframes: [{shell, rf, wireframe_id, name, nodes, triangles}], events}`; уже построенная оболочка (тот же сценарий и версия) —
-заменяется на месте.
+Итог: `{scenario_id, folder, wireframes: [{shell, rf, wireframe_id, name, nodes, triangles, replaced}], skipped, warnings, events, stages}`; уже построенная оболочка
+(ЦТМ, найденная по графу и `meta.source` {op, scenario_id, shell}) — заменяется на месте. Читаются только столбцы z выбранных оболочек. 409 `pit_stale`
+(рельеф изменён после расчёта), 409 `version_conflict` (версия сценария не та, что видел маршрут), 422 `pit_too_large` (до чтения z).
 
 ## 10. Каркас карьера — `POST /pit/scenarios/{id}/solid {shell, name?}` → задание `pit.solid` (quick)
 
 Тело между рельефом (верх) и z-сеткой оболочки (низ) на одной сетке узлов, общий шов там, где они совпадают; `manifold3d` `check_status`; не замкнут —
-422 `pit_solid_failed`. Итог: `{scenario_id, shell, rf, wireframe_id, name, volume, volume_blocks, volume_diff_pct, parts, closed, method, events}` —
+422 `pit_solid_failed`. Итог: `{scenario_id, shell, rf, wireframe_id, name, folder, volume, volume_blocks, volume_diff_pct, parts, closed, method, replaced, warnings, events, stages}` —
+верх тела — текущий рельеф, поэтому рельеф, изменённый после расчёта, — 409 `pit_stale` (сверка отпечатка рельефа с `meta.inputs`);
 `volume` каркаса, `volume_blocks` — Σ V вынутых родителей (сверка по сетке центров: расхождение показывается, не отказ), `parts` — число частей (≥ 1),
 `method` — `between` или `difference` (запасной путь — разность `under_solid`).
 
@@ -266,7 +278,7 @@ RF = 1 (руда — ORE), `value` — Σ v_b замыкания C_k при RF_k
 | `bad_param {param}` | 422 | форма и диапазон параметров (§2); `expected_version`, `shells.i`, `shell`, `a`, `b` |
 | `pit_not_ready {missing, param}` | 422 | запуск без готовых цен, пород, затрат (§3); сообщение — первое `missing` |
 | `variable_grid` | 422 | переменный шаг сетки (`tensors`): «Регуляризуйте модель» |
-| `pit_too_large` | 422 | узлов > 10 млн или охват не помещается в индекс int32 / 1 ГБ |
+| `pit_too_large` | 422 | узлов > 10 млн или охват не помещается в индекс int32 / 1 ГБ; сетка > 2²⁹ ячеек, план > 2²⁶ колонок, z-сетки N оболочек > 2²⁸ значений (8 Б — 2 ГБ): проверяется рано — в `/run`, стадии «Чтение», перед чтением z (`mine/limits.py`) |
 | `pit_density_missing {blocks}` | 422 | блоки без плотности при пустой `default_density` |
 | `pit_empty` | 422 | нет блоков с v > 0 при RF_max |
 | `filter_field_missing` | 422 | в ограничителе поле, которого нет в модели |
@@ -274,7 +286,8 @@ RF = 1 (руда — ORE), `value` — Σ v_b замыкания C_k при RF_k
 | `too_many_scenarios` | 422 | в проекте уже 200 сценариев (трактовка, §15) |
 | `pit_internal` | 500 | нарушена вложенность или замкнутость оболочки (Т8.11-5), с журналом; результат не пишется |
 | `pit_scenario_not_found`, `block_model_not_found`, `block_field_not_found {param}`, `wireframe_not_found`, `filter_not_found` | 404 | объект не найден |
-| `pit_running`, `pit_no_result`, `version_conflict {version}`, `name_taken {param}`, `pit_fields_taken`, `model_changed` | 409 | состояние (`pit_no_result`, `filter_not_found` — трактовка, §15) |
+| `pit_running`, `pit_no_result`, `version_conflict {version}`, `name_taken {param}`, `pit_fields_taken`, `model_changed`, `pit_stale` | 409 | состояние (`pit_no_result`, `filter_not_found` — трактовка, §15); `pit_stale` — рельеф изменён после расчёта (поверхности, каркас): «Перезапустите расчёт сценария» |
+| `out_of_memory` (ошибка задания, не ответ маршрута) | — | `MemoryError` в любом задании карьера: «Не хватило памяти на расчёт карьера», подсказка — закрыть программы или укрупнить модель регуляризацией |
 | `project_read_only` | 423 | проект открыт только для чтения (§1) |
 
 ## 14. Интерфейсы Python (`M/spec*.py`; другие дорожки читают только их)
@@ -314,7 +327,9 @@ ALGO = "pit-1", VERSION, KIND = "pit_scenario", REFUSALS, EMPTY_LABEL = "(пус
 7. Коды сверх списка решения 30: `pit_no_result` (409: отчёт, шаблон, поверхности, каркас, сравнение без результата), `too_many_scenarios` (422, ≤ 200 по решению 20), `filter_not_found` (404, как в Э20), `pit_internal` (500, решение 17).
 8. `GET …/report?calendar=` — JSON-текст в строке запроса (ADR называет только «calendar»); `shells` в поверхностях — номера 1…N (значения поля PIT), не RF.
 9. Задание `pit.check` в проекте «только просмотр» — 423 (как предпросмотр Э20: нет планировщика); `validate` и `compare` работают.
-10. Удаление сценария не удаляет поля PIT/ORE и ЦТМ (как Э20 — отчёт не удаляет поля); связи в графе остаются «источник утрачен».
+10. Удаление сценария не удаляет поля PIT/ORE и ЦТМ (как Э20 — отчёт не удаляет поля); связи в графе остаются «источник удалён». С 21.21б-2 они становятся «осиротевшими»:
+    у полей PIT/ORE и у ЦТМ/каркасов (`meta.source`) снимается `scenario_id` (номер освобождённой строки на SQLite берёт следующий сценарий — он не получает чужое),
+    рёбра графа, где сценарий — источник, теряют номер (`src_id` 0, имя остаётся). Новый сценарий с тем же именем полей — 409 `pit_fields_taken` с подсказкой про префикс.
 11. `rate` — доля в год (0,08), не проценты; окно показывает проценты и переводит.
 12. Таблица pit-by-pit (`table`) — текст ядра по образцу формы Э20 (`{value, text}`); столбцы и знаки — 21.8, форма ячейки — этот контракт.
 
@@ -330,7 +345,7 @@ RF — список или `rf_from/rf_to/rf_step`, ограничитель —
 - `core/tests/data/pit/params.json` — `fixture` (поля модели, `z_range`), `cases` (`minimal`, `t8117`, `rocks_field`, `rocks_rules`, `sectors_domains`, `rf_range`,
   `rf_list`, `restricted`: `body` → `canonical`, `resolved`), `invalid` (57 тел → ожидаемый `param` 422), `validate` (тело, контекст → первый `missing`);
   `BF_REGEN_PIT=1` переписывает `canonical` и `resolved`.
-- `core/tests/data/pit/contract_answers.json` — `{status, body}`, `"_status": "stub until 21.11"`. Настоящие (пишет `spec`): `defaults`, `validate_new`,
-  `validate_ready`, `bad_param`, `pit_not_ready`, `refusals`. Образцы форм до 21.11: `check_result`, `scenario_post`, `scenarios_list`, `scenario_get`, `scenario_put`,
-  `scenario_delete`, `run_post`, `run_result`, `template_get`, `report_get`, `surfaces_result`, `solid_result`, `compare_result`.
+- `core/tests/data/pit/contract_answers.json` — `{status, body}`, все ключи — настоящие ответы ядра (`_note`): `defaults`, `validate_new`, `validate_ready`, `bad_param`,
+  `pit_not_ready`, `refusals` пишет `spec` (`test_pit_spec.py`); остальные — `test_pit_contract.py` (`check_*`, `scenario_*`, `run_*`, `template_get`, `report_get`,
+  `compare_result`, `surfaces_result`, `solid_result`, отказы маршрутов).
 - pytest: `test_pit_spec.py` (этот подшаг); далее `test_pit_{econ,template,flow,hpf,shells,report,fields,surfaces,solid,store,job,compare,contract}.py`.

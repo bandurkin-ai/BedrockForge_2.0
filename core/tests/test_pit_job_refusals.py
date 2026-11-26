@@ -114,6 +114,51 @@ def test_refusals_of_the_job_are_in_russian_and_settle_the_scenario(pw) -> None:
             404, "pit_scenario_not_found")  # fmt: skip
 
 
+def test_a_model_that_is_too_large_is_refused_at_the_start_not_after_the_solver(pw, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """21.21б-2: the plan, the columns and the z-grids of N shells are checked in «Чтение» (and by the route)."""
+    from bf_core.mine import limits, plan
+
+    mid = make_model(pw, SMALL, seed=5)
+    sid = new(pw, mid)["id"]
+    before = counts(pw)
+    seen: list[str] = []
+
+    def tick(_p: float | None = None, m: str | None = None) -> None:
+        seen.append(m or "")
+
+    for patch, text in ((("MAX_PLAN_CELLS", plan), "ячеек"), (("MAX_COLUMNS", limits), "колонок"),
+                        (("MAX_ZGRID", limits), "оболочек")):  # fmt: skip
+        monkeypatch.setattr(patch[1], patch[0], 10)
+        seen.clear()
+        e = refused(lambda: direct(pw, sid, tick=tick), 422, "pit_too_large")
+        assert text in e.message and "Укрупните" in e.hint
+        assert seen and all(m.startswith("Чтение") for m in seen), seen  # nothing of the economics was started
+        got = info(pw, sid)
+        assert got["error"]["code"] == "pit_too_large" and not got["has_result"] and counts(pw) == before
+        monkeypatch.undo()
+    assert direct(pw, sid)["version"] == 2  # the limits as they are: it runs
+
+
+def test_a_job_that_ran_out_of_memory_says_so_and_settles_the_scenario(pw, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from bf_core.mine import limits
+    from bf_core.mine import shells as sh
+
+    mid = make_model(pw, SMALL, seed=5)
+    sid = new(pw, mid)["id"]
+
+    def boom(*_a: Any, **_k: Any) -> Any:
+        raise MemoryError
+
+    monkeypatch.setattr(sh, "shells", boom)
+    with pytest.raises(MemoryError):
+        direct(pw, sid)
+    got = info(pw, sid)
+    code, message, hint = limits.OUT_OF_MEMORY
+    assert got["state"] == "error" and got["error"] == {"code": code, "message": message, "hint": hint}
+    assert "регуляризацией" in hint and not got["has_result"] and tmp_files(pw) == []
+    assert pj._error_of(MemoryError()) == {"code": code, "message": message, "hint": hint}  # noqa: SLF001
+
+
 def test_the_density_is_asked_for_when_blocks_have_none(pw) -> None:  # type: ignore[no-untyped-def]
     b = blocks(SMALL, seed=5)
     b["SG"][[5, 77, 100]] = np.nan

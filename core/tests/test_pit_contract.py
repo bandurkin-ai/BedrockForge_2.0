@@ -5,9 +5,10 @@ read by vitest (`ui/test/pit/*`).
 
 Regenerate: `BF_REGEN_PIT=1 uv run pytest -q tests/test_pit_contract.py` — the keys of this test replace the
 samples, the others stay as they are: `defaults`, `validate_new`, `validate_ready`, `bad_param`, `pit_not_ready`,
-`refusals` are written by `spec.py` (`test_pit_spec.py`); `surfaces_result`, `solid_result` (21.12) are samples of the
-contract until their jobs write them. Without the variable the test checks that the core still answers what the file
-holds; the times, the fingerprints, the versions of the libraries and the numbers of the jobs are left out, the floats
+`refusals` are written by `spec.py` (`test_pit_spec.py`); `surfaces_result` and `solid_result` are the answers of the
+jobs `pit.surfaces` (every shell) and `pit.solid` (the shell 2), real since 21.21б-2. Without the variable the test
+checks that the core still answers what the file holds; the times, the fingerprints, the versions of the libraries and
+the numbers of the jobs are left out, the floats
 are compared to 9 digits.
 
 The ids are those of the samples of the contract (the model 12, the scenario 17 and the second 18; the first check is
@@ -35,15 +36,16 @@ REGEN = os.environ.get("BF_REGEN_PIT") == "1"
 NOTE = (
     "ЧАСТЬ КЛЮЧЕЙ — ответы настоящего ядра (BF_REGEN_PIT=1 uv run pytest -q tests/test_pit_contract.py, 21.11, "
     "модель из кубов 10 м с рудным телом: tests/pitworld.py; идентификаторы — как в образцах: модель 12, сценарии 17 и "
-    "18, задания 1–3); surfaces_result, solid_result (21.12) — ОБРАЗЦЫ форм (docs/progress/e21-api.md §9, §10); "
-    "defaults, validate_new, validate_ready, bad_param, pit_not_ready, refusals пишет spec.py (BF_REGEN_PIT=1 uv run "
-    "pytest -q tests/test_pit_spec.py). Интерфейс принимается только на настоящих ответах."
+    "18, задания 1–3; surfaces_result, solid_result — задания pit.surfaces (все оболочки) и pit.solid (оболочка 2), "
+    "21.21б-2); defaults, validate_new, validate_ready, bad_param, pit_not_ready, refusals пишет spec.py "
+    "(BF_REGEN_PIT=1 uv run pytest -q tests/test_pit_spec.py). Интерфейс принимается только на настоящих ответах."
 )
 #: the keys this test writes, in the order of the file (the new ones follow the old ones)
 KEYS = (
     "check_post", "check_result", "scenario_post", "scenarios_list", "scenario_get", "scenario_put",
     "scenario_delete", "run_post", "run_result", "template_get", "report_get", "compare_result", "defaults_model",
     "version_conflict", "name_taken", "pit_running", "pit_no_result", "scenario_not_found", "pit_not_ready_run",
+    "surfaces_result", "solid_result",
 )  # fmt: skip
 SKIP = ("seconds", "created_at", "updated_at", "cells_sha", "versions", "job_id", "at", "stages")
 CALENDAR = {"q_ore": 1_000_000.0, "q_mass": None, "rate": 0.1}
@@ -104,6 +106,9 @@ def build(c: Any) -> dict[str, Any]:
     b = c.post(f"{PIT}/scenarios", json={"name": "Вариант 2", "params": other}).json()["id"]
     result_of(c, c.post(f"{PIT}/scenarios/{b}/run", json={}))
     out["compare_result"] = answer(c.post(f"{PIT}/compare", json={"a": sid, "b": b}))
+    # the outputs (21.12): the DTMs of all the shells and the solid of the second one, the real answers of the jobs
+    out["surfaces_result"] = result_of(c, c.post(f"{PIT}/scenarios/{sid}/surfaces", json={}))
+    out["solid_result"] = result_of(c, c.post(f"{PIT}/scenarios/{sid}/solid", json={"shell": 2}))
     # the refusals of the routes the windows tell in their places
     out["version_conflict"] = answer(c.put(f"{PIT}/scenarios/{sid}", json={"name": "Х", "expected_version": 1}))
     out["name_taken"] = answer(c.put(f"{PIT}/scenarios/{sid}", json={"name": "вариант 2", "expected_version": 2}))

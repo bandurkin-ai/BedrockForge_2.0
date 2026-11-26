@@ -197,3 +197,33 @@ def test_parquet_round_trip_keeps_nan() -> None:
     back = sf.ZGrids.from_parquet(data)
     assert (back.nx, back.ny, back.shells) == (5, 4, (1, 2, 3)) and np.array_equal(back.z, zg.z, equal_nan=True)
     assert np.isnan(back.z).any()
+
+
+def test_stage_zgrid_writes_the_same_file_as_the_table_in_row_groups(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """21.21б-2: the z-grids go to the file by row groups from the array (no table of copies in memory); the file has
+    the columns of the old one (i, j, z1…zN; a NaN is a null) and the same bytes as `zgrid_table` + `stage_parquet`."""
+    import pyarrow.parquet as pq
+
+    from bf_core.mine import store_data as sd
+    from bf_core.storage.blobs import BlobStore
+
+    store = BlobStore(tmp_path)
+    nx, ny = 300, 450  # 135 000 columns: three row groups of 2¹⁶
+    rng = np.random.default_rng(3)
+    z = rng.normal(100.0, 5.0, (3, nx * ny))
+    z[1, ::7] = NAN
+    c = np.arange(nx * ny)
+    path, sha, size = sd.stage_zgrid(store, nx, ny, z)
+    ref_path, ref_sha, _ = sd.stage_parquet(store, sd.zgrid_table(c % nx, c // nx, z))
+    assert sha == ref_sha and size > 0  # the same table, the same SHA-256
+    t = pq.read_table(path)
+    assert t.column_names == ["i", "j", "z1", "z2", "z3"] and pq.ParquetFile(path).num_row_groups == 3
+    got = sd.table_zgrid(t)
+    assert got["shells"] == [1, 2, 3] and np.array_equal(got["z"], z, equal_nan=True)
+    assert t.column("z2").null_count == len(z[1, ::7])  # a gap is a null, never 0
+    only = sd.table_zgrid(pq.read_table(path, columns=["i", "j", "z3"]))  # some of the shells: their numbers say which
+    assert only["shells"] == [3] and np.array_equal(only["z"][0], z[2])
+    with pytest.raises(ValueError):
+        sd.stage_zgrid(store, nx, ny, z[:, :10])
+    path.unlink(missing_ok=True)
+    ref_path.unlink(missing_ok=True)

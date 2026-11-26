@@ -22,6 +22,7 @@ from typing import Any
 import sqlalchemy as sa
 
 from bf_core import lineage
+from bf_core.api.errors import ApiError
 from bf_core.db import dialect
 from bf_core.db.schema import blob_owners, objects, wireframes
 from bf_core.storage.blobs import BlobStore
@@ -81,8 +82,9 @@ def _replace(conn: sa.Connection, store: BlobStore, staged: wf.StagedWireframe, 
     n = conn.execute(sa.update(objects).where(objects.c.id == wid, objects.c.version == version).values(
         name=final, name_key=dialect.name_key(final), folder=folder, meta=meta, extent=staged.extent,
         version=version + 1, updated_at=dialect.utcnow())).rowcount  # fmt: skip
-    if n != 1:
-        raise wf.not_found()
+    if n != 1:  # the version moved between the read (locked) and here: not «каркас не найден» — the job is repeated
+        raise ApiError(409, "version_conflict", "Каркас изменён другим действием во время построения.",
+                       "Повторите построение.", {"version": version})  # fmt: skip
     conn.execute(sa.update(wireframes).where(wireframes.c.object_id == wid).values(
         point_count=len(staged.xyz), triangle_count=len(staged.tri), origin=staged.origin, stats=staged.stats,
         render=staged.render))  # fmt: skip
@@ -100,11 +102,13 @@ def put(conn: sa.Connection, store: BlobStore, staged: wf.StagedWireframe, scena
     old = found.get(int(shell))
     gone: dict[str, Any] | None = None
     if old is not None:
-        row = conn.execute(sa.select(objects.c.meta).where(
-            objects.c.id == old[0], objects.c.kind == wf.WIREFRAME)).first()  # fmt: skip
+        # the row is read again WITH its version and locked (FOR UPDATE on PostgreSQL): attributes edited since `found`
+        # was made (the colour, the name: version + 1) are kept and the update below cannot miss its version (21.21б-2)
+        row = conn.execute(sa.select(objects.c.meta, objects.c.version).where(
+            objects.c.id == old[0], objects.c.kind == wf.WIREFRAME).with_for_update()).first()  # fmt: skip
         if row is not None:
             meta = {**dict(row.meta or {}), "source": src}
-            gone = _replace(conn, store, staged, old[0], old[1], name=name, meta=meta, folder=folder)
+            gone = _replace(conn, store, staged, old[0], int(row.version), name=name, meta=meta, folder=folder)
             wid, final = old[0], str(gone.pop("name"))
     if gone is None:
         final = wf.free_name(conn, name)

@@ -208,16 +208,18 @@ def delete_scenario(svc: Svc, request: Request, scenario_id: int) -> dict[str, A
 # --- the run ----------------------------------------------------------------------------------------------------------
 
 
-def check_run(conn: Any, store: Any, scenario_id: int, params: dict[str, Any]) -> tuple[str, int]:
-    """What the job would refuse before it reads the data: the model and its fields (404, 422), the grid, the names
-    of the fields PIT and ORE (409), the filter, the surface and the fields of the rules, the readiness of the
-    scenario (422 `pit_not_ready`). → (the name of the model, the version of the scenario)."""
+def check_run(conn: Any, store: Any, scenario_id: int, params: dict[str, Any]) -> tuple[str, int, dict[str, int]]:
+    """What the job would refuse before it reads the data: the model and its fields (404, 422), the grid and its size
+    (422 `variable_grid`, `pit_too_large`: the plan, the columns, the z-grids of the shells), the names of the fields
+    PIT and ORE (409), the filter, the surface and the fields of the rules, the readiness of the scenario (422
+    `pit_not_ready`). → (the name of the model, the version of the scenario, the sizes for the estimate of the memory
+    of the job: `limits.hints`)."""
     from bf_core.blocks import calc_job, restrict
     from bf_core.blocks.filters import schema as fs
     from bf_core.blocks.model import Model
     from bf_core.wireframes import store as wf
 
-    from . import fields, plan
+    from . import fields, limits, plan
     from . import store as st
     from .store_graph import rock_rules
 
@@ -230,6 +232,7 @@ def check_run(conn: Any, store: Any, scenario_id: int, params: dict[str, Any]) -
     model = Model.open(conn, store, sp0.model_id)  # 404 `block_model_not_found`
     plan.check_grid(model)  # 422 `variable_grid`
     sp = plan.resolve(model, sp0)  # 404 `block_field_not_found`, 422 `bad_param`
+    limits.check_size(model.grid.counts, len(sp.rf))  # 422 `pit_too_large`
     fields.check_names(model.meta, sp.prefix, scenario_id)  # 409 `pit_fields_taken`
     if sp.terrain_id is not None:
         wf.wireframe_info(conn, int(sp.terrain_id))  # 404 `wireframe_not_found`
@@ -240,7 +243,7 @@ def check_run(conn: Any, store: Any, scenario_id: int, params: dict[str, Any]) -
             if name.casefold() not in have:
                 raise restrict.field_missing(name, model.name)
     spec.require_ready(sp, plan.context(model))  # 422 `pit_not_ready {missing, param}`
-    return model.name, int(row.version)
+    return model.name, int(row.version), limits.hints(model.grid.counts, len(sp.rf))
 
 
 @router.post("/scenarios/{scenario_id}/run")
@@ -253,10 +256,10 @@ def run_scenario(svc: Svc, s: Sched, scenario_id: int, body: Payload) -> dict[st
     project = svc.require_current(writable=True)
     with dialect.read_tx(project.engine) as conn:
         params = st.current_params(conn, scenario_id)  # 404
-        _model_name, version = check_run(conn, BlobStore(project.folder), scenario_id, params)
+        _model_name, version, size = check_run(conn, BlobStore(project.folder), scenario_id, params)
         title = st._row(conn, scenario_id).name  # noqa: SLF001
     registered(KIND_RUN, TITLE_RUN)
     job = {"scenario_id": scenario_id, "params": params, "name": title, "expected_version": version,
-           "solver": req.solver}  # fmt: skip
+           "solver": req.solver, **size}  # fmt: skip
     key, job_id = submit(s, KIND_RUN, job, f"{TITLE_RUN} · {title}")
     return {"source": key, "id": job_id}

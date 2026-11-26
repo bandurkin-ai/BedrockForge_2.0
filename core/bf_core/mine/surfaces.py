@@ -28,9 +28,10 @@ from bf_core.api.errors import ApiError
 from bf_core.blocks import geometry
 from bf_core.blocks.schema import GridV2, ijk_of
 from bf_core.geo import dz_kernels
+from bf_core.mine import limits
 from bf_core.mine.fields import ShellMap
 
-MAX_COLUMNS = 1 << 26  # the plan of the grid: 67 million columns
+MAX_COLUMNS = limits.MAX_COLUMNS  # the plan of the grid: 67 million columns (the early checks — `limits`)
 
 
 def too_many_shells(n: int, limit: int) -> ApiError:
@@ -41,9 +42,7 @@ def too_many_shells(n: int, limit: int) -> ApiError:
 def centres(grid: GridV2) -> np.ndarray:
     """float64 [ny·nx, 2]: the centres of the columns in the project axes, column c = i + nx·j."""
     nx, ny, _ = grid.counts
-    if nx * ny > MAX_COLUMNS:
-        raise ApiError(422, "pit_too_large", "План модели слишком велик для поверхностей оболочек.",
-                       "Укрупните модель регуляризацией.")  # fmt: skip
+    limits.check_columns(grid.counts)  # 422 `pit_too_large`
     local = geometry.row_local_centres(grid, np.arange(nx * ny, dtype=np.uint64))  # the level k = 0 of each column
     local[:, 2] = 0.0
     return grid.to_project(local)[:, :2]
@@ -124,6 +123,8 @@ def z_grids(
     for s in want:
         if not 1 <= s <= total:
             raise too_many_shells(s, total)
+    limits.check_columns(grid.counts)
+    limits.check_zgrid(nx * ny, len(want))  # 422 `pit_too_large`: before anything is allocated
     base = base_surface(grid, relief)
     bottom = grid.corner[2] + np.asarray(grid.edges(2), dtype=np.float64)[:nz]  # the bottom of every level
     p = smap.cells
