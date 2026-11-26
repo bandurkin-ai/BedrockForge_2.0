@@ -9,7 +9,7 @@ export const commands: Command[] = [
     params: {
       panel: { type: "string", enum: ["project", "properties", "assistant", "bottom"] },
       open: { type: "boolean", description: "true — открыть, false — закрыть; без параметра — переключить" },
-      tab: { type: "string", enum: ["table", "audit", "stats", "qaqc", "jobs", "log"], description: "Вкладка нижней панели" },
+      tab: { type: "string", enum: ["table", "audit", "stats", "qaqc", "jobs", "log", "resources"], description: "Вкладка нижней панели" },
     },
     required: ["panel"],
   },
