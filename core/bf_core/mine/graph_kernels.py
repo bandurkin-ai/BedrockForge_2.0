@@ -21,6 +21,34 @@ from bf_core.jit import njit
 
 
 @njit(cache=True, nogil=True)
+def mark_bridges(occ, offs):  # type: ignore[no-untyped-def]
+    """The bridges of the reduced template (see `graph.py`, BRIDGES). `occ` (uint8 [mz, my, mx], the trimmed box): 1 —
+    a real node, 0 — «air»; an «air» cell that has a node (real or bridge) among its predecessors by `offs` ((Δi, Δj, m)
+    rows of the bridge table) is set to 2. The levels go from the top down: a cell reads HIGHER levels only (m ≥ 1), so
+    a chain of bridges is found in one pass and the answer does not depend on the order inside a level. Returns the
+    number of bridges."""
+    mz, my, mx = occ.shape
+    n = 0
+    ne = offs.shape[0]
+    for k in range(mz - 2, -1, -1):
+        for j in range(my):
+            for i in range(mx):
+                if occ[k, j, i] != 0:
+                    continue
+                for e in range(ne):
+                    ii = i + offs[e, 0]
+                    jj = j + offs[e, 1]
+                    kk = k + offs[e, 2]
+                    if ii < 0 or ii >= mx or jj < 0 or jj >= my or kk >= mz:
+                        continue
+                    if occ[kk, jj, ii] != 0:
+                        occ[k, j, i] = 2
+                        n += 1
+                        break
+    return n
+
+
+@njit(cache=True, nogil=True)
 def degrees(pos, tpl, index, tab_ptr, tab_off, mx, my, mz):  # type: ignore[no-untyped-def]
     """Number of arcs (u → predecessor) of every node."""
     n = pos.shape[0]
@@ -126,3 +154,45 @@ def closure_violations(pos, tpl, index, tab_ptr, tab_off, mx, my, mz, mined):  #
                     first_q = q
                 bad += 1
     return bad, first_u, first_q
+
+
+@njit(cache=True, nogil=True)
+def nesting_violations(pos, tpl, index, tab_ptr, tab_off, mx, my, mz, lab):  # type: ignore[no-untyped-def]
+    """(count, first u, first q, lab[u], lab[q]) over the arcs u → q with lab[u] > 0 and NOT 0 < lab[q] <= lab[u];
+    (0, −1, −1, 0, 0) — the shells `lab` (the number of the smallest shell holding a node, 0 — in none) are nested and
+    every one is closed. One pass over the arcs: the shell k is `0 < lab <= k`, so «every shell is closed» for all k at
+    once is «for every arc, the shell of u from which u is mined holds q too»: the least such k is lab[u]."""
+    n = pos.shape[0]
+    mxy = mx * my
+    bad = 0
+    first_u = -1
+    first_q = -1
+    lu0 = 0
+    lq0 = 0
+    for u in range(n):
+        lu = lab[u]
+        if lu <= 0:
+            continue
+        p = np.int64(pos[u])
+        k = p // mxy
+        r = p - k * mxy
+        j = r // mx
+        i = r - j * mx
+        t = tpl[u]
+        for e in range(tab_ptr[t], tab_ptr[t + 1]):
+            ii = i + tab_off[e, 0]
+            jj = j + tab_off[e, 1]
+            kk = k + tab_off[e, 2]
+            if ii < 0 or ii >= mx or jj < 0 or jj >= my or kk < 0 or kk >= mz:
+                continue
+            q = index[ii + mx * (jj + my * kk)]
+            if q >= 0:
+                lq = lab[q]
+                if lq <= 0 or lq > lu:
+                    if bad == 0:
+                        first_u = u
+                        first_q = q
+                        lu0 = lu
+                        lq0 = lq
+                    bad += 1
+    return bad, first_u, first_q, lu0, lq0

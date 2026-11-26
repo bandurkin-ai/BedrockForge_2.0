@@ -16,7 +16,9 @@ from bf_core.mine import graph as G
 from bf_core.mine import hpf as H
 from bf_core.mine import shells as SH
 from bf_core.mine import solve as SV
+from bf_core.mine import template as tp
 from bf_core.mine.econ_table import Table
+from tests.ref.pit_cone import full_cone
 
 T9 = np.array([[0, 0, 1], [1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1], [-1, -1, 1], [1, -1, 1],
                 [-1, 1, 1]], dtype=np.int32)  # fmt: skip
@@ -145,10 +147,12 @@ def test_air_blocks_do_not_matter_and_are_never_in_the_pit(big):
     g2 = G.build_graph(syn.dims, junk, syn.air, syn.tpl_full, syn.tables)
     again = SH.shells(g2, syn.values, RFS)
     assert again.pit.tobytes() == res.pit.tobytes()
-    # the same on the explicit arcs of the nodes that are not air (the reference of the arcs)
+    # no arc leads into «воздух»: the predecessors are blocks (the cells of «air» are free, no node is behind them)
     ip, ix = G.predecessors(syn.graph)
-    assert (ix >= 0).all() and ix.max() < syn.graph.n  # an arc never leaves the nodes: a predecessor in air is free
-    assert len(np.unique(ix)) <= syn.graph.n
+    assert len(ix) > 0 and not np.isin(G.parent_index(syn.graph)[ix], np.flatnonzero(syn.air)).any()
+    # …and a cell of «air» whose neighbour above is a block is NOT a bridge of this graph (no chain goes through it:
+    # the table has no reduced offsets here) — the valley tests below are the ones where «air» carries a chain
+    assert syn.graph.real is None and syn.graph.n == int((~syn.air).sum())
 
 
 def test_bitwise_on_repeat_and_on_1_2_4_8_threads_and_any_portion():
@@ -311,3 +315,111 @@ def test_one_node_and_a_column_of_ore_under_waste():
     res = SH.shells(g, lambda rf: ore * rf - 1.0, [0.05, 0.1, 0.15, 0.2])  # the ore pays 4 + its own cost at RF 0.125
     assert res.blocks.tolist() == [0, 0, 5, 5] and res.pit.tolist() == [3] * 5
     assert G.is_closed(g, res.mask(2))
+
+
+# --- bridges: «воздух» inside the box (a valley of the relief): the shells against the WHOLE cone (review 21.21б) ----
+
+
+class Valley:
+    """A rough relief with steep walls (valleys between ridges) over an ellipsoid of lognormal grades, 45° cubes,
+    K = 3: the graph of the REDUCED template with bridges, and the reference — the whole cone with «air» as nodes of
+    value 0."""
+
+    def __init__(self, dims=(18, 14, 12), seed=3, rough=6, bridges=True):
+        nx, ny, nz = dims
+        rng = np.random.default_rng(seed)
+        k, j, i = np.meshgrid(np.arange(nz), np.arange(ny), np.arange(nx), indexing="ij")
+        top = rng.integers(nz - rough, nz + 1, (ny, nx))
+        self.air = (k >= top[None]).ravel()
+        r = ((i - nx * 0.5) / (nx * 0.35)) ** 2 + ((j - ny * 0.5) / (ny * 0.35)) ** 2
+        r = r + ((k - nz * 0.4) / (nz * 0.4)) ** 2
+        a = (450.0 * np.exp(rng.normal(0, 0.6, k.shape)) * np.exp(-1.0 * r)).ravel()
+        self.dims = dims
+        total = nx * ny * nz
+        self.red = tp.build_template(1.0, 1.0, 1.0, tp.angle_table([(0.0, 45.0)]), k=3).tables[0].offsets
+        self.full = full_cone(1.0, 1.0, 1.0, 45.0, 3)
+        self.graph = G.build_graph(dims, np.zeros(total, np.int64), self.air, None, [self.red], bridges=bridges)
+        sel = ~self.air
+        self.a, self.d, self.cm = a[sel], np.full(int(sel.sum()), 70.0), np.full(int(sel.sum()), 6.0)
+        self.ref_graph = G.build_graph(dims, np.zeros(total, np.int64), np.zeros(total, bool), None, [self.full])
+
+    def values(self, rf):
+        return np.maximum(self.a * rf - self.d, 0.0) - self.cm
+
+    def reference(self, rf, q):
+        """OR-Tools on the whole cone, every cell a node, at the quantum of the scenario: the mask of the real nodes."""
+        v = np.zeros(self.air.size, np.int64)
+        v[~self.air] = SH.scale(self.values(rf), q)
+        return F.solve(self.ref_graph.with_values(v))[~self.air]
+
+
+@pytest.mark.parametrize("solver", ["hpf", "ortools"])
+def test_valley_shells_equal_the_whole_cone_from_scratch(solver):
+    """The case of the review: «air» in a valley between two ridges is a bridge; the 25 shells of the reduced graph are
+    the same SETS as OR-Tools gives on the whole (unreduced) cone from scratch at each RF — and the graph without the
+    bridges loses the border of the cone (a different answer)."""
+    v = Valley()
+    assert v.graph.n > v.graph.n_real and v.graph.n_real == int((~v.air).sum())
+    res = SH.shells(v.graph, v.values, RFS, solver=solver)
+    assert res.pit.shape == (v.graph.n_real,) and res.stats["bridges"] == v.graph.n - v.graph.n_real
+    assert res.blocks[-1] > 100
+    for k, rf in enumerate(RFS):
+        assert np.array_equal(res.mask(k), v.reference(rf, res.q)), f"RF {rf}"
+    assert res.blocks.tolist() == [int(res.mask(k).sum()) for k in range(25)]  # the blocks are the real ones only
+    grid = SH.pit_on_grid(v.graph, res.pit)
+    assert not grid[v.air].any()  # no bridge and no «air» in the pit on the grid
+    assert (grid[~v.air] == res.pit).all()
+    plain = Valley(bridges=False)  # the old graph: the border of the cone is lost somewhere in the 25 shells
+    old = SH.shells(plain.graph, plain.values, RFS, solver=solver)
+    assert any(not np.array_equal(old.mask(k), res.mask(k)) for k in range(25))
+
+
+def test_valley_flat_relief_graph_and_shells_are_the_old_ones():
+    """A flat relief has no bridge: the same arrays, the same shells, bit for bit, with `bridges` or without."""
+    on, off = Valley(rough=1, seed=3), Valley(rough=1, seed=3, bridges=False)
+    assert on.graph.real is None and on.graph.n == off.graph.n
+    a = SH.shells(on.graph, on.values, RFS[::4])
+    b = SH.shells(off.graph, off.values, RFS[::4])
+    assert a.pit.tobytes() == b.pit.tobytes() and a.q == b.q and a.blocks.tolist() == b.blocks.tolist()
+
+
+def test_valley_shells_are_bitwise_on_repeat_and_threads():
+    v = Valley(seed=5)
+    saved = numba.get_num_threads()
+    try:
+        outs = []
+        for th in (1, 2, 4):
+            numba.set_num_threads(th)
+            outs.append(SH.shells(v.graph, v.values, RFS[::3], threads=th).pit.tobytes())
+    finally:
+        numba.set_num_threads(saved)
+    assert len(set(outs)) == 1
+
+
+def test_valley_a_function_of_values_is_one_per_real_node():
+    v = Valley()
+    assert v.graph.n > v.graph.n_real
+    with pytest.raises(ValueError):  # a value per node of the graph (bridges included) is not what the caller gives
+        SH.shells(v.graph, lambda rf: np.zeros(v.graph.n), [1.0])
+    res = SH.shells(v.graph, v.values, [1.0])  # one shell
+    assert res.n_shells == 1 and res.error == pytest.approx(v.graph.n_real * res.q / 2)
+
+
+def test_forged_nesting_is_caught_in_one_pass_as_pit_internal(monkeypatch):
+    """The final check of all the shells is ONE pass over the arcs; a forged label of a block (nested, but not closed)
+    is a 500 `pit_internal` with the shell and the arc — never a result."""
+    syn = Syn((14, 10, 9), seed=6)
+    go = SH._Run.go
+
+    def forge(self):
+        go(self)
+        top = int(self.total)
+        have = np.flatnonzero(self.lab == top)
+        assert have.size
+        self.lab[have[0]] = 1  # a node of the last shell goes into shell 1: its predecessors are in later shells
+
+    monkeypatch.setattr(SH._Run, "go", forge)
+    with pytest.raises(ApiError) as e:
+        SH.shells(syn.graph, syn.values, RFS[::6])
+    assert (e.value.status, e.value.code) == (500, "pit_internal") and e.value.hint
+    assert e.value.extra["arcs"] > 0 and e.value.extra["shell"] == 1 and e.value.extra["predecessor_shell"] > 1

@@ -272,7 +272,7 @@ def _run(engine: sa.Engine, folder: Path, p: dict[str, Any], tick: Tick, sid: in
         sec["report"] = round(time.perf_counter() - t1, 4)
 
         tick(0.93, f"{S_WRITE}: поля PIT и ORE")
-        smap = fields.ShellMap.from_graph(graph, res.pit)
+        smap = fields.ShellMap.from_graph(graph.real_view(), res.pit)  # bridges are not blocks
         staged_fields = fields.stage_fields(store, model, model.version, sp.prefix, sid, smap, tab.node_of_row,
                                             tab.ore_row, chunk=chunk)  # fmt: skip
     staged = None

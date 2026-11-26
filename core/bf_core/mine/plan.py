@@ -295,7 +295,11 @@ def node_tables(model: Model, tab: Table, tpl: PitTemplate, field: str | None, c
 
 
 def make_graph(model: Model, tab: Table, tpl: PitTemplate, domain_field: str | None, chunk: int) -> PitGraph:
-    """The graph of the nodes of `tab` (the parents that are not «воздух») on the grid of the parents."""
+    """The graph of the nodes of `tab` (the parents that are not «воздух») on the grid of the parents, with the BRIDGES:
+    an «воздух» cell inside the box of the blocks that carries a chain of the reduced template (a valley of the relief
+    between two ridges) is a node of value 0 (`PitGraph.real` is False there; `graph.py`, BRIDGES). The values of the
+    blocks are `tab`'s (`Table.values`, one per REAL node, in the order of the table); a bridge takes the general
+    table."""
     import numpy as np
 
     from .graph import build_graph
@@ -312,7 +316,8 @@ def make_graph(model: Model, tab: Table, tpl: PitTemplate, domain_field: str | N
     if len(tpl.tables) > 1:
         table = np.zeros(total, dtype=np.uint8)
         table[cells] = node_tables(model, tab, tpl, domain_field, chunk)
-    return build_graph((nx, ny, nz), np.zeros(total, dtype=np.int64), air, table, [t.offsets for t in tpl.tables])
+    return build_graph((nx, ny, nz), np.zeros(total, dtype=np.int64), air, table, [t.offsets for t in tpl.tables],
+                       bridges=True)  # fmt: skip
 
 
 # --- the control ------------------------------------------------------------------------------------------------------

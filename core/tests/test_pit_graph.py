@@ -11,7 +11,10 @@ import numpy as np
 import pytest
 
 from bf_core.api.errors import ApiError
+from bf_core.mine import flow_ref as F
 from bf_core.mine import graph as G
+from bf_core.mine import template as tp
+from tests.ref.pit_cone import full_cone
 
 T2D = np.array([[-1, 0, 1], [0, 0, 1], [1, 0, 1]], dtype=np.int32)  # the block above and its two neighbours above
 T3D_A = np.array([[0, 0, 1], [1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 2], [-2, 0, 2]], dtype=np.int32)
@@ -275,3 +278,198 @@ def test_closure_violations():
     assert G.is_closed(g, G.cone_mask(g, bad))
     with pytest.raises(ValueError):
         G.is_closed(g, np.zeros(3, bool))
+
+
+# --- bridges (review 21.21б: a chain of the reduced template through an «air» cell) ----------------------------------
+
+CUBES = (1.0, 1.0, 1.0)
+
+
+def reduced(phi, k, steps=CUBES):
+    return tp.build_template(*steps, tp.angle_table([(0.0, phi)]), k=k).tables[0].offsets
+
+
+def reach_of(g, keep):
+    """{P of a node of `keep`: the set of the P of the nodes of `keep` that it needs (the closure of the arcs)}."""
+    indptr, indices = G.predecessors(g)
+    p = G.parent_index(g)
+    out = {}
+    for u in range(g.n):
+        if not keep[p[u]]:
+            continue
+        seen, stack = {u}, [u]
+        while stack:
+            x = stack.pop()
+            for y in indices[indptr[x] : indptr[x + 1]]:
+                if int(y) not in seen:
+                    seen.add(int(y))
+                    stack.append(int(y))
+        out[int(p[u])] = frozenset(int(p[x]) for x in seen if keep[p[x]])
+    return out
+
+
+def valley_case():
+    """The scenario of the review: 5×1×3, cubes, 45°, K = 2; «air» at (1, 0, 1); +100 at (0, 0, 0), −10 at (2, 0, 2)."""
+    dims = (5, 1, 3)
+    air = np.zeros(15, bool)
+    air[1 + 5 * 1] = True
+    value = np.zeros(15, np.int64)
+    value[0], value[2 + 5 * 2] = 100, -10
+    return dims, air, value
+
+
+def test_valley_the_chain_through_air_is_kept_by_a_bridge():
+    dims, air, value = valley_case()
+    off = reduced(45.0, 2)
+    assert (2, 0, 2) not in {tuple(r) for r in off.tolist()}  # the offset of the border of the cone is a sum
+    plain = G.build_graph(dims, value, air, None, [off])
+    g = G.build_graph(dims, value, air, None, [off], bridges=True)
+    top = 2 + 5 * 2
+    # without the bridge the node (0, 0, 0) does not need (2, 0, 2): the border of the cone is lost
+    assert top not in reach_of(plain, ~air)[0]
+    assert (g.n, g.n_real) == (15, 14) and g.real is not None and int((~g.real).sum()) == 1
+    p = G.parent_index(g)
+    assert p[~g.real].tolist() == [1 + 5 * 1]  # the bridge is the «air» cell (1, 0, 1)
+    assert g.value[~g.real].tolist() == [0] and g.tpl[~g.real].tolist() == [0]
+    assert top in reach_of(g, ~air)[0]
+    # the reference: the whole cone, «air» as a node of value 0
+    ref = G.build_graph(dims, value, np.zeros(15, bool), None, [full_cone(1, 1, 1, 45.0, 2)])
+    assert reach_of(g, ~air) == reach_of(ref, ~air)
+    # the optimum: +100 needs the −10 behind the air, only the bridge says so
+    mined = F.solve(g)
+    assert bool(mined[np.flatnonzero(p == top)[0]])
+    assert not bool(F.solve(plain)[np.flatnonzero(G.parent_index(plain) == top)[0]])  # the old answer lost the border
+    assert np.array_equal(mined[g.real], F.solve(ref)[~air])
+
+
+def test_bridge_interface_expand_real_pit_real_view_masks():
+    dims, air, value = valley_case()
+    g = G.build_graph(dims, value, air, None, [reduced(45.0, 2)], bridges=True)
+    assert g.n_real == int((~air).sum())
+    vals = np.arange(1, g.n_real + 1, dtype=np.int64)
+    full = g.expand(vals)
+    assert full.shape == (g.n,) and full[~g.real].tolist() == [0] and np.array_equal(full[g.real], vals)
+    assert np.array_equal(g.real_pit(full), vals) and full.dtype == np.int64
+    with pytest.raises(ValueError):
+        g.expand(vals[:-1])
+    with pytest.raises(ValueError):
+        g.real_pit(vals)  # one entry per real node is not one per node
+    g2 = g.with_values(full)
+    assert g2.real is g.real
+    bad = full.copy()
+    bad[~g.real] = 5
+    with pytest.raises(ValueError):
+        g.with_values(bad)  # the value of a bridge is 0
+    assert np.array_equal(G.parent_index(g, real_only=True), np.flatnonzero(~air))
+    view = g.real_view()
+    assert view.n == g.n_real and view.real is None and np.array_equal(G.parent_index(view), np.flatnonzero(~air))
+    # a mask over the nodes goes back to the parent grid without the bridge
+    assert np.array_equal(G.expand_mask(g, np.ones(g.n, bool)), ~air)
+    # a subgraph keeps the flag (and loses it when no bridge is left)
+    sub, _ = G.restrict_graph(g, np.ones(g.n, bool))
+    assert sub.real is not None and np.array_equal(sub.real, g.real)
+    assert G.restrict_graph(g, g.real)[0].real is None
+    # the cone of the positive node passes through the bridge
+    cone = G.cone_mask(g)
+    assert cone[~g.real].all() and cone[g.real].sum() >= 2
+
+
+def test_flat_relief_no_bridges_graph_is_bit_for_bit_the_old_one():
+    """«Воздух» above all the blocks (a flat relief, a trimmed box): nothing to bridge, the same arrays, `real` None."""
+    rng = np.random.default_rng(3)
+    dims = (9, 7, 8)
+    nx, ny, nz = dims
+    air = np.repeat(np.arange(nz), nx * ny) >= 6  # the top two levels are «воздух»: outside the box
+    value = rng.integers(-9, 10, air.size).astype(np.int64)
+    off = reduced(45.0, 3)
+    a = G.build_graph(dims, value, air, None, [off])
+    b = G.build_graph(dims, value, air, None, [off], bridges=True)
+    assert b.real is None and b.n == b.n_real == a.n
+    for name in ("pos", "index", "value", "tpl", "tab_ptr", "tab_off", "level_ptr"):
+        assert getattr(a, name).tobytes() == getattr(b, name).tobytes(), name
+    assert (a.dims, a.origin, a.shape) == (b.dims, b.origin, b.shape)
+    c = G.build_graph(dims, value, np.zeros(air.size, bool), None, [off], bridges=True)  # no «air» in the box at all
+    assert c.real is None and c.n == air.size
+
+
+def random_terrain(rng, dims, rough):
+    nx, ny, nz = dims
+    kk = np.repeat(np.arange(nz), nx * ny).reshape(nz, ny, nx)
+    top = rng.integers(max(1, nz - rough), nz + 1, (ny, nx))
+    return (kk >= top[None]).ravel()
+
+
+@pytest.mark.parametrize("seed", range(12))
+def test_bridges_reproduce_the_full_cone_over_all_cells(seed):
+    """The reduced template + bridges needs exactly what the whole cone needs when «air» is a node of value 0: random
+    «воздух» (holes), a rough relief, steps of 1 and 2, angles 30…60°, K = 2…4."""
+    rng = np.random.default_rng(100 + seed)
+    phi = float(rng.choice([30.0, 45.0, 50.0, 60.0]))
+    k = int(rng.integers(2, 5))
+    dx, dy = (float(x) for x in rng.choice([1.0, 1.0, 2.0], 2))
+    dims = tuple(int(x) for x in rng.integers(4, 8, 3))
+    total = int(np.prod(dims))
+    air = random_terrain(rng, dims, 4) if seed % 2 else rng.random(total) < rng.choice([0.15, 0.35])
+    if air.all():
+        air[0] = False
+    t = tp.build_template(dx, dy, 1.0, tp.angle_table([(0.0, phi)]), k=k)
+    value = rng.integers(-5, 6, total).astype(np.int64)
+    g = G.build_graph(dims, value, air, None, [t.tables[0].offsets], bridges=True)
+    ref = G.build_graph(dims, value, np.zeros(total, bool), None, [full_cone(dx, dy, 1.0, phi, t.k)])
+    assert reach_of(g, ~air) == reach_of(ref, ~air)
+    assert g.n_real == int((~air).sum())
+
+
+def test_bridges_are_deterministic_and_each_has_an_arc():
+    rng = np.random.default_rng(8)
+    dims = (10, 8, 9)
+    air = random_terrain(rng, dims, 5)
+    value = rng.integers(-9, 10, air.size).astype(np.int64)
+    off = reduced(45.0, 4)
+    a = G.build_graph(dims, value, air, None, [off], bridges=True)
+    b = G.build_graph(dims, value, air, None, [off], bridges=True)
+    assert a.n > a.n_real  # a rough relief has valleys
+    for name in ("pos", "index", "value", "tpl", "level_ptr", "real"):
+        assert getattr(a, name).tobytes() == getattr(b, name).tobytes(), name
+    assert np.all(np.diff(G.parent_index(a)) > 0)  # the nodes are in the order of P, the bridges among them
+    indptr, _ = G.predecessors(a)
+    assert (np.diff(indptr)[~a.real] > 0).all()  # a bridge without a predecessor is not a bridge
+
+
+def test_bridges_with_domains_use_the_table_given_for_them():
+    """With several tables a bridge takes `bridge_table` (the general one by default): the assumption of the review."""
+    rng = np.random.default_rng(5)
+    dims = (8, 6, 7)
+    air = random_terrain(rng, dims, 4)
+    tpl = rng.integers(0, 2, air.size).astype(np.uint8)
+    value = rng.integers(-9, 10, air.size).astype(np.int64)
+    tabs = [reduced(45.0, 3), reduced(35.0, 3)]
+    g0 = G.build_graph(dims, value, air, tpl, tabs, bridges=True)
+    g1 = G.build_graph(dims, value, air, tpl, tabs, bridges=True, bridge_table=1)
+    assert g0.n_real == g1.n_real == int((~air).sum())
+    assert (g0.tpl[~g0.real] == 0).all() and (g1.tpl[~g1.real] == 1).all()
+    assert np.array_equal(g0.tpl[g0.real], tpl[~air]) and np.array_equal(g1.value[g1.real], value[~air])
+    with pytest.raises(ValueError):
+        G.build_graph(dims, value, air, tpl, tabs, bridges=True, bridge_table=2)
+
+
+# --- the nesting check of all the shells in one pass -----------------------------------------------------------------
+
+
+def test_nesting_violations_one_pass():
+    dims, value = rows_to_grid(np.arange(15).reshape(3, 5))
+    g = G.build_graph(dims, value, np.zeros(15, bool), None, [T2D])
+    level = (np.searchsorted(g.level_ptr, np.arange(g.n), side="right") - 1).astype(np.int16)
+    lab = (level.max() + 1 - level).astype(np.int16)  # the top level is in shell 1, the next in 2, …: nested, closed
+    assert G.nesting_violations(g, lab) == (0, -1, -1, 0, 0)
+    assert G.nesting_violations(g, np.zeros(g.n, np.int16)) == (0, -1, -1, 0, 0)  # nothing mined
+    bad = lab.copy()  # a node mined in shell 1 whose predecessors come only in shell 3 (the shell is not closed)
+    bad[0] = 1
+    count, u, _q, lu, lq = G.nesting_violations(g, bad)
+    assert (u, lu) == (0, 1) and count > 0 and lq > lu
+    bad = lab.copy()  # a predecessor that is in no shell
+    bad[g.index[5 + 1]] = 0
+    count, _u, _q, lu, lq = G.nesting_violations(g, bad)
+    assert count > 0 and lq == 0 and lu > 0
+    with pytest.raises(ValueError):
+        G.nesting_violations(g, lab[:-1])
