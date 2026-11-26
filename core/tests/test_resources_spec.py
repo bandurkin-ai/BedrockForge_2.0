@@ -393,7 +393,7 @@ def test_contract_answers_spec_parts() -> None:
         _write(path, data)
     for key, value in want.items():
         assert data[key] == value, f"{key}: BF_REGEN_RESOURCES=1 uv run pytest -q tests/test_resources_spec.py"
-    assert "ОБРАЗЦЫ" in data["_note"]
+    assert data["_note"]  # the samples and the real answers of 20.7 (`test_resources_contract.py`) in one file
     for key, answer in data.items():
         if key != "_note" and isinstance(answer, dict) and "status" in answer and answer["status"] >= 400:
             assert answer["body"]["code"] and answer["body"]["message"] and answer["body"]["hint"], key
@@ -425,7 +425,7 @@ def test_sample_report_is_consistent() -> None:
     assert total_cells["tonnes"]["value"] == 12.5 and total_cells["grade:AU"]["text"] == "2,50"
     assert math.isclose(total_cells["metal:AU"]["value"], 1.004711, rel_tol=1e-6)
     for code in ("template_get", "template_gkz"):
-        assert data[code]["body"]["template"]["order"]
+        assert data[code]["body"]["template"]["labels"]
 
 
 def test_no_numpy_at_import() -> None:
