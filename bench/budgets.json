@@ -779,7 +779,7 @@
     "resources_xlsx": {"params": {"rows": 20000, "threads": 2}, "budget_s": 4.0, "budget_mb": 1000, "limits": {"export_s": 3.0}, "note": "ТЗ 8.10 (Э20, 20.11): XLSX; 19 тыс. строк 0,42 с, пик ≈ 600 МБ"},
     "estimate_compare": {"params": {"rows": 2000000, "threads": 2}, "budget_s": 3.0, "budget_mb": 1000, "limits": {"compare_s": 1.5}, "note": "Д-37 (20.10): замер 2 млн, 2 потока 0,48–0,70 с"},
     "pit_spike": {"params": {"nodes": 200000, "threads": 2, "hard": ["marginal", "nugget", "noise"]}, "budget_s": 40.0, "budget_mb": 1200, "limits": {"hpf_s": 1.0, "ortools_s": 3.0, "hpf_mb": 400, "ortools_mb": 800, "hard_noise_hpf_s": 6.0}, "note": "ADR 0028 решение 15 (21.6): 200 тыс. узлов; замер: HPF 0,25 с / 203 МБ, OR-Tools 0,75 с / 392 МБ; всего 16,5 с (запуски дочерних процессов)"},
-    "pit_report": {"params": {"rows": 200000, "shells": 25, "threads": 2}, "budget_s": 6.0, "budget_mb": 800, "limits": {}, "note": "ТЗ 8.11.5 (21.9): поля PIT/ORE и z-сетки 25 оболочек; замер на 1 млн — 0,18 с, 400 МБ"},
+    "pit_report": {"params": {"rows": 1000000, "shells": 25, "threads": 2}, "budget_s": 6.0, "budget_mb": 800, "limits": {}, "note": "ТЗ 8.11.5 (21.9): поля PIT/ORE и z-сетки 25 оболочек; замер на 1 млн — 0,18 с, 400 МБ"},
     "pit_shells_1m": {"params": {"nodes": 200000, "threads": 2, "scratch": [0, 12, 24], "ortools": true}, "budget_s": 20.0, "budget_mb": 800, "limits": {"shells_s": 8.0}, "note": "ТЗ 8.11.5 (Э21, 21.14): 25 оболочек, 200 тыс.; замер 2 потока: оболочки 1,5 с, пик 271 МБ, всего 4,3 с"}
   },
   "full": {
