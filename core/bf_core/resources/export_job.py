@@ -336,8 +336,9 @@ def _read(engine: sa.Engine, folder: Path, p: Mapping[str, Any]) -> dict[str, An
         path = store.path_of(rst.data_sha(conn, rid))
         if not path.is_file():
             raise rst.broken()
-        tid = p.get("template") or (info.get("params") or {}).get("template_id")
-        template = templates.get(conn, str(tid)) if tid else None
+        tid, own = p.get("template"), (info.get("params") or {}).get("template_id")
+        # the template asked for: 404; the one the report was saved with and that was deleted since: the generic form
+        template = templates.get(conn, str(tid)) if tid else (templates.saved_with(conn, str(own)) if own else None)
         try:
             model_fields: list[Any] | None = Model.open(conn, store, int(info["model"]["id"])).fields
         except (ApiError, KeyError, TypeError, ValueError):

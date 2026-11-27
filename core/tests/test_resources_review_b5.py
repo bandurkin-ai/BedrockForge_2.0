@@ -7,10 +7,15 @@ kinds, and its form showed «0» tonnes in every row — for a deposit of thousa
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
+from bf_core.db import dialect
+from bf_core.resources import export_job
 from bf_core.resources import forms as fm
-from tests.resapi_world import ra  # noqa: F401 - the fixture
+from bf_core.resources import job as rj
+from bf_core.resources import store as st
+from tests.resapi_world import BODY, RS, get, model, ok, ra, refused, run  # noqa: F401 - the fixture
 from tests.test_resources_compare import close, compare, find, saved, td37
 from tests.test_resources_forms import AU, GKZ, cell, grp
 
@@ -77,3 +82,42 @@ def test_a_grade_in_other_units_has_no_difference_not_a_number_of_two_units(ra) 
 
     other = find(compare(ra, gt, pct))["delta"]["elements"]["AU"]
     assert other == {"grade": None, "metal": None}  # grams minus tonnes is not a difference
+
+
+# --- a report saved with a template of the user that is deleted afterwards --------------------------------------------
+
+
+def test_a_report_whose_template_was_deleted_still_opens_rebuilds_and_exports(ra, tmp_path: Path) -> None:
+    """A template is a view of a report (it can be deleted, the report does not go «устарел»). A report saved with a
+    template of the user answered 404 `template_not_found` for ever after the template was deleted: it could not be
+    opened (the panel reads it without `?template=`), rebuilt or exported."""
+    mid = model(ra)
+    mine = {"name": "Свой", "labels": ["Измеренные", "Выявленные"], "subtotals": [], "total": "Всего"}
+    assert ok(ra.put(f"{RS}/templates/svoy", json={"template": mine})) == {"id": "svoy", "version": 1}
+    rid = run(ra, {"model_id": mid, **BODY, "template_id": "svoy"}, save=True, name="Со своим шаблоном")["report_id"]
+    assert get(ra, rid)["form"]["template"]["id"] == "svoy"
+    ok(ra.delete(f"{RS}/templates/svoy", params={"expected_version": 1}))
+
+    got = get(ra, rid)  # 200: the rows are there, the form is not, and the report says why
+    assert got["form"] is None and got["rows"] and got["rows_total"] > 0
+    assert [w["code"] for w in got["warnings"]] == ["template_missing"] and "svoy" in got["warnings"][0]["message"]
+    assert get(ra, rid, template="jorc")["form"]["template"]["id"] == "jorc"  # another view of the same rows
+    refused(ra.get(f"{RS}/reports/{rid}", params={"template": "svoy"}), 404, "template_not_found")  # asked by name
+
+    with dialect.read_tx(ra.project.engine) as conn:
+        again = st.rebuild_params(conn, rid)
+    out = rj.run_report(ra.project.engine, ra.project.folder, again)  # «Перестроить»
+    assert out["version"] == 2 and out["form"] is None and out["rows"] == got["rows"]
+    assert "template_missing" in [w["code"] for w in out["warnings"]]
+    assert [w["code"] for w in get(ra, rid)["warnings"]] == ["template_missing"]  # told once, not stored twice
+
+    path = tmp_path / "out" / "report.xlsx"
+    path.parent.mkdir()
+    with dialect.read_tx(ra.project.engine) as conn:
+        params = export_job.request(conn, ra.project.folder, rid, {"format": "xlsx", "path": str(path)})
+    export_job.run_export(ra.project.engine, ra.project.folder, params)
+    assert path.is_file() and path.stat().st_size > 0  # the generic form, as for a report with no template
+
+    # a NEW report with a template that is not there is refused as before
+    refused(ra.post(f"{RS}/reports", json={"params": {"model_id": mid, **BODY, "template_id": "svoy"}, "save": False}),
+            404, "template_not_found")  # fmt: skip
