@@ -67,8 +67,8 @@ def row_of(conn: Any, estimation_id: int) -> tuple[EstimationSpec, np.ndarray | 
                        "Восстановите таблицу, модель вариограммы или блочную модель либо удалите строку.",
                        {"param": "estimation_id"})  # fmt: skip
     origin = meta.get("origin")
-    return sb.load_spec(meta), (np.asarray(origin, dtype=np.float64) if isinstance(origin, list) and len(origin) == 3
-                                else None)  # fmt: skip
+    spec = sc.with_trend(conn, sb.load_spec(meta))  # `from: trend`: the ellipsoid of the trend, as the job takes it
+    return spec, (np.asarray(origin, dtype=np.float64) if isinstance(origin, list) and len(origin) == 3 else None)
 
 
 def _key(project: Any, spec: EstimationSpec, origin: np.ndarray | None, fps: list[str]) -> str:

@@ -142,7 +142,7 @@ export const commands: Command[] = [
     title: "Рудные интервалы (ГКЗ)",
     description:
       "Кондиционные рудные интервалы по методике ГКЗ (Д-26, ТЗ 7.35): бортовое содержание cutoff (Сб), мин. мощность m_min (Мрт), макс. мощность прослоя m_waste_max (Мпп), МС = Сб·Мрт (mc_min), Смин (c_min). " +
-      `Новая таблица «Рудные интервалы» и поля ORE_ID, ORE_CLS проб. ${WINDOW} С set_id, table, field, cutoff, m_min, m_waste_max — сразу задание.`,
+      `Новая таблица «Рудные интервалы» и поля ORE_ID, ORE_CLS проб (существующие значения этих полей заменяются — после подтверждения). ${WINDOW} С set_id, table, field, cutoff, m_min, m_waste_max — сразу задание.`,
     params: {
       set_id: SET,
       table: TABLE,
@@ -155,6 +155,7 @@ export const commands: Command[] = [
       ...ORE_COMMON,
       name: NAME,
     },
+    confirm: true,
     stage: STAGE,
   },
   {
@@ -180,8 +181,9 @@ export const commands: Command[] = [
     id: "composite.ore_intervals_edit",
     title: "Правка рудного интервала",
     description:
-      "Ручная правка результата «Рудные интервалы» по границам проб одной скважины (Д-26): split — разделить, merge — объединить, move — сдвинуть границу from → to. Кондиции перепроверяются, MANUAL = 1.",
+      "Ручная правка результата «Рудные интервалы» по границам проб одной скважины (Д-26): split — разделить, merge — объединить, move — сдвинуть границу from → to. Кондиции перепроверяются, MANUAL = 1. Меняет данные: интервалы скважины в результате переписываются на месте — после подтверждения.",
     params: { ...RESULT, hole: P("string", "скважина"), action: P("string", "действие", { enum: ["split", "merge", "move"] }), from: P("number", "глубина, м"), to: P("number", "глубина, м") },
+    confirm: true,
     stage: STAGE,
   },
   {

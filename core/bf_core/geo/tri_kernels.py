@@ -169,14 +169,20 @@ def plane_sides(xyz, i0, i1, i2, ax, ay, az, bx, by, bz):  # type: ignore[no-unt
 # answer, and the answers agree with each other: they are those of one path (Edelsbrunner and Mücke,
 # «Simulation of Simplicity», 1990). Up first: a collar on a DTM is above it, as a surveyor sees it.
 LIFT = (2, 0, 1)
+# An edge function this small against its two products is looked at again (`_edge`): the rounding of an exact
+# zero is a few units of the last place of the products, 1e−16 of them.
+EDGE_NOISE = 1e-12
 
 
 @njit(cache=True, nogil=True)
-def _lifted(f, px, py, qx, qy, kx, ky, dx, dy, dz):  # type: ignore[no-untyped-def]
+def _lifted(f, px, py, qx, qy, gx, gy, kx, ky, dx, dy, dz):  # type: ignore[no-untyped-def]
     """The edge function f = p × q of two corners seen along a segment (`_across`), or — the line goes through
     the edge exactly — what has its sign once the line is moved by `LIFT`: the corners then move by
     −(dz · Δ[kx] − dx · Δ[kz], dz · Δ[ky] − dy · Δ[kz]) and f by
-    Δ[kx] · dz · ey − Δ[ky] · dz · ex + Δ[kz] · (dy · ex − dx · ey), e = p − q. 0 — the edge is seen end-on."""
+    Δ[kx] · dz · ey − Δ[ky] · dz · ex + Δ[kz] · (dy · ex − dx · ey), e = p − q. 0 — the edge is seen end-on.
+    The last bracket is dz · (dy · g[kx] − dx · g[ky]), g — the edge itself (corner p − corner q, not sheared;
+    `gx`, `gy` — its kx and ky): taken so, an edge along the axis of the move (a vertical edge moved up) gives 0
+    exactly and the next axis decides; by e the two dx · dy · g[kz] cancel only up to their rounding."""
     if f != 0.0:
         return f
     ex = px - qx
@@ -187,10 +193,38 @@ def _lifted(f, px, py, qx, qy, kx, ky, dx, dy, dz):  # type: ignore[no-untyped-d
         elif axis == ky:
             c = -dz * ex
         else:
-            c = dy * ex - dx * ey
+            c = dz * (dy * gx - dx * gy)
         if c != 0.0:
             return c
     return 0.0
+
+
+@njit(cache=True, nogil=True)
+def _on_line(xyz, i, j, ex, ey, ez):  # type: ignore[no-untyped-def]
+    """Is the point e on the line through the corners i and j — by the coordinates themselves: every component
+    of (corner i − e) × (corner j − e) is zero (exact for an edge along an axis and for whole coordinates)."""
+    ux, uy, uz = xyz[i, 0] - ex, xyz[i, 1] - ey, xyz[i, 2] - ez
+    vx, vy, vz = xyz[j, 0] - ex, xyz[j, 1] - ey, xyz[j, 2] - ez
+    return uy * vz - uz * vy == 0.0 and uz * vx - ux * vz == 0.0 and ux * vy - uy * vx == 0.0
+
+
+@njit(cache=True, nogil=True)
+def _edge(xyz, i, j, px, py, qx, qy, ax, ay, az, bx, by, bz, kx, ky, dx, dy, dz):  # type: ignore[no-untyped-def]
+    """The edge function p × q of the corners i, j seen along the segment a–b, with what the numbers leave open
+    told by `_lifted`. An end of the segment that lies on the line of the edge (a collar on an edge of a body)
+    puts the line through the edge exactly, but the sheared corners are products with the direction and their
+    difference is then rounding noise of either sign, not 0 — the end would be on one side of the plane by
+    `LIFT` and the line on the other side of the edge by chance (a hole going away from the body «entered» it at
+    depth 0). Such a difference is 0: found by its size, proved by the coordinates of the end (`_on_line`)."""
+    m = px * qy
+    n = py * qx
+    f = m - n
+    if f != 0.0 and abs(f) <= EDGE_NOISE * (abs(m) + abs(n)):
+        if _on_line(xyz, i, j, ax, ay, az) or _on_line(xyz, i, j, bx, by, bz):
+            f = 0.0
+    if f != 0.0:
+        return f
+    return _lifted(f, px, py, qx, qy, xyz[i, kx] - xyz[j, kx], xyz[i, ky] - xyz[j, ky], kx, ky, dx, dy, dz)
 
 
 @njit(cache=True, nogil=True)
@@ -227,9 +261,9 @@ def segment_triangle(xyz, i0, i1, i2, ax, ay, az, bx, by, bz, kx, ky, kz):  # ty
     p0x, p0y, end0 = _across(xyz, i0, ax, ay, az, bx, by, bz, kx, ky, kz, dx, dy, dz)
     p1x, p1y, end1 = _across(xyz, i1, ax, ay, az, bx, by, bz, kx, ky, kz, dx, dy, dz)
     p2x, p2y, end2 = _across(xyz, i2, ax, ay, az, bx, by, bz, kx, ky, kz, dx, dy, dz)
-    u = _lifted(p2x * p1y - p2y * p1x, p2x, p2y, p1x, p1y, kx, ky, dx, dy, dz)
-    v = _lifted(p0x * p2y - p0y * p2x, p0x, p0y, p2x, p2y, kx, ky, dx, dy, dz)
-    w = _lifted(p1x * p0y - p1y * p0x, p1x, p1y, p0x, p0y, kx, ky, dx, dy, dz)
+    u = _edge(xyz, i2, i1, p2x, p2y, p1x, p1y, ax, ay, az, bx, by, bz, kx, ky, dx, dy, dz)
+    v = _edge(xyz, i0, i2, p0x, p0y, p2x, p2y, ax, ay, az, bx, by, bz, kx, ky, dx, dy, dz)
+    w = _edge(xyz, i1, i0, p1x, p1y, p0x, p0y, ax, ay, az, bx, by, bz, kx, ky, dx, dy, dz)
     if not ((u > 0.0 and v > 0.0 and w > 0.0) or (u < 0.0 and v < 0.0 and w < 0.0)):
         return False, 0.0, 0
     ga, gb, nx, ny, nz = _plane(xyz, i0, i1, i2, ax, ay, az, bx, by, bz)

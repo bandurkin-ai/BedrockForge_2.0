@@ -49,6 +49,7 @@ LONG_TIMEOUT_S = 30.0
 STR_MAX = 200  # a string out of the data of a project
 SIGNIFICANT = 6
 DEFAULT_LIMIT = 50
+INT_MAX = 2**63 - 1  # an id, an offset or a limit of the model: what a 64-bit column and OFFSET of the database take
 
 NO_PROJECT = "Проект не открыт"
 NO_SET = "Нет активного набора скважин: укажите set_id"
@@ -312,6 +313,10 @@ def check_args(schema: dict[str, Any], args: Any) -> dict[str, Any]:
             raise DataError(f"Параметр «{k}»: допустимы {', '.join(map(str, spec['enum']))}.")
         if isinstance(v, str) and len(v) > 500:
             raise DataError(f"Параметр «{k}» слишком длинный.")
+        if isinstance(v, int) and abs(v) > INT_MAX:  # beyond a 64-bit integer the database refuses the query
+            raise DataError(f"Параметр «{k}»: число слишком велико.")
+        if isinstance(v, float) and not math.isfinite(v):
+            raise DataError(f"Параметр «{k}» должен быть конечным числом.")
         out[k] = v
     return out
 

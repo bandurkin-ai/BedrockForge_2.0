@@ -267,6 +267,15 @@ def trend_form(conn: sa.Connection, trend_id: int) -> dict[str, Any]:
         raise _api(e.status, e.code, e.message, e.hint, "trend_id") from e
 
 
+def with_trend(conn: sa.Connection, spec: EstimationSpec) -> EstimationSpec:
+    """The search of a row `from: trend` filled in from its trend as it is now, as the job does (`job_plan._row`): a
+    stored row reads back with that search not resolved (`spec_parts.parse_search` keeps r1 only). Other rows — as
+    they are. The hash of the parameters («устарел») is of the row as stored, not of this one."""
+    if spec.search.source == "trend" and spec.trend_id is not None:
+        return spec.resolved(trend=trend_form(conn, spec.trend_id))
+    return spec
+
+
 # --- the inputs of the graph and «устарел» --------------------------------------------------------------------------
 
 

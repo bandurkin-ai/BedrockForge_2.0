@@ -23,7 +23,7 @@ const IDS = [
   "qaqc.report_open", "qaqc.report_save", "qaqc.report_rebuild", "qaqc.report_rename", "qaqc.report_delete",
   "qaqc.data_rename", "qaqc.data_refresh", "qaqc.data_delete",
 ];
-const CONFIRM = ["qaqc.config", "qaqc.crm", "qaqc.report_delete", "qaqc.data_refresh", "qaqc.data_delete"];
+const CONFIRM = ["qaqc.config", "qaqc.crm", "qaqc.report_rebuild", "qaqc.report_delete", "qaqc.data_refresh", "qaqc.data_delete"];
 
 const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status, headers: { "Content-Type": "application/json" } });
 const COUNTS = { rows: 500, filtered: 120, control: 60, unmapped: 2, missing: 1 };

@@ -412,6 +412,23 @@ def test_sizes_that_need_more_than_128_sub_cells_are_refused():
     assert e.value.code == "block_model_invalid"
 
 
+def test_blocks_of_one_size_under_a_bigger_parent_of_the_hint_are_sub_blocks():
+    """A model whose every block is half its parent along Z (the parent is said by the wizard or the file): the
+    sizes of the axis are all the same, yet they are sub-blocks — `div` 2, not a refusal of every block."""
+    cells = [(i, j, k) for k in range(4) for j in range(3) for i in range(3)]
+    centres = np.array([(5.0 + 10 * i, 5.0 + 10 * j, 2.5 + 5 * k) for i, j, k in cells])
+    sizes = np.tile([10.0, 10.0, 5.0], (len(cells), 1))
+    got = infer(centres, sizes, GridHint(corner=(0.0, 0.0, 0.0), size=(10.0, 10.0, 10.0)))
+    assert got.grid.sub.div == (1, 1, 2) and got.grid.counts == (3, 3, 2) and got.parents == 18
+    assert got.s is not None and got.w is not None
+    assert np.array_equal(got.s, np.array([(0, 0, k % 2) for _, _, k in cells], dtype=np.uint8))
+    assert np.array_equal(got.w, np.tile(np.array([1, 1, 1], dtype=np.uint8), (len(cells), 1)))
+    assert np.array_equal(got.p, np.array([i + 3 * (j + 3 * (k // 2)) for i, j, k in cells], dtype=np.uint64))
+    assert got.check3.ok and np.allclose(geo.centres(got.grid, got.p, got.s, got.w), centres, atol=1e-9)
+    same = infer(centres, sizes)  # nothing says a bigger parent: the blocks are the parents, as before
+    assert same.grid.sub.div == (1, 1, 1) and same.grid.counts == (3, 3, 4) and same.s is None
+
+
 def test_the_grid_over_the_limit_is_refused_by_the_schema():
     c = np.array([[0.5, 0.5, 0.5], [1e6 + 0.5, 1e6 + 0.5, 1e6 + 0.5]])
     with pytest.raises(ApiError) as e:

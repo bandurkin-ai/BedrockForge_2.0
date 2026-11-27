@@ -162,7 +162,7 @@ export const commands: Command[] = [
     required: ["report_id"],
     stage: STAGE,
   },
-  { id: "qaqc.report_rebuild", title: "Перестроить отчёт QAQC", description: "Повторить расчёт отчёта с сохранёнными фильтром и параметрами на текущих данных и настройке (номер версии отчёта растёт). Данные отчёта удалены — недоступно.", params: { report_id: REPORT_ID }, required: ["report_id"], stage: STAGE },
+  { id: "qaqc.report_rebuild", title: "Перестроить отчёт QAQC", description: "Повторить расчёт отчёта с сохранёнными фильтром и параметрами на текущих данных и настройке (номер версии отчёта растёт). Меняет данные: прежние данные отчёта заменяются — после подтверждения. Данные отчёта удалены — недоступно.", params: { report_id: REPORT_ID }, required: ["report_id"], confirm: true, stage: STAGE },
   { id: "qaqc.report_rename", title: "Переименовать отчёт QAQC", description: "Переименовать отчёт QAQC; занятое имя — отказ.", params: { report_id: REPORT_ID, name: P("string", "новое имя") }, required: ["report_id", "name"], stage: STAGE },
   { id: "qaqc.report_delete", title: "Удалить отчёт QAQC", description: "Удалить отчёт QAQC вместе с его файлами и копией записей (данные QAQC не меняются).", params: { report_id: REPORT_ID }, required: ["report_id"], confirm: true, stage: STAGE },
   { id: "qaqc.data_rename", title: "Переименовать данные QAQC", description: "Переименовать данные контрольных проб; занятое имя — отказ.", params: { data_id: P("integer", "номер данных QAQC"), name: P("string", "новое имя") }, required: ["data_id", "name"], stage: STAGE },

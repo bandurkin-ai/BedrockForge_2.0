@@ -351,6 +351,20 @@ def get(conn: sa.Connection, template_id: str) -> dict[str, Any]:
     return {"id": template_id, **merged[template_id]}
 
 
+def saved_with(conn: sa.Connection, template_id: str) -> dict[str, Any] | None:
+    """The template a report was saved with; None — it was deleted since. A template is a view: the report is still
+    there without it (its rows, the curve, the control), only its form is not made — `gone` says so."""
+    merged, _ = _all(conn)
+    return {"id": template_id, **merged[template_id]} if template_id in merged else None
+
+
+def gone(template_id: str) -> dict[str, str]:
+    """The warning of a report whose template was deleted."""
+    return {"code": "template_missing",
+            "message": f"Шаблон формы «{template_id[:60]}», с которым сохранён отчёт, удалён: форма не показана.",
+            "hint": "Выберите другой шаблон формы в панели «Ресурсы»."}  # fmt: skip
+
+
 def _write(conn: sa.Connection, merged: dict[str, dict[str, Any]], row_version: int, current: int) -> None:
     """Store the reference (the untouched box is not kept); a version of the row that moved — 409."""
     box = defaults()
