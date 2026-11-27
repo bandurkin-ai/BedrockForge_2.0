@@ -16,6 +16,7 @@ from typing import IO, Any
 import sqlalchemy as sa
 
 import bf_core
+from bf_core.assistant.store_import import close_imported_pending
 from bf_core.blocks.filters.remap import remap_filters
 from bf_core.blocks.remap import remap_blocks
 from bf_core.db import dialect, migrate
@@ -293,6 +294,7 @@ def _restore(
         conn.execute(sa.insert(blobs).values(sha256=sha, size=tmp[2], media_type=media, created_at=now))
     known = set(staged) | {r[0] for r in conn.execute(sa.select(blobs.c.sha256))}
     _insert_table(conn, "blob_owners", False, (o for o in owners if o.get("sha256") in known), maps)
+    close_imported_pending(conn, store)  # Э26 В5: commands waiting in dialogs carry the old numbers of objects
     uid = uuid.uuid4()
     project = manifest.get("project") or {}
     from bf_core.projects.store import normalize_description
