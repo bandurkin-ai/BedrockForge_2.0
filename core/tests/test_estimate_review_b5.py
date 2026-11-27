@@ -94,3 +94,35 @@ def test_the_inspector_finds_the_row_of_every_domain_of_a_shared_prefix(tmp_path
     finally:
         ins.forget()
         jw.project.engine.dispose()
+
+
+def test_the_rebuild_of_a_shared_field_runs_the_row_that_is_stale(tmp_path: Path) -> None:
+    from types import SimpleNamespace
+
+    from bf_core import lineage
+    from bf_core.geostat.estimate import job
+    from bf_core.lineage import rebuild
+
+    jw = u.world(tmp_path)
+    try:
+        a, b, plan = pair(jw)
+        run(jw, plan_id=plan)
+        node = lineage.Node("bm_field", jw.model, "au_ok_est")
+
+        def state() -> str:
+            with dialect.read_tx(jw.project.engine) as conn:
+                return str(lineage.status(conn, [node])[node].state)
+
+        assert state() == "current"
+        u.put(jw, b, disc=[3, 3, 2])  # the second row of the prefix is edited: the fields are «устарел» by it
+        assert state() == "stale"
+        with dialect.read_tx(jw.project.engine) as conn:
+            made = rebuild.make_plan(conn, node)
+        assert (made.items[0].owner.kind, made.items[0].owner.id) == ("object:estimation", b)
+        svc = SimpleNamespace(require_current=lambda writable=False: jw.project)
+        step = rebuild.prepare_step(svc, made.items[0].owner, {})
+        assert step.job_kind == "estimate.run" and step.params["estimation_ids"] == [b]
+        job.run_estimate(jw.project.engine, jw.project.folder, step.params, threads=2)
+        assert state() == "current"  # the job of the first row would have carried the old blocks of `b`: still stale
+    finally:
+        jw.project.engine.dispose()

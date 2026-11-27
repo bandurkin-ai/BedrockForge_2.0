@@ -203,8 +203,17 @@ def delete(conn: sa.Connection, estimation_id: int) -> dict[str, Any]:
 def field_owner(conn: sa.Connection, node: Any) -> Any | None:
     """The row that fills a field of an estimation (`node` — `bm_field`: the model and the casefolded name): of the
     rows the graph records as its inputs (they follow the ids of a `.bfggis` import, `source.params` do not), the one
-    whose prefix starts the name of the field; None — the field is not one of an estimation or the row is gone."""
+    whose prefix starts the name of the field; None — the field is not one of an estimation or the row is gone. Of the
+    rows of one prefix (`field_rows`) — the first that is «устарел» by its own check: its job is what makes the field
+    current (the job of another row would carry the old blocks of this one, and the field would stay «устарел»)."""
     rows = field_rows(conn, node)
+    if len(rows) > 1:  # the rows of one prefix: «Перестроить» runs the one that is «устарел», not the first by habit
+        from .store_check import freshness
+
+        for n in rows:
+            meta = conn.execute(sa.select(objects.c.meta).where(objects.c.id == n.id, objects.c.kind == KIND)).scalar()
+            if meta is not None and freshness(conn, meta)["stale"]:
+                return n
     return rows[0] if rows else None
 
 
