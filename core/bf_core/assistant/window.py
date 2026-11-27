@@ -130,25 +130,27 @@ def trim_messages(
     out = list(messages)
     old = cycle_start(out)
     changed = False
-
-    def total() -> int:
-        return estimate_messages(out, extra_tokens)
+    sizes = [estimate_tokens(m) for m in out]  # measured once: a replaced message only moves the running sum
+    running = extra_tokens + sum(sizes)
 
     def apply(step: Any) -> None:
-        nonlocal changed
+        nonlocal changed, running
         for i in range(old):  # oldest first
-            if not force and total() <= limit:
+            if not force and running <= limit:
                 return
             new = step(out[i])
             if new is not None:
+                size = estimate_tokens(new)
+                running += size - sizes[i]
+                sizes[i] = size
                 out[i] = new
                 changed = True
 
-    if force or total() > limit:
+    if force or running > limit:
         apply(_replace_results)
         apply(_drop_thinking)
         apply(_replace_workspace)
-    tokens = total()
+    tokens = running
     return Windowed(out, tokens, changed, tokens <= limit)
 
 

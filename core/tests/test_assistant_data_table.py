@@ -159,7 +159,14 @@ def test_texts_of_the_project_are_cleaned(tmp_path: Path) -> None:
 
 def test_clean_helper() -> None:
     assert dt.clean("a\x00b\r\nc\td") == "a b c d" and dt.clean("x" * 500, 10) == "x" * 9 + "…"
-    assert dt.sig6(1234567.891) == 1234570.0 and np.isnan(dt.sig6(float("inf")))
+
+
+def test_cell_keeps_integers_and_integer_part() -> None:
+    """Sample numbers, ids and coordinates are never rounded to 6 digits (the fraction is)."""
+    assert dt._cell(1234567) == 1234567 and isinstance(dt._cell(1234567), int)
+    assert dt._cell(7650123.4) == 7650123 and dt._cell(0.123456789) == 0.123457
+    assert dt._cell(np.int64(12345678)) == 12345678
+    assert dt._cell(float("nan")) is None and dt._cell(float("inf")) is None and dt._cell(True) is True
 
 
 # --- data_stats -------------------------------------------------------------------------------------------------

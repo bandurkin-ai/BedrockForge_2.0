@@ -58,35 +58,43 @@ HOLE_SCHEMA: dict[str, Any] = {
 }
 
 
-def audit_run(conn: sa.Connection, set_id: int) -> int | None:
-    """The id of the last audit run of a set (None - the audit was never run)."""
+STALE = "Результат аудита устарел: данные набора изменились после запуска. Запустите аудит заново (audit.run)."
+
+
+def audit_run(conn: sa.Connection, set_id: int) -> tuple[int, bool] | None:
+    """(the id of the last audit run of a set, whether it is stale); None - the audit was never run."""
     from bf_core.audit.service import latest
 
     last = latest(conn, set_id)
-    return None if last is None else int(last["run_id"])
+    return None if last is None else (int(last["run_id"]), bool(last["stale"]))
 
 
-def _flagged(conn: sa.Connection, run_id: int) -> dict[str, int]:
+def _flagged(call: DataCall, conn: sa.Connection, run_id: int) -> dict[str, int]:
     """Findings per hole name in an audit run: the sum of the counts of its groups."""
     q = (
         sa.select(audit_findings.c.hole, sa.func.sum(audit_findings.c.count))
         .where(audit_findings.c.run_id == run_id, audit_findings.c.hole.is_not(None))
         .group_by(audit_findings.c.hole)
     )
-    return {str(h): int(n) for h, n in conn.execute(q)}
+    out: dict[str, int] = {}
+    for h, n in conn.execute(q):
+        call.check()
+        out[str(h)] = int(n)
+    return out
 
 
-def _hole_ids(conn: sa.Connection, set_id: int, only: set[str] | None, search: str | None) -> list[int]:
+def _hole_ids(call: DataCall, conn: sa.Connection, set_id: int, only: set[str] | None, search: str | None) -> list[int]:
     """Ids of the holes of a set (in the order of import) among the names `only` that hold the part of a name."""
     needle = dialect.name_key(search) if search else ""
     rows = conn.execute(
         sa.select(dh_holes.c.id, dh_holes.c.name).where(dh_holes.c.set_id == set_id).order_by(dh_holes.c.id)
     ).all()
-    return [
-        int(r.id)
-        for r in rows
-        if (only is None or r.name in only) and (not needle or needle in dialect.name_key(r.name))
-    ]
+    ids: list[int] = []
+    for r in rows:
+        call.check()  # a project of 50 000 holes: this loop is the long part
+        if (only is None or r.name in only) and (not needle or needle in dialect.name_key(r.name)):
+            ids.append(int(r.id))
+    return ids
 
 
 def _row(h: Any, flagged: dict[str, int] | None) -> dict[str, Any]:
@@ -111,8 +119,8 @@ def holes(call: DataCall, args: dict[str, Any]) -> dict[str, Any]:
     cols += [dh_holes.c.azimuth, dh_holes.c.dip]
     with dialect.read_tx(call.project.engine) as conn:
         require_set(conn, set_id)
-        run_id = audit_run(conn, set_id)
-        flagged = None if run_id is None else _flagged(conn, run_id)
+        run = audit_run(conn, set_id)
+        flagged = None if run is None else _flagged(call, conn, run[0])
         if only_flagged and flagged is None:
             raise DataError("Аудит набора не запускался: находок ещё нет. Запустите аудит в окне «Аудит данных».")
         if search is None and not only_flagged:  # the plain page: the database cuts it
@@ -120,8 +128,9 @@ def holes(call: DataCall, args: dict[str, Any]) -> dict[str, Any]:
             total = int(conn.execute(count).scalar_one())
             q = sa.select(*cols).where(dh_holes.c.set_id == set_id).order_by(dh_holes.c.id)
             page = conn.execute(q.offset(offset).limit(limit)).all()
+            call.check()
         else:
-            ids = _hole_ids(conn, set_id, set(flagged or ()) if only_flagged else None, search)
+            ids = _hole_ids(call, conn, set_id, set(flagged or ()) if only_flagged else None, search)
             total = len(ids)
             chosen = ids[offset : offset + limit]
             page = (
@@ -130,12 +139,15 @@ def holes(call: DataCall, args: dict[str, Any]) -> dict[str, Any]:
                 else []
             )
     call.summary = f"Скважин: {total}" + (f", показано {len(page)}" if len(page) < total else "")
-    return {
+    out: dict[str, Any] = {
         "set_id": set_id,
         "total": total,
         "rows": [_row(h, flagged) for h in page],
         "next_offset": next_offset(offset, len(page), total),
     }
+    if run is not None and run[1]:  # the counts of findings belong to data that changed since (as in data_audit)
+        out["stale"], out["note"] = True, STALE
+    return out
 
 
 # --- the card ----------------------------------
@@ -238,7 +250,8 @@ def hole(call: DataCall, args: dict[str, Any]) -> dict[str, Any]:
     with dialect.read_tx(call.project.engine) as conn:
         require_set(conn, set_id)
         h = _find_hole(conn, set_id, str(args["hole_id"]))
-        run_id = audit_run(conn, set_id)
+        run = audit_run(conn, set_id)
+        run_id = None if run is None else run[0]
         attrs = h.attrs if isinstance(h.attrs, dict) else {}
         out = {
             "hole_id": h.name,
@@ -251,6 +264,8 @@ def hole(call: DataCall, args: dict[str, Any]) -> dict[str, Any]:
             "tables": _tables(conn, set_id, int(h.id)),
             "findings": _findings(conn, run_id, h.name),
         }
+        if run is not None and run[1]:
+            out["stale"], out["note"] = True, STALE
     call.summary = f"Скважина {clean(h.name, 60)}"
     return out
 

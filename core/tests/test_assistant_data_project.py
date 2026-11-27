@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import math
+import threading
 import time
 import unicodedata
 from pathlib import Path
@@ -179,6 +180,17 @@ def test_summary_of_a_set(demo) -> None:  # type: ignore[no-untyped-def]
     assert len(s["extent"]) == 6 and all(v is not None for v in s["extent"])
 
 
+def test_summary_counts_holes_without_depth(fresh) -> None:  # type: ignore[no-untyped-def]
+    """The metres are the sum of the known depths: the holes without one are told apart, never counted as 0 m."""
+    _, before = call(fresh, "data_summary", {"set_id": SET_ID})
+    assert before["holes_without_depth"] == 0
+    with dialect.write_tx(fresh.engine) as conn:
+        one = sa.update(dh_holes).where(dh_holes.c.set_id == SET_ID, dh_holes.c.name == "DH-012")
+        conn.execute(one.values(td=None))
+    _, after = call(fresh, "data_summary", {"set_id": SET_ID})
+    assert after["holes_without_depth"] == 1 and after["metres"] < before["metres"]
+
+
 def test_summary_without_the_audit_is_null_not_zero(fresh) -> None:  # type: ignore[no-untyped-def]
     from bf_core.db.schema import audit_runs
 
@@ -319,6 +331,54 @@ def test_slow_tool_stops_after_the_time_limit(demo, monkeypatch: pytest.MonkeyPa
     t0 = time.monotonic()
     res = dt.run("data_slow", {}, project=demo, timeout=0.2)
     assert res.is_error and res.text == "Слишком долго: сузьте запрос" and time.monotonic() - t0 < 1.0
+
+
+def test_same_read_is_not_started_twice_while_the_first_runs(demo, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]  # noqa: E501
+    started: list[int] = []
+
+    def slow(call: dt.DataCall, args: dict[str, Any]) -> dict[str, Any]:
+        started.append(1)
+        for _ in range(200):
+            time.sleep(0.02)
+            call.check()  # the deadline of the first call is over: this stops the thread
+        return {"done": True}
+
+    _tool(monkeypatch, "data_dup", slow)
+    assert dt.run("data_dup", {}, project=demo, timeout=0.1).text == dt.TOO_LONG
+    again = dt.run("data_dup", {}, project=demo, timeout=0.1)  # the thread of the first call may still be there
+    assert again.is_error and again.text == dt.STILL_RUNNING
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline and any(t.name == "data-tool-data_dup" for t in threading.enumerate()):
+        time.sleep(0.02)  # `check()` ended it: nothing is left running on the project
+    assert not any(t.name == "data-tool-data_dup" for t in threading.enumerate())
+    assert len(started) == 1  # the second call did not start a thread of its own
+
+
+def test_a_running_read_blocks_only_the_same_arguments(demo, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]  # noqa: E501
+    gate = threading.Event()
+
+    def hold(call: dt.DataCall, args: dict[str, Any]) -> dict[str, Any]:
+        gate.wait(5)
+        return {"n": args.get("offset", 0)}
+
+    _tool(monkeypatch, "data_hold", hold)
+    assert dt.run("data_hold", {}, project=demo, timeout=0.05).text == dt.TOO_LONG
+    assert dt.run("data_hold", {}, project=demo, timeout=0.05).text == dt.STILL_RUNNING
+    gate.set()
+    for _ in range(100):  # the first thread is done: the same read starts again
+        res = dt.run("data_hold", {}, project=demo, timeout=1)
+        if not res.is_error:
+            break
+        time.sleep(0.02)
+    assert not res.is_error and json.loads(res.text) == {"n": 0}
+
+
+def test_data_stats_has_a_longer_limit_than_the_others() -> None:
+    dt.load_all()
+    assert dt.DATA_TOOLS["data_stats"].timeout == 30.0
+    assert {n: t.timeout for n, t in dt.DATA_TOOLS.items() if n != "data_stats" and n.startswith("data_")} == {
+        n: 5.0 for n in dt.DATA_TOOLS if n != "data_stats" and n.startswith("data_")
+    }
 
 
 def test_failure_is_a_result_not_an_exception(demo, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]  # noqa: E501

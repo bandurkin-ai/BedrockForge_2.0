@@ -13,13 +13,15 @@ store here. `loop.py` runs the cycle, `loop_call.py` reads one stream of the API
 
 from __future__ import annotations
 
+import logging
 import math
+import os
 import uuid
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
-from . import data_tools, errors, prefs, tools
+from . import data_tools, errors, prefs, prices, tools, usage
 from . import store_parts as sp
 from .connection import Connection
 from .schemas import ToolResult
@@ -28,6 +30,8 @@ from .segments import SEGMENTS, Segments
 from .store import Dialogs, Loaded
 
 CLIP = "…"
+NO_EFFORT = "off"  # the depth that is not sent at all (a model that takes none)
+log = logging.getLogger("bf_core.assistant")
 
 
 def new_id(prefix: str) -> str:
@@ -223,7 +227,8 @@ class Tally:
 
 # --- what the loop is given -----------------------------------------------------------------------------------------
 
-#: model -> the deepest `effort` that the API accepted (learned from a 400; решение 14, № 127). Not kept on disk.
+#: model -> the deepest `effort` that the API accepted (learned from a 400 and a call that went through after it;
+#: решение 14, № 127; `NO_EFFORT` - the model takes none). Not kept on disk.
 EFFORT_CAP: dict[str, str] = {}
 
 
@@ -264,14 +269,21 @@ def last_uses(messages: list[Any]) -> list[dict[str, Any]]:
     return tool_uses(messages[-1]["content"])
 
 
-def lower_effort(effort: str) -> str | None:
-    """The next depth below `effort`; None - there is none."""
+def lower_effort(effort: str, kind: Literal["level", "param"] = "level") -> str | None:
+    """The next depth after a refusal of `effort`: one below it (`level`), and after `low` - none at all
+    (`NO_EFFORT`); `param` (the model takes no depth) goes to `NO_EFFORT` at once. None - nothing left to try."""
+    if effort == NO_EFFORT:
+        return None
+    if kind == "param":
+        return NO_EFFORT
     i = EFFORTS.index(effort) if effort in EFFORTS else 0
-    return EFFORTS[i - 1] if i > 0 else None
+    return EFFORTS[i - 1] if i > 0 else NO_EFFORT
 
 
 def capped(model: str, effort: str) -> str:
     cap = EFFORT_CAP.get(model)
+    if cap == NO_EFFORT:
+        return NO_EFFORT
     if cap and effort in EFFORTS and cap in EFFORTS and EFFORTS.index(effort) > EFFORTS.index(cap):
         return cap
     return effort
@@ -289,3 +301,81 @@ def tools_of(ui_tools: list[Any]) -> tuple[list[dict[str, Any]], frozenset[str]]
 def set_of(context: dict[str, Any]) -> int | None:
     value = (context.get("set") or {}).get("id")
     return int(value) if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+# --- pieces of the end of a call (kept out of `loop.py`) ------------------------------------------------------------
+
+
+def record_call(
+    res: Any,
+    *,
+    data_dir: str | os.PathLike[str] | None,
+    head: Mapping[str, Any],
+    project: Any,
+    tally: Tally,
+    models: list[str],
+) -> dict[str, Any] | None:
+    """The cost of a call: the usage file, the totals; returns the data of the event `usage` (None - nothing billed)."""
+    u = res.usage
+    if not any(u.values()):
+        return None
+    cost = prices.cost(res.model, u["input"], u["output"], u["cache_read"], u["cache_write"])
+    long = prices.is_long(res.model, u["input"], u["cache_read"], u["cache_write"])
+    try:
+        usage.record(
+            data_dir,
+            model=res.model,
+            input=u["input"],
+            output=u["output"],
+            cache_read=u["cache_read"],
+            cache_write=u["cache_write"],
+            dialog_uid=head.get("uid"),
+            project_uid=getattr(project, "uid", None),
+        )
+    except (OSError, ValueError):  # a lost line of the account must not break the turn
+        log.warning("assistant: the line of usage was not written", exc_info=True)
+    tally.add(u, cost)
+    if res.model not in models:
+        models.append(res.model)
+    return {"call": {"model": res.model, **u, "cost_usd": cost, "long": long}, "dialog": tally.dialog()}
+
+
+def card_of(
+    entry: Mapping[str, Any], status: str, text: str, title: str | None, stored: Sequence[Mapping[str, Any]]
+) -> dict[str, Any]:
+    """The finished card of a command of the window: the waiting card of the same `item_id` (in `stored`) gives the
+    title and the time."""
+    old: Mapping[str, Any] = next((i for i in reversed(stored) if i.get("id") == entry["item_id"]), {})
+    return tool_item(
+        item_id=entry["item_id"],
+        tool_use_id=entry["tool_use_id"],
+        name=entry["name"],
+        side="ui",
+        title=title or old.get("title") or entry["name"],
+        args=entry.get("args") or {},
+        status=status,
+        summary=text,
+        at=old.get("at"),
+    )
+
+
+def pending_of(
+    ui_calls: Sequence[tuple[Mapping[str, Any], Mapping[str, Any]]], done: Mapping[str, Any], rounds: int
+) -> dict[str, Any]:
+    """The `pending` of a dialog: the commands of the window to run, the results of the data tools already got."""
+    return {
+        "id": "p-" + uuid.uuid4().hex[:16],
+        "created_at": sp.stamp(),
+        "tools": [
+            {
+                "tool_use_id": u["id"],
+                "name": u["name"],
+                "command": None,
+                "args": u.get("input") or {},
+                "item_id": c["id"],
+            }
+            for u, c in ui_calls
+        ],
+        "data_results": list(done.values()),
+        "rounds": rounds,
+    }

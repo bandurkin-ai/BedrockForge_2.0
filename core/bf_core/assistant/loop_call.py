@@ -25,7 +25,7 @@ from typing import Any, Literal
 import anthropic
 import httpx2
 
-from .loop_events import blocks_of
+from .loop_events import NO_EFFORT, blocks_of
 from .segments import Segment
 
 log = logging.getLogger("bf_core.assistant")
@@ -52,9 +52,10 @@ def request_params(
         "system": system,
         "messages": messages,
         "thinking": {"type": "adaptive", "display": "omitted"},
-        "output_config": {"effort": effort},
         "cache_control": {"type": "ephemeral"},
     }
+    if effort != NO_EFFORT:  # the model that takes no depth at all gets none
+        params["output_config"] = {"effort": effort}
     if tools:
         params["tools"] = tools
     return params
@@ -193,8 +194,22 @@ def classify(res: CallResult) -> Kind:
     return "api"
 
 
-def is_effort_refusal(exc: BaseException) -> bool:
-    """A 400 of the API that says the depth (`output_config.effort`) is not supported by the model (решение 14)."""
+#: the words of a 400 that refuses the parameter as a whole (not one of its values)
+_PARAM_MARKS = ("extra inputs", "not permitted", "unrecognized", "does not support effort",
+                "doesn't support effort", "effort parameter")  # fmt: skip
+
+
+def effort_refusal(exc: BaseException, effort: str) -> Literal["level", "param"] | None:
+    """A 400 of the API about the depth (`output_config.effort`, решение 14): "level" - this depth is not supported by
+    the model (a lower one may be), "param" - the model takes no depth at all (the parameter goes). None - another
+    failure. The level is told by its name in the text («'max' is not supported»); a text that only names the
+    parameter is "param"; anything else about effort is taken as a level."""
     if not isinstance(exc, anthropic.BadRequestError):
-        return False
-    return "effort" in str(getattr(exc, "message", exc)).lower()
+        return None
+    text = str(getattr(exc, "message", exc)).lower()
+    if "effort" not in text:
+        return None
+    named = f"'{effort}'" in text or f'"{effort}"' in text
+    if not named and any(mark in text for mark in _PARAM_MARKS):
+        return "param"
+    return "level"

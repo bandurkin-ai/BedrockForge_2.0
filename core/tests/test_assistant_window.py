@@ -257,3 +257,32 @@ def test_shrink_for_retry() -> None:
 )
 def test_is_context_exceeded(stop: str | None, error: Any, expected: bool) -> None:
     assert w.is_context_exceeded(stop_reason=stop, error=error) is expected
+
+
+def naive_trim(messages: list[dict[str, Any]], limit: int, extra: int = 0) -> list[dict[str, Any]]:
+    """The first form of `trim_messages`: the whole history is measured again at every step (quadratic)."""
+    out = list(messages)
+    old = w.cycle_start(out)
+    for step in (w._replace_results, w._drop_thinking, w._replace_workspace):
+        for i in range(old):
+            if w.estimate_messages(out, extra) <= limit:
+                return out
+            new = step(out[i])
+            if new is not None:
+                out[i] = new
+    return out
+
+
+def test_trim_equals_the_naive_form_and_is_not_quadratic() -> None:
+    import time
+
+    msgs = history(300)  # ~1200 messages, ~300 000 tokens of results
+    t0 = time.perf_counter()
+    got = w.trim_messages(msgs, extra_tokens=5000)
+    assert time.perf_counter() - t0 < 1.0
+    assert got.messages == naive_trim(msgs, w.CONTEXT_LIMIT_TOKENS, 5000)
+    assert got.tokens == w.estimate_messages(got.messages, 5000) and got.changed
+    small = history(6)  # every step is needed at the smaller limits
+    for limit in (500, 3000, 9000):
+        r = w.trim_messages(small, limit=limit)
+        assert r.messages == naive_trim(small, limit) and r.tokens == w.estimate_messages(r.messages)

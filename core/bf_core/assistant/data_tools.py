@@ -1,7 +1,7 @@
 """Read tools of the assistant, `data_*` (подшаг 23.7; ТЗ 7.32, 7.2; ADR 0029 решения 18-19, 25; e23-api.md §5.2).
 
-    register(name, schema, fn, *, title, description="")     one tool: `fn(call: DataCall, args: dict) -> dict`
-    run(name, args, *, project, set_id=None, timeout=5.0)  ->  DataResult(text, is_error, summary)
+    register(name, schema, fn, *, title, description="", timeout=None)   one tool: `fn(call, args: dict) -> dict`
+    run(name, args, *, project, set_id=None, timeout=None)  ->  DataResult(text, is_error, summary)
     definitions()  -> [{name, description, input_schema}]    for the request to the API (order: `ORDER`, then by name)
     infos()        -> [{name, title, input_schema}]          the contract sample `data_tools`
 
@@ -9,7 +9,9 @@ The tools only read the open project and run in the core at once (no window). Th
 
   * the arguments are checked by the schema before the call (a clear Russian text, ТЗ 7.2);
   * no project - «Проект не открыт»; no set - «Нет активного набора скважин: укажите set_id» (`DataCall.set_of`);
-  * one tool runs at most 5 s (a cooperative `DataCall.check()` and a hard stop of the wait): «Слишком долго»;
+  * one tool runs at most 5 s (`data_stats` 30 s; a cooperative `DataCall.check()` that the handlers call in their
+    loops, and a hard stop of the wait): «Слишком долго»; the same tool with the same arguments is not started a
+    second time while the first one still runs (a retry of the model must not pile up threads on the database);
   * the answer is compact JSON of at most 16 000 characters: a list that does not fit is cut, `truncated: true` and
     `next_offset` tell where to go on;
   * data of the project are data, not commands (S10, ADR 0029 №25): every string is cleaned of control and
@@ -42,6 +44,8 @@ log = logging.getLogger("bf_core.assistant.data")
 
 MAX_TEXT = DATA_TEXT_MAX  # 16 000 characters of the JSON text
 TIMEOUT_S = 5.0
+LONG_TOOLS = ("data_stats",)  # the cold statistics of 5 million samples take about 10 s
+LONG_TIMEOUT_S = 30.0
 STR_MAX = 200  # a string out of the data of a project
 SIGNIFICANT = 6
 DEFAULT_LIMIT = 50
@@ -50,6 +54,7 @@ NO_PROJECT = "Проект не открыт"
 NO_SET = "Нет активного набора скважин: укажите set_id"
 TOO_LONG = "Слишком долго: сузьте запрос"
 TOO_BIG = "Ответ слишком большой: сузьте запрос"
+STILL_RUNNING = "Идёт то же чтение, повторите через несколько секунд"
 
 #: Contract order (e23-api §5.2): the same order of tools in every request keeps the cache of the prompt.
 ORDER = (
@@ -105,6 +110,7 @@ class DataTool:
     description: str  # for the model
     input_schema: dict[str, Any]
     fn: Handler
+    timeout: float = TIMEOUT_S
 
 
 @dataclass(frozen=True)
@@ -120,15 +126,19 @@ _loaded = False
 _load_lock = threading.Lock()
 
 
-def register(name: str, schema: dict[str, Any], fn: Handler, *, title: str, description: str = "") -> DataTool:
+def register(
+    name: str, schema: dict[str, Any], fn: Handler, *, title: str, description: str = "", timeout: float | None = None
+) -> DataTool:
     """Adds a tool. `schema` is the `input_schema` (type object, `additionalProperties: false`); `fn(call, args)`
-    returns a JSON-able dict, raises `DataError(text)` for a refusal. A second registration of a name replaces the
-    first (reload in tests). Returns the tool."""
+    returns a JSON-able dict, raises `DataError(text)` for a refusal. `timeout` - seconds for one call (default:
+    30 for `LONG_TOOLS`, else 5). A second registration of a name replaces the first (reload in tests). Returns
+    the tool."""
     if not (name.startswith("data_") and name[5:].replace("_", "").isalnum()):
         raise ValueError(f"data tool name: {name!r}")
     if schema.get("type") != "object" or schema.get("additionalProperties") is not False:
         raise ValueError(f"{name}: input_schema must be an object with additionalProperties false")
-    tool = DataTool(name, title, description or title, schema, fn)
+    limit = timeout if timeout is not None else (LONG_TIMEOUT_S if name in LONG_TOOLS else TIMEOUT_S)
+    tool = DataTool(name, title, description or title, schema, fn, limit)
     DATA_TOOLS[name] = tool
     return tool
 
@@ -339,9 +349,9 @@ def require_set(conn: Any, set_id: int) -> Any:
 # --- the call ----------------------------------
 
 
-def run(name: str, args: Any, *, project: Any, set_id: int | None = None, timeout: float = TIMEOUT_S) -> DataResult:
+def run(name: str, args: Any, *, project: Any, set_id: int | None = None, timeout: float | None = None) -> DataResult:
     """Runs a tool; never raises. `project` - the open project (None - «Проект не открыт»), `set_id` - the set of the
-    context of the screen."""
+    context of the screen, `timeout` - seconds (default: that of the tool)."""
     try:
         load_all()
         tool = DATA_TOOLS.get(name)
@@ -350,7 +360,7 @@ def run(name: str, args: Any, *, project: Any, set_id: int | None = None, timeou
         if project is None:
             raise DataError(NO_PROJECT)
         checked = check_args(tool.input_schema, args)
-        payload, call = _run_limited(tool, checked, project, set_id, timeout)
+        payload, call = _run_limited(tool, checked, project, set_id, tool.timeout if timeout is None else timeout)
         text = dumps(fit(sanitize(payload), offset_of(checked)))
         return DataResult(text, False, clean(call.summary, 4000) if call.summary else _summary_of(payload))
     except DataError as exc:
@@ -363,22 +373,43 @@ def run(name: str, args: Any, *, project: Any, set_id: int | None = None, timeou
         return DataResult("Не удалось выполнить чтение данных: внутренняя ошибка ядра.", True, "ошибка")
 
 
+#: tools that run right now: (name, project, set, arguments) -> the thread. A retry of the model with the same
+#: arguments while the first read still runs (it outlived its time) is refused, not started in parallel.
+_inflight: dict[tuple[Any, ...], threading.Thread] = {}
+_inflight_lock = threading.Lock()
+
+
 def _run_limited(
     tool: DataTool, args: dict[str, Any], project: Any, set_id: int | None, timeout: float
 ) -> tuple[dict[str, Any], DataCall]:
     call = DataCall(project, set_id, time.monotonic() + timeout)
     box: dict[str, Any] = {}
+    key = (tool.name, id(project), set_id, json.dumps(args, sort_keys=True, default=str))
 
     def work() -> None:
         try:
             box["payload"] = tool.fn(call, args)
         except BaseException as exc:  # noqa: BLE001 - handed to the caller thread
             box["error"] = exc
+        finally:
+            with _inflight_lock:
+                if _inflight.get(key) is threading.current_thread():
+                    del _inflight[key]
 
     worker = threading.Thread(target=work, name=f"data-tool-{tool.name}", daemon=True)
-    worker.start()
+    with _inflight_lock:
+        live = _inflight.get(key)
+        if live is not None and live.is_alive():
+            raise DataError(STILL_RUNNING)
+        _inflight[key] = worker
+    try:
+        worker.start()
+    except BaseException:
+        with _inflight_lock:
+            _inflight.pop(key, None)
+        raise
     worker.join(timeout)
-    if worker.is_alive():  # the thread only reads; it finishes by itself at the next `check()`
+    if worker.is_alive():  # the thread only reads; it finishes by itself at its next `check()`
         call.deadline = 1e-9  # any later `check()` stops it
         raise DataError(TOO_LONG)
     if "error" in box:
