@@ -4,7 +4,9 @@
   it is now): the cross-validation, the global check, KNA, the preview and the inspector of a block take it from the
   trend, as the job does, and are not refused with «Эллипсоид поиска не определён».
 * The rows of one prefix share the fields (№ 77): the inspector of a block finds the row of EVERY domain, not the
-  first row of the field alone.
+  first row of the field alone; «Перестроить» of such a field runs the row that is «устарел».
+* A parent of a model with sub-blocks that holds two domains (`sub: parent`): the inspector takes the row of the plan
+  whose domain the sub-block under the pointer is in, and raises no flag «Параметры или входы изменились».
 """
 
 from __future__ import annotations
@@ -125,4 +127,36 @@ def test_the_rebuild_of_a_shared_field_runs_the_row_that_is_stale(tmp_path: Path
         job.run_estimate(jw.project.engine, jw.project.folder, step.params, threads=2)
         assert state() == "current"  # the job of the first row would have carried the old blocks of `b`: still stale
     finally:
+        jw.project.engine.dispose()
+
+
+# --- a parent of two domains -----------------------------------------------------------------------------------------
+
+
+def test_the_inspector_takes_the_domain_of_the_sub_block_under_the_pointer(tmp_path: Path) -> None:
+    jw = u.world(tmp_path)
+    try:
+        a = u.make(jw, model=jw.sub)  # `sub: parent` (the default): a sub-block gets the estimate of its parent
+        b = u.make(jw, model=jw.sub, label="порода", zone="перв")
+        run(jw, model=jw.sub, plan_id=u.plan(jw, [a, b], model=jw.sub))
+        p = u.open_model(jw, jw.sub).p()
+        c = cols(jw, ["DOM", "AU_OK_STATUS"], model=jw.sub)
+        dom, status = c["DOM"], c["AU_OK_STATUS"]
+        mixed = [int(q) for q in np.unique(p) if len(set(dom[p == q].tolist())) == 2]
+        assert mixed  # the boundary of the domains cuts parents: what the sub-blocks are for
+        seen = set()
+        for r in np.flatnonzero(p == mixed[0]):
+            assert status[r] == 0
+            got = ins.run(jw.project, parse_inspect({"model_id": jw.sub, "row": int(r)}))
+            want = a if dom[r] == 0 else b
+            assert [(x["estimation_id"], x["active"], x["status"], x["same"], x["warning"])
+                    for x in got["results"]] == [(want, True, 0, True, None)], int(r)  # fmt: skip
+            seen.add(want)
+            # the row of the other domain, asked for by its number: the sub-block is out of its domain, nothing differs
+            other = ins.run(jw.project, parse_inspect({"model_id": jw.sub, "row": int(r),
+                                                       "params_id": b if want == a else a}))  # fmt: skip
+            assert [(x["active"], x["status"], x["warning"]) for x in other["results"]] == [(False, 1, None)]
+        assert seen == {a, b}
+    finally:
+        ins.forget()
         jw.project.engine.dispose()
