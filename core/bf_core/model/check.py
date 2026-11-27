@@ -177,6 +177,7 @@ class Raw:
     sources: list[str]
     outputs: list[dict[str, Any]]
     meshes: dict[int, tuple[Any, Any]] = field(default_factory=dict)
+    verify: bool = False  # the model is «устарела»: its parameters may be newer than the files (`_verify`)
 
 
 def _geometry(conn: sa.Connection, store: Any, raw: Raw) -> None:
@@ -221,7 +222,8 @@ def load(project: Any, model_id: int) -> Loaded:
             return Loaded(hit, info)
         points, meta = bl.read_points(store, shas[sb.ROLE_POINTS])
         raw = Raw(spec, matrix, ms.load_fields(conn, store, model_id), points,
-                  [str(s) for s in meta.get("sources") or []], list(got["outputs"]))  # fmt: skip
+                  [str(s) for s in meta.get("sources") or []], list(got["outputs"]),
+                  verify=bool(got["stale"]))  # fmt: skip
         _geometry(conn, store, raw)
     table = build(raw)
     _remember(key, table)
@@ -267,6 +269,34 @@ def _patch_set(patches: dict[str, Any], m: int, space: F8, spec: Any, matrix: An
                     n_patch=spec.pou.n_patch, n_min=spec.pou.n_min, delta=spec.pou.delta)  # fmt: skip
 
 
+def _verify(gd: GroupData, k: int, m: int, ps: Any, xyz: F8, space: F8, values: F8, spec: Any, group: Any) -> None:
+    """The field `k` of a model that is «устарела» is still the field its files were solved for. The files keep the
+    points, the patches and λ, c — not the kernel, its radius, the smoothing, A or the thresholds of an indicator
+    shell: those are read from the parameters of the model, and an edit after the build makes them another field's
+    (the table would be numbers of nothing, under the words «результат последнего построения»). The hash of a patch
+    (`update.CachingSolver`) is made of exactly these, so the first patch is hashed again with the parameters as they
+    are now: another hash — 409 `not_built`."""
+    from .anisotropy import patch_hashes
+    from .bodies_parts import h_bar
+    from .octree import hash_patches
+    from .spec_parts import eta as eta_of_s
+    from .update import HASH_SIZE, salt_of, subset
+
+    row = k * m
+    stored = np.ascontiguousarray(gd.patches["hash"]).tobytes()[HASH_SIZE * row : HASH_SIZE * (row + 1)]
+    same = False
+    if group is not None:
+        eta0 = eta_of_s(spec.kernel, spec.s_of(group), h_bar(space))
+        hexes = hash_patches(xyz, subset(ps, [0]), values=values, salt=salt_of(spec, eta0, ps.matrix))
+        if gd.matrices is not None and np.isfinite(gd.matrices[row]).all():
+            hexes = list(patch_hashes(hexes, [gd.matrices[row]]))
+        same = bytes.fromhex(hexes[0]) == stored
+    if not same:
+        raise refuse("not_built", "Параметры поля модели (ядро, сглаживание, анизотропия или пороги оболочки) "
+                     "изменены после построения: сохранённый результат им не соответствует.",
+                     "Выполните «Обновить» или «Построить»: проверка покажет модель с новыми параметрами.")  # fmt: skip
+
+
 def _field_of(gd: GroupData, k: int, m: int, ps: Any, space: F8, spec: Any, threads: int) -> Any:
     """`PatchField` of the field `k` of a group: the solutions of its rows. A structural trend (19.9): the patches are
     in the project coordinates and every one has its A_j (`GroupData.matrices`); its points and centre are turned the
@@ -284,6 +314,8 @@ def _field_of(gd: GroupData, k: int, m: int, ps: Any, space: F8, spec: Any, thre
             radius = spec.kernel_radius if spec.kernel_radius is not None else 2.0 * float(ps.radii[j])
         x, centre, scale = space[ps.patch(j)], np.array(ps.centers[j]), float(ps.radii[j])
         a = None if gd.matrices is None else np.asarray(gd.matrices[row], dtype=np.float64)
+        if a is not None and not np.isfinite(a).all():
+            a = None  # a field solved without A_j in a model of a structural trend (a fault): the file has NaN there
         if a is not None:
             x = transform_points(x, a)
             centre = transform_points(centre.reshape(1, 3), a)[0]
@@ -372,6 +404,8 @@ def build(raw: Raw) -> Table:
         for k in range(count):
             thr = thresholds[k] if indicator_mode else None
             values = indicator(f, thr) if thr is not None else f
+            if raw.verify:
+                _verify(gd, k, m, ps, xyz, space, values, spec, g)
             if exact:
                 f_model = _field_of(gd, k, m, ps, space, spec, threads)(xyz, threads=threads)
             else:
