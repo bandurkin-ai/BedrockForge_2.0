@@ -1,7 +1,7 @@
 /**
  * The right panel «Claude» (Э23, 23.14; ТЗ 7.32 «Панель чата», 7.0.3–7.0.5; ADR 0029 решение 33; docs/progress/e23-api.md §2, §7, §13): the head (the model and the
  * depth → the connection window, «Новый диалог», «История»), the feed (`MessageList`), the quick requests of an empty dialog, the input (`Composer`).
- * The states: not connected («Подключить Claude» → `assistant.connect`), a login that goes on, no internet («Ассистент недоступен без интернета» — the
+ * «История» turns the panel to the list of the dialogs (`HistoryList.tsx`, `panelViewStore`; 23.16) and back. The states: not connected («Подключить Claude» → `assistant.connect`), a login that goes on, no internet («Ассистент недоступен без интернета» — the
  * history is still read, nothing can be asked), a temporary dialog (the reason is `dialog.note` of the core). The buttons are commands of the registry
  * (`assistant.connect`, `assistant.new`, `assistant.history`, `assistant.ask`), their unavailability is shown with the reason, as everywhere.
  * `ChatView` draws from what is known (the tests); `ChatPanel` is it connected to the stores and to the registry. `renderToolActions` and `tail` are the
@@ -12,11 +12,14 @@ import { useApp } from "../../shell/AppContext";
 import type { App } from "../../shell/app";
 import { commandContext } from "../../shell/store";
 import { useRegistryVersion, useStore } from "../../shell/useStore";
+import { projectStore } from "../projects/state";
 import { Composer } from "./Composer";
+import { restoreLastDialog } from "./history";
+import { HistoryPanel } from "./HistoryList";
 import { MessageList } from "./MessageList";
 import { askPrompt, QuickPromptsView, quickItems, type QuickItem } from "./QuickPrompts";
 import type { ChatState } from "./reduce";
-import { chatStore, refreshStatus, statusStore } from "./state";
+import { chatStore, panelViewStore, refreshStatus, statusStore } from "./state";
 import type { AssistantStatus, DialogHead, ToolItem } from "./wireTypes";
 import css from "./ChatPanel.module.css";
 
@@ -207,9 +210,15 @@ export function ChatPanel(slots: ChatSlots) {
   const st = useStore(statusStore, (s) => s);
   const state = useStore(app.store, (s) => s);
   const ctx = commandContext(state);
+  const panelView = useStore(panelViewStore, (s) => s.view);
+  const projectUid = useStore(projectStore, (s) => s.current?.uid ?? null);
   useEffect(() => {
     if (statusStore.get().status === null) void refreshStatus();
   }, []);
+  // the last dialog of the project is opened when the panel is shown (after a restart too); `history.ts` does it once per project and never over a dialog already started
+  useEffect(() => {
+    if (state.core === "online") void restoreLastDialog(projectUid);
+  }, [state.core, projectUid]);
   const view = panelState(st.status, st.error);
   const blocked = view.blocked ?? (state.core === "online" ? null : "Ядро не запущено");
   const quick = quickItems(ctx, app.registry.reason("assistant.ask", ctx), blocked);
@@ -218,5 +227,6 @@ export function ChatPanel(slots: ChatSlots) {
     newDialog: app.registry.reason("assistant.new", ctx),
     history: app.registry.reason("assistant.history", ctx),
   };
+  if (panelView === "history") return <HistoryPanel />;
   return <ChatView chat={chat} status={st.status} statusError={st.error} quick={quick} reasons={reasons} actions={chatActions(app)} {...slots} />;
 }

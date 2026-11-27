@@ -8,8 +8,8 @@
  * - makes `pending.ts` run the commands a turn ended with;
  * - starts the events of the core (`assistant.connection`, `assistant.dialogs`).
  *
- * The windows «Claude: подключение» (23.17) and «История» (23.16) are opened through `opts.openWindow`: until the application gives it, the commands answer that the window is not
- * ready. No React.
+ * The window «Claude: подключение» (23.17) is opened through `opts.openWindow`: until the application gives it, the command answers that the window is not ready. The history of the
+ * dialogs (23.16) is a part of the panel: `assistant.history` turns the panel to it and back (`panelViewStore`); the last dialog of the project is opened by `history.ts`. No React.
  */
 import type { App } from "../../shell/app";
 import { CoreError } from "../../shell/api";
@@ -20,12 +20,13 @@ import { CONNECT_SECTIONS } from "./commands";
 import { contextOf } from "./context";
 import { declineAllConfirms, hasOpenConfirm, installConfirm } from "./confirm";
 import { PendingRunner, pendingActive, setPendingRunner, stopPending } from "./pending";
-import { ask, chatStore, configureAssistant, newDialog, openDialog, refreshDialogs, setPendingHandler, startAssistantEvents, statusStore, stopTurn } from "./state";
+import { startHistoryWatch } from "./history";
+import { ask, chatStore, configureAssistant, newDialog, openDialog, panelViewStore, refreshDialogs, setPendingHandler, showChat, showHistory, startAssistantEvents, statusStore, stopTurn } from "./state";
 
-export type AssistantWindowId = "assistant.connect" | "assistant.history";
+export type AssistantWindowId = "assistant.connect";
 
 export interface BindOptions {
-  /** opens a window of the assistant (23.17 «Claude: подключение», 23.16 «История»); `props.section` — a section of `CONNECT_SECTIONS` */
+  /** opens a window of the assistant (23.17 «Claude: подключение»); `props.section` — a section of `CONNECT_SECTIONS` */
   openWindow?: (id: AssistantWindowId, props?: Record<string, unknown>) => void;
 }
 
@@ -47,11 +48,17 @@ export function askUnavailable(ctx: { coreOnline: boolean }): string | null {
   return null;
 }
 
-/** The right dock on «Claude» (ТЗ 7.0.3): a question, a confirmation or an opened dialog must be in sight. */
-export function showPanel(app: Pick<App, "store">): void {
+/** The right dock on «Claude», whatever it shows (the chat or the history). */
+function openDock(app: Pick<App, "store">): void {
   const w = app.store.get().workspace;
   if (w.right && w.rightTab === "assistant") return;
   app.store.set((s) => ({ workspace: setPanel(s.workspace, "assistant", true) }));
+}
+
+/** The right dock on «Claude» with the chat (ТЗ 7.0.3): a question, a confirmation or an opened dialog must be in sight (the history, if it was shown, gives way). */
+export function showPanel(app: Pick<App, "store">): void {
+  openDock(app);
+  showChat();
 }
 
 export function bindAssistant(app: App, opts: BindOptions = {}): () => void {
@@ -108,7 +115,14 @@ export function bindAssistant(app: App, opts: BindOptions = {}): () => void {
   bind(
     "assistant.history",
     () => {
-      open("assistant.history");
+      // the history is a part of the panel, not a window (23.16): the command turns the panel to it and back
+      if (panelViewStore.get().view === "history") {
+        showChat();
+        return "Открыт диалог";
+      }
+      openDock(app);
+      showHistory();
+      void refreshDialogs();
       return "Открыта история диалогов";
     },
     needCore,
@@ -177,8 +191,10 @@ export function bindAssistant(app: App, opts: BindOptions = {}): () => void {
   });
   setPendingHandler((pending) => void runner.run(pending));
   const stopEvents = startAssistantEvents();
+  const stopHistory = startHistoryWatch(app);
 
   return () => {
+    stopHistory();
     stopEvents();
     setPendingHandler(null);
     configureAssistant(null);

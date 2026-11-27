@@ -233,11 +233,11 @@ describe("assistant.new, assistant.stop", () => {
 });
 
 describe("the windows of the assistant", () => {
-  it("`connect` and `history` open the windows through the point of the application", async () => {
+  it("`connect` opens the window through the point of the application; `history` is a part of the panel, not a window (23.16)", async () => {
     expect((await app.registry.execute("assistant.connect", {})).ok).toBe(true);
     expect((await app.registry.execute("assistant.connect", { section: "model" })).ok).toBe(true);
     expect((await app.registry.execute("assistant.history", {})).ok).toBe(true);
-    expect(opened).toEqual([["assistant.connect", undefined], ["assistant.connect", { section: "model" }], ["assistant.history", undefined]]);
+    expect(opened).toEqual([["assistant.connect", undefined], ["assistant.connect", { section: "model" }]]);
     expect(CONNECT_SECTIONS).toContain("model");
   });
 

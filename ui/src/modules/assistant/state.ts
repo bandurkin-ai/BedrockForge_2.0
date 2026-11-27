@@ -24,6 +24,12 @@ export const statusStore = new Store<{ status: AssistantStatus | null; error: st
 export const dialogsStore = new Store<{ items: DialogHead[]; total: number; error: string | null }>({ items: [], total: 0, error: null });
 export const usageStore = new Store<{ usage: UsageReport | null; error: string | null }>({ usage: null, error: null });
 
+/** The panel «Claude» shows the chat or the history of the dialogs (23.16): `assistant.history` switches it; `error` — the last refusal of a row action. */
+export type PanelView = "chat" | "history";
+export const panelViewStore = new Store<{ view: PanelView; error: string | null }>({ view: "chat", error: null });
+export const showChat = (): void => panelViewStore.set({ view: "chat", error: null });
+export const showHistory = (): void => panelViewStore.set({ view: "history", error: null });
+
 // ---- what the requests carry ----
 
 export interface AssistantEnv {
@@ -49,6 +55,9 @@ let current: TurnStream | null = null;
 /** a segment that was overtaken (a new dialog, a new question) writes nothing */
 let epoch = 0;
 let localSeq = 0;
+
+/** Changes whenever the feed is replaced or started anew: `history.ts` tells «the user did something meanwhile» by it. */
+export const chatEpoch = (): number => epoch;
 
 const messageOf = (e: unknown): string => (e instanceof CoreError ? e.full : e instanceof Error ? e.message : String(e));
 
@@ -187,10 +196,27 @@ export async function refreshStatus(): Promise<void> {
   }
 }
 
+export const DIALOGS_PAGE = 50;
+const DIALOGS_MAX = 200;
+
+/** The list is read again as far as it was shown (pages of 50 already loaded stay); an error keeps the rows read before (the history is read without the network). */
 export async function refreshDialogs(): Promise<void> {
   try {
-    const r = await listDialogs(0, 50);
+    const shown = Math.ceil(dialogsStore.get().items.length / DIALOGS_PAGE) * DIALOGS_PAGE;
+    const r = await listDialogs(0, Math.min(DIALOGS_MAX, Math.max(DIALOGS_PAGE, shown)));
     dialogsStore.set({ items: r.items, total: r.total, error: null });
+  } catch (e) {
+    dialogsStore.set({ error: messageOf(e) });
+  }
+}
+
+/** The next page of the list (50 rows). */
+export async function loadMoreDialogs(): Promise<void> {
+  const have = dialogsStore.get().items;
+  try {
+    const r = await listDialogs(have.length, DIALOGS_PAGE);
+    const known = new Set(have.map((d) => d.id));
+    dialogsStore.set({ items: [...have, ...r.items.filter((d) => !known.has(d.id))], total: r.total, error: null });
   } catch (e) {
     dialogsStore.set({ error: messageOf(e) });
   }
