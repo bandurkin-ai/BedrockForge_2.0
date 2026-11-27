@@ -41,9 +41,30 @@ def weights(profile: str = "ci") -> dict[str, float]:
     }
 
 
+def families(profile: str = "ci") -> list[list[str]]:
+    """Scenarios grouped by the first word of the name (estimate_*, implicit_*, ...), each group in the order of
+    budgets.json. Scenarios of one family share numba kernels: a shard that has `estimate_preview` without the
+    scenarios that compile its kernels measures the cold-compile peak (378 MB instead of 220 MB on a runner), which
+    the budgets (set in the full, warm order) do not allow. A family heavier than a shard is cut into contiguous
+    parts in the same order."""
+    groups: dict[str, list[str]] = {}
+    for name in scenarios(profile):
+        groups.setdefault(name.split("_")[0], []).append(name)
+    return list(groups.values())
+
+
 def plan(n: int, profile: str = "ci") -> tuple[list[list[str]], dict[str, float]]:
     w = weights(profile)
-    return shardlib.split(w, n), w
+    cap = sum(w.values()) / n  # a shard if the load were equal
+    units: dict[str, list[str]] = {}
+    for g in families(profile):
+        parts = max(1, round(sum(w[k] for k in g) / cap)) if sum(w[k] for k in g) > cap else 1
+        size = -(-len(g) // parts)  # ceil: contiguous parts of an equal count
+        for i in range(0, len(g), size):
+            units[f"{g[0].split('_')[0]}#{i // size}"] = g[i : i + size]
+    shards = shardlib.split({u: sum(w[k] for k in names) for u, names in units.items()}, n)
+    order = {name: i for i, name in enumerate(scenarios(profile))}
+    return [sorted((k for u in sh for k in units[u]), key=order.__getitem__) for sh in shards], w
 
 
 def check(n: int) -> int:
@@ -66,8 +87,10 @@ def check(n: int) -> int:
 
 def update_weights(head: Path) -> None:
     sc = json.loads(head.read_text(encoding="utf-8"))["scenarios"]
-    out = {"_comment": "seconds per scenario (median of a head.json of bench.run --profile ci); balances shards only",
-           "seconds": {k: round(v["seconds"], 2) for k, v in sc.items()}}
+    out = {
+        "_comment": "seconds per scenario (median of a head.json of bench.run --profile ci); balances shards only",
+        "seconds": {k: round(v["seconds"], 2) for k, v in sc.items()},
+    }
     WEIGHTS.write_text(json.dumps(out, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     print(f"{WEIGHTS}: {len(sc)} scenarios")
 
