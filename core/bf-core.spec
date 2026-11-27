@@ -1,7 +1,7 @@
 # PyInstaller spec for bf-core (onedir, no UPX; ТЗ 6.3, 17.2.7). Build: uv run pyinstaller bf-core.spec
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_dynamic_libs, collect_submodules
+from PyInstaller.utils.hooks import collect_dynamic_libs, collect_submodules, copy_metadata
 
 # bf_core is not an installed package (tool.uv package = false), so collect_submodules("bf_core")
 # finds nothing in its isolated subprocess: list the modules from the source tree instead.
@@ -28,6 +28,12 @@ try:  # the same files by hand, in case the hook skips the hidden folder `.libs`
 except Exception as exc:  # noqa: BLE001 - a build helper: the hook above is the main way
     print(f"bf-core.spec: ortools/.libs not listed by hand: {exc}")
 hidden += collect_submodules("ortools.graph")
+# The assistant (Anthropic SDK 2.6.0, ADR 0029 решение 37): the SDK loads modules lazily and by name (`anthropic._data`,
+# the resources, the streaming helpers), its HTTP stack is `httpx2` + `httpcore2` (+ `truststore`), the streaming JSON
+# parser `jiter` is a native extension (the Rust .pyd is found by the import analysis; the list keeps it explicit),
+# and `opentelemetry` reads its entry points through the metadata of `opentelemetry-api` (data, not code).
+hidden += collect_submodules("anthropic") + ["httpx2", "httpcore2", "truststore", "jiter"]
+assistant_metadata = copy_metadata("opentelemetry-api")
 
 a = Analysis(
     ["entry.py"],
@@ -35,7 +41,7 @@ a = Analysis(
     binaries=ortools_libs,
     hiddenimports=hidden,
     # Alembic reads env.py and revisions from files: they ship as data, not in the PYZ.
-    datas=[(str(ROOT / "bf_core" / "db" / "migrations"), "bf_core/db/migrations")],
+    datas=[(str(ROOT / "bf_core" / "db" / "migrations"), "bf_core/db/migrations")] + assistant_metadata,
     excludes=["tkinter", "matplotlib", "IPython", "pytest"],
     noarchive=False,
 )
