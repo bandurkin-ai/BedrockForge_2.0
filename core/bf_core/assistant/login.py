@@ -56,7 +56,8 @@ OUTPUT_LIMIT = 64 * 1024  # of the output of `ant` only the tail is kept
 # The environment of `ant` is an allow-list: nothing else of the core's environment (tokens, keys, paths) reaches it.
 CHILD_ENV_NAMES = frozenset(
     {
-        "PATH", "SYSTEMROOT", "SYSTEMDRIVE", "TEMP", "TMP", "TMPDIR", "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA",
+        "PATH", "PATHEXT", "COMSPEC", "WINDIR", "SYSTEMROOT", "SYSTEMDRIVE", "PROGRAMDATA",
+        "TEMP", "TMP", "TMPDIR", "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA",
         "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "REQUESTS_CA_BUNDLE", "NODE_EXTRA_CA_CERTS", "LANG", "NO_COLOR",
         "TERM",
     }

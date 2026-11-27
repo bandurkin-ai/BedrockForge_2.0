@@ -58,9 +58,14 @@ async function restart(): Promise<void> {
 }
 
 /** Every file of the profile (settings, logs of the shell and of the core, projects, the store of the assistant) except the store of the key itself. */
-// The packaged app (BF_APP_EXE) writes its logs to the real %LOCALAPPDATA%\BedrockForge\logs, not to the profile of the test (BF_LOCAL_DIR is set for the launches without the .exe only):
-// the search of the secrets covers that folder too.
-const searchRoots = (): string[] => [userData, ...(process.env.BF_APP_EXE && process.env.LOCALAPPDATA ? [path.join(process.env.LOCALAPPDATA, "BedrockForge", "logs")] : [])];
+// The packaged app (BF_APP_EXE) writes its logs to `BF_LOCAL_DIR\logs` of the workflow (windows.yml: %RUNNER_TEMP%\Профиль Тест\BedrockForge) or to %LOCALAPPDATA%\BedrockForge\logs,
+// not to the profile of the test (the launches without the .exe get BF_LOCAL_DIR inside the profile): the search of the secrets covers that folder too.
+const exeLogs = (): string[] => {
+  if (!process.env.BF_APP_EXE) return [];
+  const local = process.env.BF_LOCAL_DIR ?? (process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "BedrockForge") : "");
+  return local ? [path.join(local, "logs")] : [];
+};
+const searchRoots = (): string[] => [userData, ...exeLogs()];
 const profileFiles = () => walk(searchRoots()).filter((f) => f !== BIN);
 
 test.describe.serial("Claude assistant: key, commands, confirmation, history, usage, offline, account, secret", () => {
