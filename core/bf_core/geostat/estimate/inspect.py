@@ -53,7 +53,7 @@ from .inspect_spot import Spot, domain_of, locate
 from .search import REASONS
 from .spec import EstimationSpec, InspectSpec
 from .spec_parts import STATUS_LABELS
-from .store_check import fp_of, freshness
+from .store_check import fp_of, freshness, with_trend
 
 WARNING = "Параметры или входы изменились"
 #: the Russian text of every code of `search.REASONS` (ТЗ Д-30); «урезана до t» and «усреднена» get their numbers
@@ -173,7 +173,8 @@ def _build(project: Any, store: BlobStore, model: Model, meta: dict[str, Any]) -
     from bf_core.blocks import restrict
     from bf_core.blocks.filters import store as fst
 
-    spec = sb.load_spec(meta)
+    with dialect.read_tx(project.engine) as conn:  # `from: trend`: the ellipsoid of the trend, as the job takes it
+        spec = with_trend(conn, sb.load_spec(meta))
     s = sm.load(project, spec, origin=_origin(meta), all_domains=True)
     rk = kn.compile_row(spec, s, rotation_deg=float(model.grid.rotation))
     with dialect.read_tx(project.engine) as conn:

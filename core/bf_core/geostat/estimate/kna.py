@@ -328,6 +328,7 @@ def _spec_of(engine: Any, params: Mapping[str, Any]
 
     from . import store
     from . import store_base as sb
+    from .store_check import with_trend
 
     have = [k for k in ("estimation_id", "estimation") if params.get(k) is not None]
     if len(have) != 1:
@@ -339,10 +340,12 @@ def _spec_of(engine: Any, params: Mapping[str, Any]
             raise _bad("estimation_id", "Номер параметров оценки — целое число.", "Выберите строку оценки.")
         with dialect.read_tx(engine) as conn:
             row = store.get(conn, eid)
-        meta = row["meta"]
+            meta = row["meta"]
+            spec = with_trend(conn, sb.load_spec(meta))  # `from: trend`: the ellipsoid of the trend, as the job takes
         origin = meta.get("origin")
-        return (sb.load_spec(meta), None if not origin else np.asarray(origin, dtype=np.float64), eid, row["name"])
-    return parse_estimation(params["estimation"]).resolved(), None, None, None
+        return (spec, None if not origin else np.asarray(origin, dtype=np.float64), eid, row["name"])
+    with dialect.read_tx(engine) as conn:
+        return with_trend(conn, parse_estimation(params["estimation"]).resolved()), None, None, None
 
 
 def run_kna(engine: Any, folder: Any, params: Mapping[str, Any], tick: Tick = _noop) -> dict[str, Any]:
