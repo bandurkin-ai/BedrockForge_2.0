@@ -58,8 +58,8 @@ describe("the registry", () => {
     expect(names).not.toContain("ui_simulate_open");
     expect(names).not.toContain("ui_simulate_summary");
   });
-  it("what writes data asks the person when the assistant calls it: the post-processing writes to the block model, the deletion removes the realizations", () => {
-    expect(commands.filter((c) => c.confirm).map((c) => c.id)).toEqual(["simulate.post", "simulate.delete"]);
+  it("what writes data asks the person when the assistant calls it: the run replaces the realizations, the post-processing writes to the block model, the deletion removes the realizations", () => {
+    expect(commands.filter((c) => c.confirm).map((c) => c.id)).toEqual(["simulate.run", "simulate.post", "simulate.delete"]);
     expect(commands.find((c) => c.id === "simulate.run")?.required).toEqual(["id"]);
   });
   it("the parameters are flat, of the three kinds: SIS has the thresholds and the models of the indicators, co-SGS the secondary field and ρ", () => {

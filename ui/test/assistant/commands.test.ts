@@ -160,6 +160,49 @@ describe("ТЗ 7.2 + ADR 0029 решение 25: the flags of the commands that 
     }
   });
 
+  /**
+   * The closed list of the commands that change the data of the project in place (rebuild, run over existing results, update): their ids do not say «delete / replace / clear»,
+   * so the rule above does not see them (В5 Fable, группа 5, № 1). Each has `confirm`; a new command of this kind is added here.
+   */
+  const IN_PLACE = [
+    "blocks.rebuild",
+    "composite.ore_intervals",
+    "composite.ore_intervals_edit",
+    "composite.rebuild",
+    "estimate.run",
+    "implicit.update",
+    "lineage.rebuild",
+    "model.rebuild",
+    "pit.run",
+    "pit.surfaces",
+    "qaqc.report_rebuild",
+    "simulate.run",
+    "variography.rebuild",
+  ];
+
+  it("every command that changes data in place (the closed list) exists, is seen by Claude and has `confirm`", () => {
+    for (const id of IN_PLACE) {
+      const c = visible.find((x) => x.id === id);
+      expect(c, id).toBeDefined();
+      expect(c?.confirm, id).toBe(true);
+    }
+  });
+
+  it("each command of the in-place list asks a card when Claude runs it; the user's own call does not", async () => {
+    const run = vi.fn(() => "x");
+    const r = registryWith(IN_PLACE.map((id) => ({ ...visible.find((x) => x.id === id)!, required: undefined, stage: undefined, unavailable: undefined, run })));
+    installConfirm(r);
+    for (const id of IN_PLACE) {
+      const p = r.execute(id, {}, "claude");
+      await vi.waitFor(() => expect(confirmStore.get().queue.some((v) => v.commandId === id)).toBe(true));
+      answerConfirm(confirmStore.get().queue.find((v) => v.commandId === id)!.id, false);
+      expect((await p).ok).toBe(false);
+    }
+    expect(run).not.toHaveBeenCalled();
+    for (const id of IN_PLACE) expect((await r.execute(id, {}, "user")).ok, id).toBe(true);
+    expect(confirmStore.get().queue).toHaveLength(0);
+  });
+
   it("the assistant's own commands that delete (`assistant.delete`) are uiOnly: Claude cannot ask for them", () => {
     expect(assistantCommands.find((c) => c.id === "assistant.delete")?.uiOnly).toBe(true);
     expect(visible.some((c) => c.id === "assistant.delete")).toBe(false);

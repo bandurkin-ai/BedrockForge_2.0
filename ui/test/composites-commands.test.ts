@@ -17,6 +17,7 @@ import { renderCompositesWindow } from "../src/modules/composites/ToolWindow";
 import { setCoreTarget } from "../src/shell/api";
 import { createApp, type App } from "../src/shell/app";
 import { closeDialog, dialogStore } from "../src/shell/dialogs";
+import { answerClaude } from "./claude-confirm";
 import { searchPalette } from "../src/shell/paletteSearch";
 import { flattenRibbon, type RibbonTab } from "../src/shell/ribbonConfig";
 import { windowStore } from "../src/shell/windows";
@@ -107,7 +108,7 @@ describe("registry", () => {
       "composite.delete",
     ]);
     const confirm = commands.filter((c) => c.confirm).map((c) => c.id);
-    expect(confirm).toEqual(["composite.topcut", "composite.equivalent", "composite.declus", "composite.rebuild", "composite.delete"]);
+    expect(confirm).toEqual(["composite.topcut", "composite.equivalent", "composite.declus", "composite.ore_intervals", "composite.ore_intervals_edit", "composite.rebuild", "composite.delete"]);
     expect(commands.filter((c) => c.uiOnly).map((c) => c.id)).toEqual(["composite.ore_protocol"]);
     for (const c of commands) {
       expect(app.registry.get(c.id)?.run, c.id).toBeTypeOf("function");
@@ -228,7 +229,9 @@ describe("window or job", () => {
     await app.registry.execute("composite.rebuild", { result_id: 9 }, "user");
     await app.registry.execute("composite.ore_protocol", { result_id: 9, format: "csv", holes: "С-1, С-2" }, "user");
     await app.registry.execute("composite.merge", { set_id: 3, tables: "Пробы, Литология" }, "user");
-    await app.registry.execute("composite.ore_intervals", { set_id: 3, table: "Пробы", field: "AU", cutoff: 1, m_min: 2, m_waste_max: 3 }, "claude");
+    const ore = app.registry.execute("composite.ore_intervals", { set_id: 3, table: "Пробы", field: "AU", cutoff: 1, m_min: 2, m_waste_max: 3 }, "claude");
+    await answerClaude(true, "composite.ore_intervals"); // 23.15: a card of the chat, the intervals replace ORE_ID / ORE_CLS
+    await ore;
     const p = posts("/composites");
     expect(p.map((x) => x.path)).toEqual(["/composites/results/9/rebuild", "/composites/results/9/protocol", "/composites/merge", "/composites/ore"]);
     expect(p[1].body).toEqual({ format: "csv", holes: ["С-1", "С-2"] });
