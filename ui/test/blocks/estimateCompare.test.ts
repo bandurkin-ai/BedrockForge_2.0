@@ -24,7 +24,7 @@ import { jobsStore } from "../../src/modules/jobs/state";
 import { projectStore } from "../../src/modules/projects/state";
 import { viewStore } from "../../src/modules/scene/bind";
 import { answer } from "../resources/harness";
-import { answerDialog } from "../blocks-fields-kit";
+import { answerClaude } from "../claude-confirm";
 
 const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status, headers: { "Content-Type": "application/json" } });
 const REAL = answer("estimate_compare").body as Record<string, unknown>;
@@ -193,18 +193,18 @@ describe("`estimate.compare`", () => {
 
   it("a call of the assistant is asked first (Δ is written into the model): «Нет» — nothing is sent, «Разрешить» — the job runs", async () => {
     const no = app.registry.execute("estimate.compare", ARGS, "claude");
-    expect(await answerDialog(false)).toContain("Сравнить оценки");
+    expect((await answerClaude(false)).title).toContain("Сравнить оценки");
     expect((await no).ok).toBe(false);
     expect(posts()).toHaveLength(0);
     const yes = app.registry.execute("estimate.compare", ARGS, "claude");
-    await answerDialog(true);
+    await answerClaude(true);
     expect((await yes).ok).toBe(true);
     expect(posts()).toHaveLength(1);
   });
 
   it("the request is the body of the form (the domain and the name only when given); the job is followed; the answer is the text of the result", async () => {
     const run = app.registry.execute("estimate.compare", { ...ARGS, domain: "DOM", out: "DELTA" }, "claude");
-    await answerDialog(true);
+    await answerClaude(true);
     const r = await run;
     expect(r.ok).toBe(true);
     expect(posts()[0].body).toEqual({ field_a: "OK_EST", field_b: "ID_EST", domain: "DOM", out: "DELTA" });

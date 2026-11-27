@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AppContext } from "../src/shell/AppContext";
 import type { App } from "../src/shell/app";
 import { dialogStore } from "../src/shell/dialogs";
+import { answerClaude } from "./claude-confirm";
 import { readResult, readScheme, type Scheme } from "../src/modules/blocks/fields/api";
 import { openFieldsWindow, windowOfFields } from "../src/modules/blocks/fields/bind";
 import { CalcWindow } from "../src/modules/blocks/fields/CalcWindow";
@@ -425,7 +426,7 @@ describe("the command `blocks.scheme.save`", () => {
     // the assistant is not asked: it is told and repeats over the new version
     stub.sent.length = 0;
     const claude = app.registry.execute("blocks.scheme.save", got.args, "claude");
-    await answerDialog(true); // the confirmation of the assistant
+    await answerClaude(true); // the confirmation of the assistant
     expect((await claude).ok).toBe(false);
     expect(dialogStore.get().queue).toEqual([]);
   });

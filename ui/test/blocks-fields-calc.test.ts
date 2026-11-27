@@ -11,6 +11,7 @@ import { AppContext } from "../src/shell/AppContext";
 import { CoreError } from "../src/shell/api";
 import type { App } from "../src/shell/app";
 import { dialogStore } from "../src/shell/dialogs";
+import { answerClaude } from "./claude-confirm";
 import { windowStore } from "../src/shell/windows";
 import { blocksStore, loadBlocks } from "../src/modules/blocks/state";
 import { checkExpr, exprIssueOf, readCheck, readResult } from "../src/modules/blocks/fields/api";
@@ -324,7 +325,7 @@ describe("the run of the calculator", () => {
     stub.version = 2;
     await loadBlocks(); // the interface runs over the version it read
     const run = app.registry.execute("blocks.calc", args("new"), "claude");
-    await answerDialog(true); // the confirmation of the assistant
+    await answerClaude(true); // the confirmation of the assistant
     const r = await run;
     expect(r.ok, r.result).toBe(true);
     expect(windowOfFields()).toBeNull();
@@ -381,7 +382,7 @@ describe("the run of the calculator", () => {
   it("the assistant is not asked to replace: it is told to pass replace or change the name; the field stands under «Имя»", async () => {
     stub.routes.push((m, p) => (m === "POST" && p === `/blocks/${IDS.model}/calc` ? answer(CALC.exists) : undefined));
     const run = app.registry.execute("blocks.calc", args("exists"), "claude");
-    await answerDialog(true);
+    await answerClaude(true);
     const r = await run;
     expect(r.ok).toBe(false);
     expect(r.result).toBe(`${CALC.exists.body!.message} Задайте другое имя или передайте replace: true, чтобы заменить поле.`);
@@ -392,7 +393,7 @@ describe("the run of the calculator", () => {
     stub.sent.length = 0;
     stub.routes = [(m, p, b) => (m === "POST" && p === `/blocks/${IDS.model}/calc` && b.replace === true ? answer(CALC.replace) : undefined)];
     const again = app.registry.execute("blocks.calc", { ...args("replace"), replace: true }, "claude");
-    await answerDialog(true);
+    await answerClaude(true);
     expect((await again).ok).toBe(true);
     expect(posts(/\/calc$/).map((x) => x.body.replace)).toEqual([true]);
     expect(dialogStore.get().queue).toEqual([]);
@@ -457,12 +458,12 @@ describe("the run of the calculator", () => {
 
   it("a wrong request never reaches the core; the model that is not there is told", async () => {
     const run = app.registry.execute("blocks.calc", { model_id: IDS.model, expr: "AU", field: "idx" }, "claude");
-    await answerDialog(true); // the confirmation of the assistant
+    await answerClaude(true); // the confirmation of the assistant
     const r = await run;
     expect(r.ok).toBe(false);
     expect(fieldsStore.get().issue).toMatchObject({ tab: "calc", place: "field" });
     const gone = app.registry.execute("blocks.calc", { model_id: 999, expr: "AU", field: "X" }, "claude");
-    await answerDialog(true);
+    await answerClaude(true);
     expect((await gone).result).toBe("Блочная модель №999 не найдена. Номера моделей — в разделе «Блочные модели» дерева.");
     expect(posts(/\/calc$/)).toEqual([]);
   });

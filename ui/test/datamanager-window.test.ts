@@ -16,6 +16,8 @@ import { setCoreTarget } from "../src/shell/api";
 import { createApp } from "../src/shell/app";
 import { closeDialog, dialogStore } from "../src/shell/dialogs";
 import { windowStore, type FloatWin } from "../src/shell/windows";
+import { askClaudeConfirm } from "../src/modules/assistant/confirm";
+import { answerClaude } from "./claude-confirm";
 
 const row = (id: number, p: Partial<CatalogRow> = {}): CatalogRow => ({ id, kind: "wireframe", name: `Объект ${id}`, folder: null, format: null, size: null, rows: null, modified: null, crs: null, state: "ready", ...p });
 
@@ -197,27 +199,36 @@ describe("the actions of the rows", () => {
     expect(app.registry.entries()[0].commandId).toBe("data.delete");
   });
 
-  it("`data.delete` of Claude: one question — our own, with the names (not the bare ids of the registry); failures and unknown ids told", async () => {
+  it("`data.delete` of Claude: the card of the chat (S10) and then our own window with the names; failures and unknown ids told", async () => {
     const app = open();
-    const asked: unknown[] = [];
-    app.registry.hooks = { ...app.registry.hooks, confirm: async (c, a) => (asked.push([c.id, a]), true) };
+    app.registry.hooks = { ...app.registry.hooks, confirm: (c, a) => askClaudeConfirm(c, a) }; // what `bindAssistant` installs: a card of the chat
     const ras = row(6, { kind: "raster", name: "Ортофото" });
     catalogRows = [wf, ras, set];
     catalogStore.set({ rows: catalogRows, folders: [], loaded: true, error: null });
     const run = app.registry.execute("data.delete", { ids: "1,6" }, "claude");
-    const q = await answer(true);
+    const card = await answerClaude(true, "data.delete"); // the card: all the arguments as they are
+    expect(card.args).toEqual(["ids = 1,6"]);
+    const q = await answer(true); // the window of the handler, with the names (not the bare ids of the card)
     expect(q).toMatchObject({ title: "Удалить объекты", okLabel: "Удалить", danger: true });
     expect(q.message).toContain("Claude просит удалить из проекта 2 объекта:\n• Тело (Каркасы)\n• Ортофото (Растры)");
     const r = await run;
-    expect(asked).toEqual([]); // no second question
     expect(r).toEqual({ ok: true, result: "Удалено 1 из 2 (ошибки: Ортофото: Растр наложен на ЦТМ: «Рельеф». Снимите растр в настройках ЦТМ.)" });
     expect(deleted).toEqual(["/wireframes/1", "/rasters/6"]);
-    expect((await app.registry.execute("data.delete", { ids: "1,77" }, "claude")).result).toBe("Объект №77 не найден: ничего не удалено. Обновите менеджер данных.");
-    expect((await app.registry.execute("data.delete", { ids: "2" }, "claude")).result).toContain("Эти объекты здесь не удаляются.");
+    const unknown = app.registry.execute("data.delete", { ids: "1,77" }, "claude");
+    await answerClaude(true, "data.delete");
+    expect((await unknown).result).toBe("Объект №77 не найден: ничего не удалено. Обновите менеджер данных.");
+    const notHere = app.registry.execute("data.delete", { ids: "2" }, "claude");
+    await answerClaude(true, "data.delete");
+    expect((await notHere).result).toContain("Эти объекты здесь не удаляются.");
     const no = app.registry.execute("data.delete", { ids: "1" }, "claude");
-    await answer(false);
+    await answerClaude(true, "data.delete");
+    await answer(false); // «Отмена» in our own window
     expect((await no).result).toBe("Отменено пользователем");
-    expect(app.registry.get("data.delete")!.confirm).toBeFalsy(); // the handler asks itself, with the names
+    const declined = app.registry.execute("data.delete", { ids: "1" }, "claude");
+    await answerClaude(false, "data.delete"); // «Отклонить» on the card: the window is not shown
+    expect((await declined).result).toBe("Пользователь отклонил действие");
+    expect(dialogStore.get().queue).toEqual([]);
+    expect(app.registry.get("data.delete")!.confirm).toBe(true); // S10: Claude's deletion is confirmed in the chat; the handler asks again, with the names
     expect(app.registry.get("data.delete")!.description).toContain("после подтверждения пользователем");
     expect(app.registry.get("data.delete")!.uiOnly).toBeFalsy();
     app.store.set({ projectReadOnly: true });

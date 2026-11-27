@@ -143,8 +143,6 @@ describe("ТЗ 7.2 + ADR 0029 решение 25: the flags of the commands that 
     "scene.clear": "очищает окно 3D (слои скрываются), данные проекта целы",
     "section.clear": "сбрасывает линию разреза вида; вид — не данные проекта",
     "selection.clear": "снимает выбор, ничего не меняет в данных",
-    // a gap against ТЗ 7.2: the handler asks itself (a modal list of names, ADR 0029 решение 27), but without `confirm` the chat card is not shown — reported to the orchestrator
-    "data.delete": "своё модальное подтверждение со списком имён в обработчике (datamanager); флаг `confirm` не задан",
   };
 
   it("every command that deletes, replaces or clears has `confirm` (the exceptions are the explicit list)", () => {
