@@ -4,8 +4,8 @@
  * a switch of the tab of the dock (a module variable, nothing is saved). `ComposerView` is pure (the tests call it); `Composer` keeps the text and talks to `state.ts`.
  */
 import { useState, type KeyboardEvent } from "react";
-import { ask, stopTurn, type AskResult } from "./state";
-import { LIMITS } from "./types";
+import { ask, type AskResult } from "./state";
+import { LIMITS } from "./wireTypes";
 import css from "./Composer.module.css";
 
 export type ComposerKeyAction = "send" | "none";
@@ -95,10 +95,11 @@ export interface ComposerProps {
   blocked: string | null;
   /** replaces `ask` (the tests) */
   onAsk?: (text: string) => Promise<AskResult>;
-  onStop?: () => void;
+  /** «Стоп»: the command `assistant.stop` (it also declines an open confirmation and stops the commands of the window; `stopTurn` alone does neither) */
+  onStop: () => void;
 }
 
-export function Composer({ running, blocked, onAsk = ask, onStop = () => void stopTurn() }: ComposerProps) {
+export function Composer({ running, blocked, onAsk = ask, onStop }: ComposerProps) {
   const [text, setText] = useState(draft);
   const [error, setError] = useState<{ message: string; hint: string } | null>(null);
   const change = (t: string) => {
@@ -110,8 +111,12 @@ export function Composer({ running, blocked, onAsk = ask, onStop = () => void st
     const q = text.trim();
     if (!q) return;
     void onAsk(q).then((r) => {
-      if (r.ok) change("");
-      else setError({ message: r.message, hint: r.hint });
+      if (!r.ok) return setError({ message: r.message, hint: r.hint });
+      change("");
+      // the core may still refuse the question once the stream began (409, 422): the text comes back unless something new was typed meanwhile
+      void r.done?.then((end) => {
+        if (end.kind === "refused" && draft === "") change(q);
+      });
     });
   };
   return <ComposerView value={text} onChange={change} onSend={send} onStop={onStop} running={running} blocked={blocked} error={error} />;

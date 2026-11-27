@@ -74,10 +74,28 @@ function indexOfId(items: Item[], id: string): number {
   return -1;
 }
 
-/** A state of a dialog read from the core (`GET /dialogs/{id}`); `running` means a segment may still be going on (`resumeTurn`). */
-export function fromDialog(d: Dialog): ChatState {
+/**
+ * The card of a command of the window: the title is the registry's (`titleOf`), else the command id, else the name of the tool (never empty).
+ * The core puts `title = name` into a waiting card it restores, and the name is not for people.
+ */
+function cardTitle(t: PendingTool, opts: ReduceOptions): string {
+  return opts.titleOf?.(t) ?? t.command ?? t.name;
+}
+
+/**
+ * A state of a dialog read from the core (`GET /dialogs/{id}`); `running` means a segment may still be going on (`resumeTurn`). A waiting card of the window
+ * whose title is the bare name of its tool gets the title of the registry, as a live `pending` event does.
+ */
+export function fromDialog(d: Dialog, opts: ReduceOptions = {}): ChatState {
   const status: ChatStatus = d.head.state === "idle" ? "idle" : d.head.state;
-  return { ...EMPTY_CHAT, dialog: d.head, note: d.note, items: d.items.slice(), pending: d.pending, status };
+  const tools = new Map((d.pending?.tools ?? []).map((t) => [t.item_id, t] as const));
+  const items = d.items.map((it): Item => {
+    if (it.kind !== "tool" || it.side !== "ui" || it.status !== "waiting" || it.title !== it.name) return it;
+    const t = tools.get(it.id);
+    const title = t ? cardTitle(t, opts) : (opts.titleOf?.({ tool_use_id: it.tool_use_id, name: it.name, command: null, args: it.args, item_id: it.id }) ?? it.title);
+    return title === it.title ? it : { ...it, title };
+  });
+  return { ...EMPTY_CHAT, dialog: d.head, note: d.note, items, pending: d.pending, status };
 }
 
 /** The question shown before the core answers; `turn.start {user_item}` replaces it. */
@@ -199,7 +217,7 @@ export function applyEvents(state: ChatState, events: readonly TurnEnvelope[], o
             tool_use_id: t.tool_use_id,
             name: t.name,
             side: "ui",
-            title: opts.titleOf?.(t) ?? t.command,
+            title: cardTitle(t, opts),
             args: t.args,
             status: "waiting",
             summary: "",
@@ -248,14 +266,4 @@ export function applyEvents(state: ChatState, events: readonly TurnEnvelope[], o
     }
   }
   return s;
-}
-
-/** The text of the last answer of the model after the last question (the one «Копировать» takes). */
-export function lastAnswerText(state: ChatState): string {
-  for (let i = state.items.length - 1; i >= 0; i--) {
-    const it = state.items[i];
-    if (it.kind === "assistant") return it.text;
-    if (it.kind === "user") return "";
-  }
-  return "";
 }

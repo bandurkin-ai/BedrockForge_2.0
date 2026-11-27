@@ -5,12 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setCoreTarget } from "../../src/shell/api";
 import { createApp, type App } from "../../src/shell/app";
 import { DECLINED } from "../../src/shell/registry";
-import type { Command } from "../../src/shell/commands";
-import { FROM_CLAUDE, NO_WINDOW, bindAssistant, askUnavailable, showPanel } from "../../src/modules/assistant/bind";
+import { toolName, type Command } from "../../src/shell/commands";
+import { CONFIRM_FIRST, FROM_CLAUDE, NO_WINDOW, bindAssistant, askUnavailable, showPanel } from "../../src/modules/assistant/bind";
 import { CONNECT_SECTIONS, commands as assistantCommands } from "../../src/modules/assistant/commands";
 import { answerConfirm, confirmStore, declineAllConfirms } from "../../src/modules/assistant/confirm";
-import { pendingActive } from "../../src/modules/assistant/pending";
-import { chatStore, dialogsStore, newDialog, statusStore } from "../../src/modules/assistant/state";
+import { pendingActive, runPendingCards } from "../../src/modules/assistant/pending";
+import { chatActions } from "../../src/modules/assistant/ChatPanel";
+import { chatStore, dialogsStore, newDialog, panelViewStore, statusStore } from "../../src/modules/assistant/state";
 import type { AssistantStatus, Dialog, DialogHead, ToolDefinition } from "../../src/modules/assistant/wireTypes";
 
 const T0 = "2026-11-26T10:00:00Z";
@@ -99,7 +100,7 @@ describe("the commands are bound", () => {
     expect(app.registry.reason("assistant.new")).toBeNull();
   });
 
-  it("`assistant.ask` says why a question cannot be asked: not connected, a login, no internet", () => {
+  it("`assistant.ask` says why a question cannot be asked: not connected, a login (no internet is not a reason: the core answers it)", () => {
     const ok = { coreOnline: true };
     expect(askUnavailable(ok)).toBeNull();
     statusStore.set({ status: statusOf({ state: "none" }) });
@@ -107,7 +108,7 @@ describe("the commands are bound", () => {
     statusStore.set({ status: statusOf({ state: "login" }) });
     expect(askUnavailable(ok)).toContain("вход");
     statusStore.set({ status: statusOf({ online: false }) });
-    expect(askUnavailable(ok)).toBe("Ассистент недоступен без интернета");
+    expect(askUnavailable(ok)).toBeNull();
     statusStore.set({ status: statusOf({ online: null }) });
     expect(askUnavailable(ok)).toBeNull();
   });
@@ -196,6 +197,37 @@ describe("the confirmation of Claude is a card of the chat", () => {
     expect((await res).result).toBe(DECLINED);
   });
 
+  it("«Стоп» of the input (the panel's `stop` → `assistant.stop`) declines the open card, runs nothing and ends the run", async () => {
+    const run = vi.fn(() => "Удалено");
+    app.registry.register([drop(run)]);
+    chatStore.set({
+      dialog: HEAD({ state: "pending" }),
+      status: "pending",
+      items: [{ kind: "tool", id: "c1", at: T0, tool_use_id: "toolu_1", name: toolName("test.drop"), side: "ui", title: "Удалить тест", args: { id: 5 }, status: "waiting", summary: "" }],
+      pending: { id: "p-1", created_at: T0, tools: [{ tool_use_id: "toolu_1", name: toolName("test.drop"), command: "test.drop", args: { id: 5 }, item_id: "c1" }] },
+    });
+    const report = runPendingCards();
+    await vi.waitFor(() => expect(confirmStore.get().queue).toHaveLength(1));
+    expect(chatStore.get().status).toBe("running"); // the button «Стоп» is in the input, there is no stream to stop (`stopTurn` alone would do nothing)
+    chatActions(app).stop();
+    expect((await report)?.results).toEqual([expect.objectContaining({ tool_use_id: "toolu_1", ok: false, text: DECLINED })]);
+    expect(confirmStore.get().queue).toEqual([]);
+    expect(run).not.toHaveBeenCalled();
+    expect(pendingActive()).toBe(false);
+  });
+
+  it("the history is not opened over a card that waits for an answer (the card would be hidden)", async () => {
+    app.registry.register([drop(() => "Удалено")]);
+    const res = app.registry.execute("test.drop", { id: 5 }, "claude");
+    await vi.waitFor(() => expect(confirmStore.get().queue).toHaveLength(1));
+    expect(app.registry.reason("assistant.history")).toBe(CONFIRM_FIRST);
+    expect((await app.registry.execute("assistant.history", {}, "user")).ok).toBe(false);
+    expect(panelViewStore.get().view).toBe("chat");
+    answerConfirm(confirmStore.get().queue[0].id, false);
+    await res;
+    expect(app.registry.reason("assistant.history")).toBeNull();
+  });
+
   it("the user's own call is not asked", async () => {
     const run = vi.fn(() => "Удалено");
     app.registry.register([drop(run)]);
@@ -229,6 +261,18 @@ describe("assistant.new, assistant.stop", () => {
     for (const id of ["assistant.new", "assistant.stop", "assistant.connect", "assistant.history", "assistant.open", "assistant.rename", "assistant.delete"]) {
       expect((await app.registry.execute(id, { dialog_id: "1", title: "t" }, "claude")).result, id).toBe("Команда доступна только из интерфейса");
     }
+  });
+});
+
+describe("the status of the connection", () => {
+  it("is read again when the core comes up (a read that failed while it started must not stay)", async () => {
+    app.store.set({ core: "starting" });
+    calls.length = 0;
+    route = (c) => (c.path === "/status" ? json(statusOf({})) : json({}));
+    app.store.set({ core: "online" });
+    await vi.waitFor(() => expect(statusStore.get().status).toMatchObject({ state: "connected" }));
+    // (`createApp` binds the assistant too, so the test's own binding is the second reader)
+    expect(calls.filter((c) => c.path === "/status").length).toBeGreaterThanOrEqual(1);
   });
 });
 

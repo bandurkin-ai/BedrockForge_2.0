@@ -5,6 +5,8 @@
  * `renderToolActions` (23.15) gives a card that waits for the window its buttons; `tail` (23.15) is what follows the last item (the confirmation card).
  */
 import { useEffect, useRef, type ReactNode } from "react";
+import { useStore } from "../../shell/useStore";
+import { confirmStore } from "./confirm";
 import type { ChatStatus } from "./reduce";
 import type { Item, ToolItem } from "./wireTypes";
 import { MessageView } from "./MessageView";
@@ -43,13 +45,16 @@ export function MessageList({ items, status, thinking, renderToolActions, tail }
   const streaming = streamingIndex(items, status);
   const waiting = isWaiting(items, status, thinking);
   const last = items[items.length - 1];
+  // the confirmation card is drawn by `tail` on its own: the feed follows the store of the questions, or the card would appear below the visible part
+  const asked = useStore(confirmStore, (s) => s.queue[0]?.id ?? 0);
 
   useEffect(() => {
     const el = box.current;
     if (!el) return;
     if (last?.kind === "user") follow.current = true;
+    if (asked) follow.current = true; // an open question must be in sight whatever the user scrolled
     if (follow.current) el.scrollTop = el.scrollHeight;
-  }, [items, waiting, tail, last]);
+  }, [items, waiting, tail, last, asked]);
 
   return (
     <div

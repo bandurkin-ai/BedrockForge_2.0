@@ -33,6 +33,18 @@ describe("the arguments of the card", () => {
     expect(confirmArgs({})).toEqual([]);
   });
 
+  it("a value with a line break cannot draw a line of its own (an injected `name = безопасно`); a hidden mark that turns the text is escaped", () => {
+    const lines = confirmArgs({ title: "1\nname = безопасно", path: "a\r\nb" });
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toBe('title = "1\\nname = безопасно"');
+    expect(lines[1]).toBe('path = "a\\r\\nb"');
+    expect(confirmArgs({ x: "ab\u202ecd\u2066" })[0]).toBe('x = "ab\\u202ecd\\u2066"');
+    expect(confirmArgs({ "k\nname": "v" })[0]).toBe("k\\u000aname = v");
+    expect(argText({ a: "x\u202e" })).toBe('{"a":"x\\u202e"}');
+    for (const line of confirmArgs({ t: "1\n2\u2028 3\u0085" })) expect(line).not.toMatch(/[\n\r\u2028\u0085]/);
+    expect(argText("обычный текст, с запятой: и двоеточием")).toBe("обычный текст, с запятой: и двоеточием");
+  });
+
   it("do not cut a long value (a long text cannot hide what is asked for)", () => {
     const long = "я".repeat(5000);
     expect(confirmArgs({ ids: long })[0]).toBe(`ids = ${long}`);
@@ -109,6 +121,17 @@ describe("ConfirmCard", () => {
     expect(html).not.toContain("<b>x</b>");
     expect(html).not.toContain("<img");
     expect(html).toContain("&lt;img");
+  });
+
+  it("is an alert dialog with a name and a description; the focus goes to «Отклонить»", () => {
+    const tree = ConfirmCard({ view, onAnswer: () => undefined });
+    const html = renderToStaticMarkup(tree);
+    expect(html).toContain('role="alertdialog"');
+    expect(html).toContain('aria-labelledby="confirm-9-head"');
+    expect(html).toContain('id="confirm-9-head"');
+    expect(html).toContain('aria-describedby="confirm-9-desc"');
+    expect(html).toContain('id="confirm-9-desc"');
+    expect(find(tree, "confirm-deny")[0].type).not.toBe("button"); // the component that takes the focus
   });
 
   it("without arguments it says so", () => {

@@ -4,7 +4,7 @@
  *
  * The routes «только оболочка» (`PUT|GET /connection/secret`, `POST /connection/sealed`) belong to the main process, not to the window.
  * The key and the login code go through `quiet`: the common client writes request bodies into the log of an open import window (ТЗ 7.9), and a
- * secret must not get there. No React.
+ * secret must not get there. The same for the answers that carry the talk of the user (the dialogs): the common client logs up to 6000 characters of an answer. No React.
  */
 import { api, CoreError, coreTarget } from "../../shell/api";
 import { apiUrl, authHeaders } from "../../shell/coreClient";
@@ -36,13 +36,17 @@ export function coreErrorOf(status: number, text: string): CoreError {
   return err;
 }
 
-/** A call that writes nothing about its body into the operation logs. */
-async function quiet<T>(method: string, path: string, body: unknown): Promise<T> {
+/** A call that writes nothing about its body or its answer into the operation logs (the key, the login code, the dialogs of the user). */
+async function quiet<T>(method: string, path: string, body?: unknown): Promise<T> {
   const target = coreTarget();
   if (!target) throw OFFLINE();
   let r: Response;
   try {
-    r = await fetch(apiUrl(target, path), { method, headers: authHeaders(target, { "Content-Type": "application/json" }), body: JSON.stringify(body) });
+    r = await fetch(apiUrl(target, path), {
+      method,
+      headers: authHeaders(target, body === undefined ? {} : { "Content-Type": "application/json" }),
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
   } catch {
     throw OFFLINE();
   }
@@ -60,9 +64,9 @@ const id = (dialogId: string) => encodeURIComponent(dialogId);
 
 // ---- status, prefs, usage (§2, §4) ----
 
-export const getStatus = (): Promise<AssistantStatus> => api.get(`${BASE}/status`);
+export const getStatus = (): Promise<AssistantStatus> => quiet("GET", `${BASE}/status`);
 export const putPrefs = (prefs: PrefsBody): Promise<AssistantStatus> => api.put(`${BASE}/prefs`, prefs);
-export const getUsage = (): Promise<UsageReport> => api.get(`${BASE}/usage`);
+export const getUsage = (): Promise<UsageReport> => quiet("GET", `${BASE}/usage`);
 
 // ---- connection (§3) ----
 
@@ -78,11 +82,11 @@ export const loginCancel = (loginId: string): Promise<null> => api.del(`${BASE}/
 
 // ---- dialogs (§7) ----
 
-export const listDialogs = (offset = 0, limit = 50): Promise<DialogList> => api.get(`${BASE}/dialogs?offset=${offset}&limit=${limit}`);
+export const listDialogs = (offset = 0, limit = 50): Promise<DialogList> => quiet("GET", `${BASE}/dialogs?offset=${offset}&limit=${limit}`);
 /** The last non-empty dialog of the project; null when there is none (204). */
-export const lastDialog = (): Promise<DialogHead | null> => api.get<DialogHead | null>(`${BASE}/dialogs/last`);
-export const getDialog = (dialogId: string): Promise<Dialog> => api.get(`${BASE}/dialogs/${id(dialogId)}`);
-export const renameDialog = (dialogId: string, title: string): Promise<DialogHead> => api.patch(`${BASE}/dialogs/${id(dialogId)}`, { title });
+export const lastDialog = (): Promise<DialogHead | null> => quiet<DialogHead | null>("GET", `${BASE}/dialogs/last`);
+export const getDialog = (dialogId: string): Promise<Dialog> => quiet("GET", `${BASE}/dialogs/${id(dialogId)}`);
+export const renameDialog = (dialogId: string, title: string): Promise<DialogHead> => quiet("PATCH", `${BASE}/dialogs/${id(dialogId)}`, { title });
 export const deleteDialog = (dialogId: string): Promise<null> => api.del(`${BASE}/dialogs/${id(dialogId)}`);
 
 /** `POST /dialogs/{id}/cancel` → 204 (also when no segment is running). The stream ends with `turn.end {state: "cancelled"}`. */

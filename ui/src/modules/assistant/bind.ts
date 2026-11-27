@@ -21,7 +21,7 @@ import { contextOf } from "./context";
 import { declineAllConfirms, hasOpenConfirm, installConfirm } from "./confirm";
 import { PendingRunner, pendingActive, setPendingRunner, stopPending } from "./pending";
 import { startHistoryWatch } from "./history";
-import { ask, chatStore, configureAssistant, newDialog, openDialog, panelViewStore, refreshDialogs, setPendingHandler, showChat, showHistory, startAssistantEvents, statusStore, stopTurn } from "./state";
+import { ask, chatStore, configureAssistant, newDialog, openDialog, panelViewStore, refreshDialogs, refreshStatus, setPendingHandler, showChat, showHistory, startAssistantEvents, statusStore, stopTurn } from "./state";
 
 export type AssistantWindowId = "assistant.connect";
 
@@ -36,7 +36,10 @@ export const NO_WINDOW = "Окно ассистента ещё не готово
 const errText = (e: unknown): string => (e instanceof CoreError ? e.full : e instanceof Error ? e.message : String(e));
 const needCore = (ctx: { coreOnline: boolean }): string | null => (ctx.coreOnline ? null : "Ядро не запущено");
 
-/** Why a question cannot be asked now (the status of the connection of the core); null — it can, or it is not known yet (the core then answers itself). */
+/**
+ * Why a question cannot be asked now (the status of the connection of the core); null — it can, or it is not known yet (the core then answers itself). «Нет интернета»
+ * is not a reason: the core learns the net is back only from a call, so the question itself is the way to find out (`assistant_offline` is its answer).
+ */
 export function askUnavailable(ctx: { coreOnline: boolean }): string | null {
   const core = needCore(ctx);
   if (core) return core;
@@ -44,9 +47,10 @@ export function askUnavailable(ctx: { coreOnline: boolean }): string | null {
   if (!st) return null;
   if (st.state === "none") return "Claude не подключён: откройте окно «Подключение Claude»";
   if (st.state === "login") return "Идёт вход в аккаунт Anthropic";
-  if (st.online === false) return "Ассистент недоступен без интернета";
   return null;
 }
+
+export const CONFIRM_FIRST = "Сначала ответьте на запрос подтверждения";
 
 /** The right dock on «Claude», whatever it shows (the chat or the history). */
 function openDock(app: Pick<App, "store">): void {
@@ -125,7 +129,8 @@ export function bindAssistant(app: App, opts: BindOptions = {}): () => void {
       void refreshDialogs();
       return "Открыта история диалогов";
     },
-    needCore,
+    // the card of a confirmation lives in the chat: under the history it would be hidden while the commands wait for it
+    (ctx) => needCore(ctx) ?? (hasOpenConfirm() && panelViewStore.get().view === "chat" ? CONFIRM_FIRST : null),
   );
   bind(
     "assistant.open",
@@ -179,9 +184,14 @@ export function bindAssistant(app: App, opts: BindOptions = {}): () => void {
 
   const uninstallConfirm = installConfirm(registry, () => showPanel(app));
   // closing the panel (or switching the dock to «Свойства») while Claude waits for an answer is «Отклонить» (решение 26)
+  let core = app.store.get().core;
   const stopWatching = app.store.subscribe(() => {
-    const w = app.store.get().workspace;
+    const s = app.store.get();
+    const w = s.workspace;
     if (hasOpenConfirm() && !(w.right && w.rightTab === "assistant")) leaveDialog();
+    // the status read while the core was starting may have failed: it is read again when the core comes up
+    if (s.core === "online" && core !== "online") void refreshStatus();
+    core = s.core;
   });
 
   configureAssistant({

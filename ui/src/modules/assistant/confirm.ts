@@ -26,14 +26,23 @@ export const confirmStore = new Store<{ queue: ConfirmView[] }>({ queue: [] });
 const waiting = new Map<number, (allow: boolean) => void>();
 let seq = 0;
 
-/** One argument as it is: a string raw, anything else as JSON; a gap is «null», never an empty text. */
+/** A line break, any other control character, or a mark that turns the direction of the text (U+202A–202E, U+2066–2069, U+200E/F, U+061C). */
+const UNSAFE = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/;
+const UNSAFE_ALL = new RegExp(UNSAFE.source, "g");
+
+const escapeUnsafe = (s: string): string => s.replace(UNSAFE_ALL, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+
+/**
+ * One argument as it is: a plain string raw, anything else as JSON; a gap is «null», never an empty text. A string with a line break or a hidden character is shown
+ * quoted with those escaped, so a value from the data of the project cannot draw a line of its own («1\nname = безопасно») or turn the text around.
+ */
 export function argText(value: unknown): string {
-  if (typeof value === "string") return value;
-  return JSON.stringify(value) ?? String(value);
+  if (typeof value === "string") return UNSAFE.test(value) ? escapeUnsafe(JSON.stringify(value)) : value;
+  return escapeUnsafe(JSON.stringify(value) ?? String(value));
 }
 
 export function confirmArgs(args: Record<string, unknown>): string[] {
-  return Object.keys(args).map((k) => `${k} = ${argText(args[k])}`);
+  return Object.keys(args).map((k) => `${escapeUnsafe(k)} = ${argText(args[k])}`);
 }
 
 /** The question to the user; resolves with the answer (declined is `false`). */

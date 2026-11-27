@@ -256,7 +256,7 @@ test.describe.serial("Claude assistant: key, commands, confirmation, history, us
     await expect(chat(page).getByTestId("msg-user").filter({ hasText: "Расскажи подробно про бурение" })).toBeVisible();
     await expect(page.getByTestId("claude-status")).toContainText("нет связи");
     expect(await page.getByTestId("claude-status").getAttribute("data-tone")).toBe("warn");
-    await expect(page.getByTestId("composer-input")).toHaveAttribute("placeholder", OFFLINE_TEXT);
+    await expect(page.getByTestId("composer-input")).toBeEnabled(); // no internet does not lock the input: a question is the way to find out the net is back
     await page.screenshot({ path: shot("assistant-5-offline.png") });
 
     // the history is read without the network
@@ -265,8 +265,11 @@ test.describe.serial("Claude assistant: key, commands, confirmation, history, us
     await expect(page.getByTestId("history-row").getByTestId("history-questions")).toContainText("вопрос");
     await page.getByTestId("history-back").click();
 
-    // the network is back: «Проверить связь» finds it, the question can be asked again
+    // the network is back: «Проверить связь» of the banner finds it, the question can be asked again
     await mock.start();
+    await chat(page).getByTestId("recheck").click();
+    await expect(chat(page).getByTestId("state-offline")).toHaveCount(0, { timeout: 30_000 });
+    await expect(page.getByTestId("claude-status")).not.toContainText("нет связи");
     const win = await openConnection(page);
     await win.getByTestId("connection-test").click();
     await expect(win.getByTestId("connection-test-result")).toContainText("Связь есть", { timeout: 30_000 });

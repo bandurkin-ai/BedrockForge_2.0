@@ -6,11 +6,11 @@ import { statusLabel, statusTone, useAssistantStatus } from "./StatusLink";
 import css from "./AccountBadge.module.css";
 
 export function AccountBadge({ onOpen }: { onOpen: () => void }) {
-  const status = useAssistantStatus();
-  const label = statusLabel(status);
+  const { status, error } = useAssistantStatus();
+  const label = statusLabel(status, error);
   return (
     <button type="button" className={css.badge} data-testid="claude-account" title={label} aria-label={label} onClick={onOpen}>
-      <span className={css.dot} data-tone={statusTone(status)} />
+      <span className={css.dot} data-tone={statusTone(status, error)} />
     </button>
   );
 }

@@ -1,12 +1,20 @@
 /**
  * Wire types of the Claude assistant (Э23; ADR 0029; docs/progress/e23-api.md §2–§10): the items of the feed, the events of a turn stream, the
- * bodies of the requests the window sends. Written by 23.13 on the contract; `types.ts` (23.1, the replies of the other routes) may supersede the
- * types of §2–§7 when the branches are merged. No React, no runtime code.
+ * bodies of the requests the window sends. Written by 23.13 on the contract. No React; the only runtime value is `LIMITS`.
  *
  * A gap is `null`, never 0 (a cost of an unknown model is `cost_usd: null`).
  */
 
 // ---- shared ----
+
+/** The limits of the contract (the core checks them; `core/bf_core/assistant/schemas*.py`); the window keeps its input within them. */
+export const LIMITS = {
+  text: 20_000,
+  context: 4096,
+  tools: 400,
+  toolsBytes: 512 * 1024,
+  toolDescription: 2000,
+} as const;
 
 export interface TokenCounts {
   input: number;
@@ -93,7 +101,8 @@ export type Item = UserItem | AssistantItem | ToolItem | NoticeItem | ErrorItem;
 export interface PendingTool {
   tool_use_id: string;
   name: string;
-  command: string;
+  /** the registry id the core knows; null when it cannot tell (the window finds the command by `name`) */
+  command: string | null;
   args: Record<string, unknown>;
   item_id: string;
 }

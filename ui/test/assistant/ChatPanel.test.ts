@@ -84,7 +84,7 @@ const STATUS = (over: Partial<AssistantStatus> = {}): AssistantStatus => ({
 });
 
 const WITH_HOLE = { ...EMPTY_CONTEXT, hasProject: true, hasHole: true, coreOnline: true };
-const ACTIONS = () => ({ connect: vi.fn(), newDialog: vi.fn(), history: vi.fn(), quick: vi.fn() });
+const ACTIONS = () => ({ connect: vi.fn(), newDialog: vi.fn(), history: vi.fn(), quick: vi.fn(), stop: vi.fn(), recheck: vi.fn(async () => undefined) });
 const NO_REASONS = { connect: null, newDialog: null, history: null };
 
 function props(chat: ChatState, over: Partial<ChatViewProps> = {}): ChatViewProps {
@@ -153,10 +153,11 @@ describe("the stream of a turn on the screen", () => {
 describe("the states", () => {
   it("the status of the connection → the state of the panel (ТЗ 6.10)", () => {
     expect(panelState(null, null)).toMatchObject({ mode: "loading" });
-    expect(panelState(null, "Ядро недоступно.")).toEqual({ mode: "unreachable", blocked: "Ядро недоступно." });
+    expect(panelState(null, "Ядро недоступно.")).toEqual({ mode: "unreachable", blocked: "Нет связи с ядром" });
     expect(panelState(STATUS({ state: "none", kind: null, mask: null }), null).mode).toBe("none");
     expect(panelState(STATUS({ state: "login" }), null).mode).toBe("login");
-    expect(panelState(STATUS({ online: false }), null)).toEqual({ mode: "offline", blocked: "Ассистент недоступен без интернета" });
+    // no internet does not lock the input: the core finds out the net is back only from a call
+    expect(panelState(STATUS({ online: false }), null)).toEqual({ mode: "offline", blocked: null });
     expect(panelState(STATUS({ online: null }), null)).toEqual({ mode: "ready", blocked: null });
     expect(panelState(STATUS(), null)).toEqual({ mode: "ready", blocked: null });
   });
@@ -180,8 +181,25 @@ describe("the states", () => {
     expect(OFFLINE_TEXT).toBe("Ассистент недоступен без интернета");
     expect(out).toContain("Ответ из истории.");
     expect(out).toContain("Дай сводку");
-    expect(out).toMatch(/<textarea[^>]*disabled/);
+    expect(out).not.toMatch(/<textarea[^>]*disabled/);
     expect(out).toContain("Ассистент недоступен без интернета</div>");
+    expect(out).toContain('data-testid="recheck"');
+    expect(out).toContain("Проверить связь");
+  });
+
+  it("no internet: «Проверить связь» of the banner runs the check", () => {
+    const p = props(EMPTY_CHAT, { status: STATUS({ online: false }) });
+    const banner = all(ChatView(p)).find((e) => typeof e.type === "function" && e.type.name === "OfflineBanner") as ReactElement<{ recheck: () => Promise<void> }> | undefined;
+    expect(banner).toBeTruthy();
+    void banner?.props.recheck();
+    expect(p.actions.recheck).toHaveBeenCalledTimes(1);
+    expect(draw(p)).toContain('data-testid="chat-empty"');
+  });
+
+  it("the core is not reached: «Нет связи с ядром» with the reason of the read", () => {
+    const out = draw(props(EMPTY_CHAT, { status: null, statusError: "Ядро недоступно." }));
+    expect(out).toContain("Нет связи с ядром");
+    expect(out).toContain("Ядро недоступно.");
   });
 
   it("an empty dialog of a connected panel: the three quick requests that run the command", () => {
@@ -297,16 +315,27 @@ describe("the input", () => {
       hooks.on = false;
     });
 
-    it("«Стоп» calls stopTurn", () => {
+    it("«Стоп» is the handler of the panel (the command `assistant.stop`), not `stopTurn` alone", () => {
       hooks.values = ["", null];
-      const el = Composer({ running: true, blocked: null }) as ReactElement<ComposerViewProps>;
+      const onStop = vi.fn();
+      const el = Composer({ running: true, blocked: null, onStop }) as ReactElement<ComposerViewProps>;
       el.props.onStop();
-      expect(state.stopTurn).toHaveBeenCalledTimes(1);
+      expect(onStop).toHaveBeenCalledTimes(1);
+      expect(state.stopTurn).not.toHaveBeenCalled();
+    });
+
+    it("the question the core refuses after the stream began comes back into an empty field", async () => {
+      vi.mocked(state.ask).mockResolvedValueOnce({ ok: true, done: Promise.resolve({ kind: "refused", error: { code: "assistant_busy", message: "m", hint: "h" } } as never) });
+      hooks.values = ["Вопрос", null];
+      const el = Composer({ running: false, blocked: null, onStop: () => undefined }) as ReactElement<ComposerViewProps>;
+      el.props.onSend();
+      await vi.waitFor(() => expect(hooks.set).toHaveBeenCalledWith("Вопрос"));
+      expect(vi.mocked(hooks.set).mock.calls.map((c) => c[0])).toEqual(["", "Вопрос"]);
     });
 
     it("sending asks the question trimmed and clears the field", async () => {
       hooks.values = ["  Дай сводку \n", null];
-      const el = Composer({ running: false, blocked: null }) as ReactElement<ComposerViewProps>;
+      const el = Composer({ running: false, blocked: null, onStop: () => undefined }) as ReactElement<ComposerViewProps>;
       el.props.onSend();
       await vi.waitFor(() => expect(hooks.set).toHaveBeenCalledWith(""));
       expect(state.ask).toHaveBeenCalledWith("Дай сводку");
@@ -315,7 +344,7 @@ describe("the input", () => {
     it("a refusal of ask keeps the text and shows the reason", async () => {
       vi.mocked(state.ask).mockResolvedValueOnce({ ok: false, message: "Ответ ещё идёт", hint: "Нажмите «Стоп»." });
       hooks.values = ["Вопрос", null];
-      const el = Composer({ running: false, blocked: null }) as ReactElement<ComposerViewProps>;
+      const el = Composer({ running: false, blocked: null, onStop: () => undefined }) as ReactElement<ComposerViewProps>;
       el.props.onSend();
       await vi.waitFor(() => expect(hooks.set).toHaveBeenCalledWith({ message: "Ответ ещё идёт", hint: "Нажмите «Стоп»." }));
       expect(hooks.set).not.toHaveBeenCalledWith("");
@@ -331,7 +360,8 @@ describe("connected to the registry", () => {
     a.newDialog();
     a.history();
     a.quick("Дай сводку");
-    expect(run.mock.calls).toEqual([["assistant.connect"], ["assistant.new"], ["assistant.history"], ["assistant.ask", { prompt: "Дай сводку" }]]);
+    a.stop();
+    expect(run.mock.calls).toEqual([["assistant.connect"], ["assistant.new"], ["assistant.history"], ["assistant.ask", { prompt: "Дай сводку" }], ["assistant.stop"]]);
   });
 
   function app(): App {
