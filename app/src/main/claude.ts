@@ -188,8 +188,16 @@ export class ClaudeLink {
     const tmp = `${this.d.file}.${process.pid}.tmp`;
     fs.mkdirSync(path.dirname(this.d.file), { recursive: true });
     try {
-      fs.writeFileSync(tmp, data, { mode: 0o600 });
+      // The refresh token is single-use: the copy must be on the disk, not only in the cache, before the old one goes.
+      const fd = fs.openSync(tmp, "w", 0o600);
+      try {
+        fs.writeSync(fd, data);
+        fs.fsyncSync(fd);
+      } finally {
+        fs.closeSync(fd);
+      }
       fs.renameSync(tmp, this.d.file);
+      this.syncDir(path.dirname(this.d.file));
     } catch (e) {
       try {
         fs.rmSync(tmp, { force: true });
@@ -197,6 +205,25 @@ export class ClaudeLink {
         /* ignore */
       }
       throw e;
+    }
+  }
+
+  /** fsync of the folder after a rename, where the platform allows it (not on Windows: a folder cannot be opened). */
+  private syncDir(dir: string): void {
+    let fd: number | null = null;
+    try {
+      fd = fs.openSync(dir, "r");
+      fs.fsyncSync(fd);
+    } catch {
+      /* not supported here: the rename is still atomic */
+    } finally {
+      if (fd !== null) {
+        try {
+          fs.closeSync(fd);
+        } catch {
+          /* ignore */
+        }
+      }
     }
   }
 
@@ -296,5 +323,24 @@ export class ClaudeLink {
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+  }
+
+  /**
+   * The exit of the application: stops the polling and takes the last rotated token from the core before the core is
+   * stopped (a refresh token is single-use, the copy on the disk must not be the old one). Waits at most `timeoutMs`.
+   */
+  async closing(timeoutMs = 2000): Promise<void> {
+    this.stop();
+    let timer: NodeJS.Timeout | undefined;
+    const limit = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, timeoutMs);
+    });
+    try {
+      await Promise.race([this.checkSeal(), limit]);
+    } catch {
+      /* the exit goes on */
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 }

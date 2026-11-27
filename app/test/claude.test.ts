@@ -2,7 +2,7 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { antEnv, ClaudeLink, type SafeStorageLike } from "../src/main/claude";
 
 const KEY = "sk-ant-test-0000000000000000000000";
@@ -160,6 +160,40 @@ describe("seal and hand over", () => {
     await l.checkSeal();
     expect(core.sealedWith).toBe(3);
     expect(fs.existsSync(file)).toBe(true);
+  });
+
+  it("closing() takes a rotated token before the exit, and does not wait longer than the limit", async () => {
+    core.secret = { kind: "account", secret: { access_token: "a", refresh_token: "r2" }, revision: 7 };
+    core.sealNeeded = true;
+    const l = link();
+    await l.closing(2000);
+    expect(core.sealedWith).toBe(7);
+    expect(new Set(core.seen.map((s) => s.url))).toContain("/api/v1/assistant/status");
+    // a core that never answers: the exit is delayed by the limit only
+    const hang = http.createServer(() => undefined);
+    await new Promise<void>((r) => hang.listen(0, "127.0.0.1", r));
+    const dead = link({ core: () => ({ port: (hang.address() as { port: number }).port, token: TOKEN }) });
+    const t0 = Date.now();
+    await dead.closing(200);
+    expect(Date.now() - t0).toBeLessThan(1500);
+    hang.closeAllConnections();
+    await new Promise<void>((r) => hang.close(() => r()));
+  });
+
+  it("writes the file to the disk (fsync) before the rename, and leaves no temporary file", async () => {
+    core.secret = { kind: "api_key", secret: { key: KEY }, revision: 1 };
+    const calls: string[] = [];
+    const real = { fsync: fs.fsyncSync, rename: fs.renameSync };
+    vi.spyOn(fs, "fsyncSync").mockImplementation((fd) => (calls.push("fsync"), real.fsync(fd)));
+    vi.spyOn(fs, "renameSync").mockImplementation((a, b) => (calls.push("rename"), real.rename(a, b)));
+    try {
+      expect((await link().seal()).ok).toBe(true);
+    } finally {
+      vi.restoreAllMocks();
+    }
+    expect(calls.indexOf("fsync")).toBeGreaterThanOrEqual(0);
+    expect(calls.indexOf("fsync")).toBeLessThan(calls.indexOf("rename"));
+    expect(fs.readdirSync(path.dirname(file))).toEqual(["connection.bin"]);
   });
 
   it("forget removes the encrypted copy", async () => {

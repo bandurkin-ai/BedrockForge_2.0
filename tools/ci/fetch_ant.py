@@ -2,11 +2,13 @@
 
 Values live in tools/ci/ant.json (version, url template, verified, sha256, license, archive_name).
 Nothing is downloaded while url or sha256 is null or the licence is not on the allow list: the script
-warns and exits 0, the build then goes without `ant` (API key only, question 125).
+warns and exits 0, the build then goes without `ant` (API key only, question 125). With `--strict` (release.yml)
+a pinned sha256 whose url or licence is missing or not allowed is an error (exit 1): half-made pins never pass.
 The URL template may use {version} and {archive_name}. Stdlib only; proxy and CA come from the
 environment (HTTPS_PROXY, SSL_CERT_FILE).
 
   python tools/ci/fetch_ant.py --platform windows        # build step
+  python tools/ci/fetch_ant.py --platform windows --strict   # release step
   python tools/ci/fetch_ant.py --dry-run                 # show the plan, touch nothing
   python tools/ci/fetch_ant.py --print-hash --url <url>  # first build: print SHA-256 and the licence text to pin
 """
@@ -195,6 +197,10 @@ def run(args: argparse.Namespace) -> int:
         skip = SKIP_NOTE
     elif not license_allowed(cfg.get("license")):
         skip = f"ant не включён: лицензия {cfg.get('license')!r} не из белого списка (вопрос № 125)"
+    if skip and args.strict and sha:
+        # the pins were started (a hash is there) but are not complete or not allowed: a release must not go without ant
+        print(f"ОШИБКА: {skip}", file=sys.stderr)
+        return 1
     if skip:
         print(f"ПРЕДУПРЕЖДЕНИЕ: {skip}")
         if not args.dry_run:
@@ -218,6 +224,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", default=str(DEFAULT_OUT))
     ap.add_argument("--url", help="only with --print-hash: the archive to measure")
     ap.add_argument("--print-hash", action="store_true", help="download, print SHA-256 and licence text only")
+    ap.add_argument(
+        "--strict",
+        action="store_true",
+        help="release: a pinned sha256 with an incomplete or disallowed rest (url, licence) is an error (exit 1); "
+        "without sha256 the step is still skipped with exit 0",
+    )
     ap.add_argument("--dry-run", action="store_true", help="print the plan, download and write nothing")
     args = ap.parse_args(argv)
     try:

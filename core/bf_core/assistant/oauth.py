@@ -62,7 +62,11 @@ class MemoryOAuth:
         http_client: Any | None = None,
         clock: Callable[[], float] = time.time,
     ) -> None:
+        # `_lock` guards the pair of tokens and is never held over the network; `_exchange_lock` lets one exchange
+        # run at a time (a refresh token is single-use), so `snapshot()` / `expired()` never wait for the network.
         self._lock = threading.RLock()
+        self._exchange_lock = threading.Lock()
+        self._generation = 0  # +1 at every exchange
         self._access = access_token
         self._refresh = refresh_token
         self._client_id = client_id
@@ -125,9 +129,15 @@ class MemoryOAuth:
         with self._lock:
             if not force_refresh and self._fresh():
                 return AccessToken(token=self._access, expires_at=self._expires_at)
-            self._exchange()
-            result = AccessToken(token=self._access, expires_at=self._expires_at)
-        # outside the lock: the callback takes the lock of the connection, which takes this one (snapshot) too
+            seen = self._generation
+        with self._exchange_lock:
+            with self._lock:
+                if self._generation != seen and self._fresh():  # another thread exchanged while this one waited
+                    return AccessToken(token=self._access, expires_at=self._expires_at)
+            self._exchange()  # the network: outside `_lock`
+            with self._lock:
+                result = AccessToken(token=self._access, expires_at=self._expires_at)
+        # outside the locks: the callback takes the lock of the connection, which reads this object (snapshot) too
         if self._on_rotate is not None:
             self._on_rotate()
         return result
@@ -139,19 +149,23 @@ class MemoryOAuth:
             self._http, self._own_http = None, False
 
     def _client(self) -> Any:
-        if self._http is None:
-            self._http = anthropic.DefaultHttpxClient(timeout=TOKEN_EXCHANGE_TIMEOUT)
-            self._own_http = True
-        return self._http
+        with self._lock:
+            if self._http is None:
+                # no redirects: a 307/308 would repeat the body with the refresh token at the `Location`
+                self._http = anthropic.DefaultHttpxClient(timeout=TOKEN_EXCHANGE_TIMEOUT, follow_redirects=False)
+                self._own_http = True
+            return self._http
 
     def _exchange(self) -> None:
         """`refresh_token` grant; on success the new pair replaces the old one (the caller then calls `on_rotate`)."""
-        body = json.dumps(
-            {"grant_type": GRANT_TYPE_REFRESH_TOKEN, "refresh_token": self._refresh, "client_id": self._client_id}
-        )
+        with self._lock:
+            base_url = self._base_url
+            body = json.dumps(
+                {"grant_type": GRANT_TYPE_REFRESH_TOKEN, "refresh_token": self._refresh, "client_id": self._client_id}
+            )
         try:
             resp = self._client().post(
-                f"{self._base_url}{TOKEN_ENDPOINT}",
+                f"{base_url}{TOKEN_ENDPOINT}",
                 content=body,
                 headers={
                     "Content-Type": "application/json",
@@ -177,8 +191,10 @@ class MemoryOAuth:
         except (TypeError, ValueError, OverflowError):
             raise OAuthRefreshError("token endpoint answer has a wrong lifetime", status=resp.status_code) from None
         new_refresh = payload.get("refresh_token")
-        self._access = token
-        self._expires_at = int(self._clock()) + expires_in
-        if isinstance(new_refresh, str) and new_refresh:
-            self._refresh = new_refresh
+        with self._lock:
+            self._access = token
+            self._expires_at = int(self._clock()) + expires_in
+            if isinstance(new_refresh, str) and new_refresh:
+                self._refresh = new_refresh
+            self._generation += 1
         del payload, body

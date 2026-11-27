@@ -31,7 +31,6 @@ import threading
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlsplit
@@ -40,9 +39,13 @@ import anthropic
 
 from bf_core.api.errors import ApiError
 from bf_core.assistant import errors, prefs, prices
+from bf_core.assistant.connection_util import efforts as _efforts
+from bf_core.assistant.connection_util import iso as _iso
+from bf_core.assistant.connection_util import now_iso as _now_iso
+from bf_core.assistant.connection_util import unix as _unix
 from bf_core.assistant.oauth import MemoryOAuth, OAuthRefreshError
 from bf_core.assistant.schemas import Status
-from bf_core.assistant.schemas_base import EFFORTS, KEY_RE
+from bf_core.assistant.schemas_base import KEY_RE
 
 log = logging.getLogger("bf_core.assistant")
 
@@ -98,28 +101,6 @@ def resolve_base_url(env: Mapping[str, str] | None = None) -> str:
     return f"{parts.scheme}://127.0.0.1{f':{port}' if port else ''}{parts.path.rstrip('/')}"
 
 
-def _now_iso() -> str:
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def _unix(value: Any) -> int | None:
-    """`expires_at` as unix seconds from unix seconds or an ISO 8601 string; None - no expiry known."""
-    if value is None or isinstance(value, bool):
-        return None
-    if isinstance(value, int | float):
-        return int(value)
-    if isinstance(value, str):
-        try:
-            return int(datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp())
-        except ValueError:
-            return None
-    return None
-
-
-def _iso(unix: int | None) -> str | None:
-    return None if unix is None else datetime.fromtimestamp(unix, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
 @dataclass(frozen=True)
 class Snapshot:
     """What the window may know: no secret."""
@@ -156,6 +137,7 @@ class Connection:
         self._revision = 0
         self._secure_storage = True  # the shell tells otherwise with `PUT /connection/secret`
         self._cached: tuple[Any, anthropic.Anthropic] | None = None
+        self._env_key_warned = False
 
     # ---- listeners ----
     def add_listener(self, fn: Callable[[], None]) -> None:
@@ -177,7 +159,14 @@ class Connection:
 
     def _env_key(self) -> str | None:
         value = self._environ().get(ENV_API_KEY, "").strip()
-        return value or None
+        if not value:
+            return None
+        if not KEY_RE.match(value):  # same format as `set_key`: a wrong value would break the header of every request
+            if not self._env_key_warned:
+                self._env_key_warned = True
+                log.warning("assistant: %s has a wrong format and is ignored", ENV_API_KEY)
+            return None
+        return value
 
     def _effective(self) -> tuple[Kind | None, str | None]:
         """(kind, api key) of the connection that is in force: the window first, then the environment."""
@@ -546,7 +535,8 @@ class Connection:
         with self._lock:
             known = [self._key, self._env_key()]
             if self._oauth is not None:
-                known += [self._oauth.snapshot()["access_token"], self._oauth.snapshot()["refresh_token"]]
+                pair = self._oauth.snapshot()  # a read of the pair: it never waits for the network
+                known += [pair["access_token"], pair["refresh_token"]]
         return scrub(text, *known)
 
     def api_error(self, exc: BaseException, model: str | None = None) -> ApiError:
@@ -584,16 +574,6 @@ def _find_refresh_error(exc: BaseException | None) -> OAuthRefreshError | None:
             return exc
         exc = exc.__cause__ or exc.__context__
     return None
-
-
-def _efforts(info: Any) -> list[str] | None:
-    """The efforts the model supports (`capabilities.effort`); None when the answer does not say."""
-    effort = getattr(getattr(info, "capabilities", None), "effort", None)
-    if effort is None:
-        return None
-    if not getattr(effort, "supported", False):
-        return []
-    return [e for e in EFFORTS if getattr(getattr(effort, e, None), "supported", False)]
 
 
 _connection: Connection | None = None

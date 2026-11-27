@@ -79,8 +79,9 @@ def run(fa: ModuleType, config: Path, out: Path, *extra: str) -> int:
     return int(fa.main(["--config", str(config), "--out", str(out), *extra]))
 
 
-def test_pinned_hash_extracts_binary(fa: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-                                      capsys: pytest.CaptureFixture[str]) -> None:
+def test_pinned_hash_extracts_binary(
+    fa: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     payload = zip_bytes({"ant.exe": b"MZ-fake", "LICENSE": b"MIT text"})
     config, out, calls = setup(fa, tmp_path, monkeypatch, payload)
     assert run(fa, config, out) == 0
@@ -98,8 +99,9 @@ def test_tar_gz_archive_and_nested_binary(fa: ModuleType, tmp_path: Path, monkey
     assert (out / "ant.exe").read_bytes() == b"MZ-nested"
 
 
-def test_hash_mismatch_fails_and_leaves_no_binary(fa: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-                                                   capsys: pytest.CaptureFixture[str]) -> None:
+def test_hash_mismatch_fails_and_leaves_no_binary(
+    fa: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     payload = zip_bytes({"ant.exe": b"MZ-fake"})
     config, out, _ = setup(fa, tmp_path, monkeypatch, payload, sha256="0" * 64)
     assert run(fa, config, out) == 1
@@ -120,8 +122,9 @@ def test_unsafe_archive_path_fails(fa: ModuleType, tmp_path: Path, monkeypatch: 
 
 
 @pytest.mark.parametrize("missing", ["url", "sha256"])
-def test_missing_pin_skips_with_warning(fa: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-                                        capsys: pytest.CaptureFixture[str], missing: str) -> None:
+def test_missing_pin_skips_with_warning(
+    fa: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], missing: str
+) -> None:
     config, out, calls = setup(fa, tmp_path, monkeypatch, zip_bytes({"ant.exe": b"x"}), **{missing: None})
     out.mkdir(parents=True)
     (out / "ant.exe").write_bytes(b"stale")
@@ -132,13 +135,36 @@ def test_missing_pin_skips_with_warning(fa: ModuleType, tmp_path: Path, monkeypa
 
 
 @pytest.mark.parametrize("lic", [None, "GPL-3.0-only", "Proprietary", "MIT AND GPL-3.0-only"])
-def test_license_outside_allow_list_skips(fa: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-                                          capsys: pytest.CaptureFixture[str], lic: str | None) -> None:
+def test_license_outside_allow_list_skips(
+    fa: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], lic: str | None
+) -> None:
     config, out, calls = setup(fa, tmp_path, monkeypatch, zip_bytes({"ant.exe": b"x"}), license=lic)
     assert run(fa, config, out) == 0
     assert calls == []
     assert "не из белого списка" in capsys.readouterr().out
     assert not (out / "ant.exe").exists()
+
+
+def test_strict_fails_on_incomplete_pins_but_not_on_no_pins(
+    fa: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = zip_bytes({"ant.exe": b"MZ"})
+    for broken in ({"url": None}, {"license": None}, {"license": "GPL-3.0"}):
+        config, out, calls = setup(fa, tmp_path, monkeypatch, payload, **broken)
+        assert run(fa, config, out, "--strict") == 1 and calls == []
+        assert "ОШИБКА" in capsys.readouterr().err
+        assert run(fa, config, out) == 0  # without --strict: a warning, as before
+    config, out, calls = setup(fa, tmp_path, monkeypatch, payload, sha256=None)
+    assert run(fa, config, out, "--strict") == 0 and calls == []  # no sha256: still skipped
+    config, out, calls = setup(fa, tmp_path, monkeypatch, payload)
+    assert run(fa, config, out, "--strict") == 0 and calls  # complete pins: fetched
+    config, out, calls = setup(fa, tmp_path, monkeypatch, payload, sha256="0" * 64)
+    assert run(fa, config, out, "--strict") == 1  # a wrong hash fails as always
+
+
+def test_the_release_uses_strict() -> None:
+    text = (SCRIPT.parents[2] / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    assert "fetch_ant.py --platform windows --strict" in text
 
 
 def test_license_expressions(fa: ModuleType) -> None:
@@ -155,8 +181,9 @@ def test_dry_run_touches_nothing(fa: ModuleType, tmp_path: Path, monkeypatch: py
     assert not out.exists()
 
 
-def test_print_hash_reports_hash_and_license(fa: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-                                             capsys: pytest.CaptureFixture[str]) -> None:
+def test_print_hash_reports_hash_and_license(
+    fa: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     payload = zip_bytes({"ant.exe": b"x", "LICENSE": b"Permission is hereby granted"})
     config, out, calls = setup(fa, tmp_path, monkeypatch, payload, url=None, sha256=None)
     assert run(fa, config, out, "--print-hash", "--url", "https://example.invalid/a.zip") == 0
