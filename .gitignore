@@ -13,6 +13,7 @@ node_modules/
 ui/dist/
 app/dist/
 app/release/
+app/build/
 *.tsbuildinfo
 # Artifacts
 bench/out/

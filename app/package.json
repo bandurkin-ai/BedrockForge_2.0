@@ -46,6 +46,14 @@
       {
         "from": "../core/dist/bf-core",
         "to": "bf-core"
+      },
+      {
+        "from": "build/ant",
+        "to": "ant",
+        "filter": [
+          "**/*",
+          "!.empty"
+        ]
       }
     ],
     "asar": true,
