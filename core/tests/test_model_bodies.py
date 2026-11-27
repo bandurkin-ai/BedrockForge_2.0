@@ -143,6 +143,13 @@ def bodies_of(res: BodiesResult) -> list[Any]:
     return [o for o in res.outputs if o.kind == "body"]
 
 
+#: the volume two neighbouring bodies may share, of the volume of the model. The bodies are cut from one solved system
+#: (the RBF, LU of the BLAS): the processor sums it in its own order, the surfaces move by 1e-9 of the size — a layer
+#: of 1e-5 m on 1e5 m² is 1 m³ of 4e7 (2e-8; measured on the AMD runners of CI: 0,81 m³ of 37 044 000, on Nehalem
+#: kernels 0,045). A real overlap is a share of the volume (cells of h), five orders above.
+OVERLAP_TOL = 1e-7
+
+
 def overlap(a: Any, b: Any) -> float:
     """The volume of the common part of two bodies (0 when they only touch)."""
     _v, _t, rep = solids.boolean_many([(a.vertices, a.triangles), (b.vertices, b.triangles)], "intersection")
@@ -226,7 +233,7 @@ def test_chronology_of_two_spheres() -> None:
     assert a.volume + b.volume + rest.volume == pytest.approx(total, rel=1e-9)  # Т8.9-5: the boundary is tiled
     assert res.stats["balance"] <= 1e-9
     for x, y in ((a, b), (a, rest), (b, rest)):
-        assert overlap(x, y) <= 1e-9 * total  # the bodies do not overlap
+        assert overlap(x, y) <= OVERLAP_TOL * total  # the bodies do not overlap
     for o in (a, b, rest):
         assert_solid(o.vertices, o.triangles)
     contact_b = next(o for o in res.outputs if o.kind == "surface" and o.group == 2)
@@ -271,7 +278,7 @@ def test_scene_bodies_tile_the_boundary_t895(layers: tuple[BodiesResult, md.Poin
     assert res.stats["balance"] <= 1e-9
     for i, x in enumerate(bodies):
         for y in bodies[i + 1 :]:
-            assert overlap(x, y) <= 1e-9 * boundary
+            assert overlap(x, y) <= OVERLAP_TOL * boundary
     intrusion = next(o for o in bodies if o.name == "INT")
     sphere_v = 4.0 / 3.0 * math.pi * gen.SPHERE_RADIUS**3
     assert 0.4 * sphere_v < intrusion.volume < 1.3 * sphere_v  # nine holes meet a sphere of 55 m: a rough body

@@ -28,6 +28,7 @@ from bf_core.model.bodies_parts import box_solid
 from bf_core.model.stack import build_stack, domains_of, order_of, precedence
 from tests.test_model_bodies import (
     KIND,
+    OVERLAP_TOL,
     SCENE_BOX,
     Cancelled,
     assert_solid,
@@ -169,7 +170,7 @@ def test_erosion_t899_the_cut_is_a_plane_and_the_layer_is_cut_by_it(erosion: Bod
     assert sum(o.volume for o in bodies_of(res)) == pytest.approx(total, rel=1e-9)  # Σ the volumes = the boundary
     assert res.stats["balance"] <= 1e-9
     for x, y in ((cut, layer), (cut, rest), (layer, rest)):
-        assert overlap(x, y) <= 1e-9 * total
+        assert overlap(x, y) <= OVERLAP_TOL * total
     # the face of the layer on the cut lies in the plane z = 0 (the vertices at the top of the layer)
     top = layer.vertices[layer.vertices[:, 2] > -1e-3]
     assert len(top) > 0 and np.abs(top[:, 2]).max() <= 1e-6 * H
@@ -296,7 +297,7 @@ def test_onlap_t8910_the_lower_face_of_the_younger_layer_is_the_older_surface(on
     assert lap.volume == pytest.approx(120.0 * 60.0 * ZTOP, rel=0.01)  # ∫(25 − s) over whole periods
     assert base.volume == pytest.approx(120.0 * 60.0 * 50.0, rel=0.01)
     for x, y in ((lap, base), (lap, rest), (base, rest)):
-        assert overlap(x, y) <= 1e-9 * total
+        assert overlap(x, y) <= OVERLAP_TOL * total
     for o in (lap, base, rest):
         assert_solid(o.vertices, o.triangles)
 
@@ -378,7 +379,7 @@ def test_mixed_stack_of_real_holes_tiles_the_boundary_and_is_the_same_bytes() ->
         assert_solid(o.vertices, o.triangles)
     for i, x in enumerate(bodies):
         for y in bodies[i + 1 :]:
-            assert overlap(x, y) <= 1e-9 * boundary
+            assert overlap(x, y) <= OVERLAP_TOL * boundary
     dropped = base.stats["stack"]["dropped"]
     assert dropped and all(d["points"] > 0 for d in dropped)
     shuffled = scene_points(order=np.random.default_rng(7).permutation(100))

@@ -25,7 +25,7 @@ from bf_core.model import data as md
 from bf_core.model.bodies_parts import box_solid
 from bf_core.model.faults import FaultsResult, build_with_faults
 from bf_core.model.stack import build_stack
-from tests.test_model_bodies import Cancelled, assert_solid, domain, model, overlap
+from tests.test_model_bodies import OVERLAP_TOL, Cancelled, assert_solid, domain, model, overlap
 from tests.test_model_stack import column, points
 
 CORE = Path(__file__).resolve().parents[1]
@@ -162,7 +162,7 @@ def test_throw_the_wings_are_closed_and_do_not_overlap_and_the_volumes_add_up(th
     for group in (rock, wings):
         for i, x in enumerate(group):
             for y in group[i + 1 :]:
-                assert overlap(x, y) <= 1e-9 * VOLUME
+                assert overlap(x, y) <= OVERLAP_TOL * VOLUME
     assert [o.wing for o in wings] == [0, 1] and all(o.stats["region"] for o in wings)
 
 
@@ -272,7 +272,7 @@ def test_finite_fault_the_break_dies_out_and_the_wings_do_not_overlap(finite: tu
             assert_solid(o.vertices, o.triangles)
         for i, x in enumerate(group):
             for y in group[i + 1 :]:
-                assert overlap(x, y) <= 1e-9 * VOLUME
+                assert overlap(x, y) <= OVERLAP_TOL * VOLUME
     left, right = (o for o in res.outputs if o.kind == "surface" and o.group == 1)
     # far from the data of the fault the two sheets are one surface: the vertices at the fault edge, y > 40
     edge_l = left.vertices[(left.vertices[:, 0] > -1.0) & (left.vertices[:, 1] > 45.0)]
@@ -318,7 +318,7 @@ def test_two_faults_the_wings_are_the_combinations_of_the_signs(x1: float, x2: f
     assert offset["max"] == pytest.approx(15.0, abs=1e-5) and 10.0 < offset["mean"] < 15.0
     for i, x in enumerate(rock):
         for y in rock[i + 1 :]:
-            assert overlap(x, y) <= 1e-9 * VOLUME
+            assert overlap(x, y) <= OVERLAP_TOL * VOLUME
     for o in rock:
         (assert_solid if x1 == -21.0 else assert_closed)(o.vertices, o.triangles)
     assert sorted(res.stats["faults"]) == [3, 4]
@@ -340,7 +340,7 @@ def test_a_fault_cuts_one_group_of_two_and_the_other_stays_whole() -> None:
     assert sum(o.volume for o in rock) == pytest.approx(VOLUME, rel=1e-9) and res.stats["balance"] <= 1e-9
     for i, x in enumerate(rock):
         for y in rock[i + 1 :]:
-            assert overlap(x, y) <= 1e-9 * VOLUME
+            assert overlap(x, y) <= OVERLAP_TOL * VOLUME
     assert [g["offset"] is None for g in res.stats["by_group"]] == [True, False]
 
 
