@@ -7,6 +7,7 @@ tests/test_structure.py checks that this list matches the router.py files of the
 
 ROUTER_MODULES: tuple[str, ...] = (
     "archive",
+    "assistant",
     "audit",
     "blocks",
     "charts",

@@ -46,6 +46,8 @@ import zstandard
 from bf_core.api.errors import ApiError
 from bf_core.db import dialect
 
+from .errors import refuse
+
 KIND = "assistant_dialog"
 OWNER = "object"  # the owner of the blobs of the parts; the role is the existing `data` (no migration, no new role)
 ROLE = "data"
@@ -79,12 +81,7 @@ def full() -> ApiError:
 
 
 def broken() -> ApiError:
-    return ApiError(
-        409,
-        "assistant_dialog_broken",
-        "Часть диалога не читается: файл повреждён или удалён.",
-        "Начните новый диалог; этот можно удалить из истории.",
-    )
+    return refuse("assistant_dialog_broken")
 
 
 def read_only() -> ApiError:

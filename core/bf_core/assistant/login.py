@@ -39,7 +39,6 @@ from pathlib import Path
 from typing import Any
 
 from bf_core import paths
-from bf_core.api.errors import ApiError
 from bf_core.assistant import errors
 from bf_core.assistant.connection import Connection, Snapshot, get_connection, scrub
 from bf_core.assistant.schemas import LoginStart
@@ -57,12 +56,6 @@ CLEANUP_TRIES = 20
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 _URL_DONE = re.compile(r"https://[^\s<>\"']+(?=\s)")  # the address is complete when whitespace follows
 _URL_END = re.compile(r"https://[^\s<>\"']+")  # ... or when the process is over
-_BUSY = (
-    409,
-    "assistant_login_busy",
-    "Вход аккаунтом уже выполняется.",
-    "Дождитесь окончания входа или отмените его и начните заново.",
-)
 
 
 def ant_path(env: Mapping[str, str] | None = None) -> str | None:
@@ -281,7 +274,7 @@ class LoginManager:
         with self._lock:
             current = self._session
             if current is not None and current.state in ("starting", "finishing"):
-                raise ApiError(*_BUSY)
+                raise errors.refuse("assistant_login_busy")
             folder = self._new_folder()
             session = _Session(folder, self.total_timeout)
             previous, self._session = current, session
@@ -329,7 +322,7 @@ class LoginManager:
             if session is None or session.id != login_id or session.state == "closed":
                 raise errors.refuse("assistant_login_gone")
             if session.state != "waiting":
-                raise ApiError(*_BUSY)
+                raise errors.refuse("assistant_login_busy")
             if time.monotonic() >= session.deadline:
                 expired = session
             else:

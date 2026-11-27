@@ -351,8 +351,12 @@ class Connection:
             raise self.api_error(e, model) from None
         return org
 
+    def resolved(self) -> prefs.Resolved:
+        """The model and the effort of the next turn with the source of each (prefs -> environment -> default)."""
+        return prefs.resolve(self.data_dir, self._environ())
+
     def _model(self, model: str | None) -> str:
-        return model or prefs.resolve(self.data_dir, self._environ()).model
+        return model or self.resolved().model
 
     def set_key(self, key: str, *, model: str | None = None) -> Snapshot:
         """`POST /connection/key`. The key is checked with `models.retrieve` BEFORE it is kept: a refusal

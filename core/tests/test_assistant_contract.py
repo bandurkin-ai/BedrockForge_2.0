@@ -1,8 +1,10 @@
+# ruff: noqa: F811 - fixtures imported from the support module are used as parameters
 """The contract of the Claude assistant API (подшаг 23.1; ТЗ 7.32; ADR 0029; docs/progress/e23-api.md): the form of
 `tests/data/assistant/contract_answers.json` equals the schemas of `bf_core/assistant/schemas*.py` (every sample parses
 and writes back as it is: no key lost, none added), the texts of the errors are those of `errors.py`, the streams keep
 the order of the events of §10, no secret is in the samples. The bodies of the requests - `test_assistant_bodies.py`.
-Until 23.11 the samples are hand-made: `BF_REGEN_ASSISTANT=1` is a stub (nothing to write them with yet) and skips."""
+Since 23.11 the samples are the answers of a running core on the mock (`tests/assistant/regen.py`):
+`test_the_answers_are_what_the_core_answers` compares them, `BF_REGEN_ASSISTANT=1` rewrites the file."""
 
 from __future__ import annotations
 
@@ -20,6 +22,15 @@ from bf_core.assistant import errors as er
 from bf_core.assistant import schemas as sc
 from bf_core.assistant import schemas_base as sb
 from bf_core.assistant import schemas_dialog as sd
+from tests.assistant import regen
+from tests.test_assistant_api_support import (  # noqa: F401 - fixtures of the core on the mock
+    api,
+    clean_anthropic_env,
+    closed_port_url,
+    fake_ant_path,
+    mock_anthropic,
+    pclient,
+)
 
 PATH = Path(__file__).parent / "data" / "assistant" / "contract_answers.json"
 REGEN = os.environ.get("BF_REGEN_ASSISTANT") == "1"
@@ -49,12 +60,41 @@ def refused(model: type[BaseModel], raw: Any, code: str = "bad_param", status: i
     return e.value
 
 
-def test_regen_is_a_stub() -> None:
-    if REGEN:
-        pytest.skip(
-            "BF_REGEN_ASSISTANT: образцы — вручную до 23.11 (настоящее ядро ещё не отвечает); нечего перезаписывать"
+NOTE = (
+    "ОБРАЗЦЫ контракта ассистента Claude: ОТВЕТЫ НАСТОЯЩЕГО ЯДРА на моке Anthropic (23.11; ключи `requests` — тела "
+    "запросов — написаны вручную). Перезапись: BF_REGEN_ASSISTANT=1 uv run pytest -q tests/test_assistant_contract.py. "
+    "Форма = схемам bf_core/assistant/schemas*.py; потоки хода — списки событий {id, event, data}; тексты ошибок "
+    "пишет errors.py; идентификаторы и время заменены стабильными (tests/assistant/regen.py). Ключа здесь нет."
+)
+
+
+def test_the_answers_are_what_the_core_answers(  # type: ignore[no-untyped-def]
+    api, fake_ant_path, closed_port_url, monkeypatch
+) -> None:
+    """The core of the API tests drives the mock: every sample of the file is what it answers now (times are not
+    compared). `BF_REGEN_ASSISTANT=1` rewrites the file (and waits a second between the steps: the times differ)."""
+    monkeypatch.setenv("BF_ANT_PATH", str(fake_ant_path))
+    built = regen.normalize(
+        regen.build(
+            api, closed_port_url=closed_port_url, base_url=api.mock.base_url, setenv=monkeypatch.setenv, slow=REGEN
         )
-    assert DATA["_note"]
+    )
+    text = json.dumps(built, ensure_ascii=False)
+    assert TEST_KEY not in text and not re.search(r"sk-ant-[A-Za-z0-9_-]{20,}", text)
+    assert "access_token" not in text and "refresh_token" not in text
+    merged = {"_note": NOTE, **{k: built[k] for k in regen.KEYS}, "requests": DATA["requests"]}
+    if REGEN:
+        PATH.write_text(json.dumps(merged, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+        DATA.clear()
+        DATA.update(merged)
+        return
+    assert list(DATA) == list(merged), "the keys of the file are not those of the core: BF_REGEN_ASSISTANT=1"
+    for key in regen.KEYS:
+        diff = regen.first_diff(regen.shape({key: built[key]}), regen.shape({key: DATA[key]}))
+        assert diff is None, (
+            f"{diff}\nthe file is not what the core answers: BF_REGEN_ASSISTANT=1 uv run pytest -q "
+            "tests/test_assistant_contract.py"
+        )
 
 
 # --- §2 status, §4 usage -------------------------------------------------------------------------------------------
@@ -79,7 +119,8 @@ def test_status_states() -> None:
     assert (none.state, none.kind, none.mask, none.online, none.checked_at) == ("none", None, None, None, None)
     assert (key.state, key.kind, key.mask, key.seal_needed) == ("connected", "api_key", "sk-ant-…a1B2", True)
     assert key.model_source == "prefs" and key.effort == "high"
-    assert acc.kind == "account" and acc.organization is not None and acc.organization.name == "ООО Рудник"
+    assert acc.kind == "account" and acc.organization is not None and acc.organization.id == "org_test0000000000"
+    assert acc.organization.name is None and acc.workspace is not None  # the names are not known to the core: null
     prices = {m.id: (m.price.input, m.price.output, m.price.cache_read) for m in none.models}  # ТЗ 7.32
     assert prices == {
         "claude-opus-5-5": (4.0, 20.0, 0.20),
@@ -415,7 +456,9 @@ def test_data_tools_sample() -> None:
     for t in DATA["data_tools"]:
         s = t["input_schema"]
         assert (
-            s["type"] == "object" and s["additionalProperties"] is False and set(s["required"]) <= set(s["properties"])
+            s["type"] == "object"
+            and s["additionalProperties"] is False
+            and set(s.get("required", [])) <= set(s["properties"])
         )
         assert t["title"] and CYRILLIC.search(t["title"])
     by = {t["name"]: t["input_schema"] for t in DATA["data_tools"]}
