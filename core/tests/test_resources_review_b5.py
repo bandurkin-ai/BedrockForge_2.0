@@ -1,3 +1,4 @@
+# ruff: noqa: F811 - the fixture `ra` is imported, and the tests take it by its name
 """The review of the milestone В5, group 4 (Э20): the form of a resource report.
 
 A table the report did not count is not a table of zeros. The template «ГКЗ» has the columns «Балансовые» and
@@ -9,6 +10,8 @@ from __future__ import annotations
 from typing import Any
 
 from bf_core.resources import forms as fm
+from tests.resapi_world import ra  # noqa: F401 - the fixture
+from tests.test_resources_compare import close, compare, find, saved, td37
 from tests.test_resources_forms import AU, GKZ, cell, grp
 
 
@@ -47,3 +50,30 @@ def test_a_balance_table_that_was_counted_and_has_no_block_is_zero() -> None:
     assert cell(form, "Итого", "balance:tonnes") == {"value": 0.0, "text": "0"}
     assert cell(form, "Итого", "offbalance:tonnes") == {"value": 0.0, "text": "0"}
     assert not any("борт" in w.casefold() for w in form["warnings"])
+
+
+# --- «Сравнить отчёты»: an element in other units ---------------------------------------------------------------------
+
+
+def test_a_grade_in_other_units_has_no_difference_not_a_number_of_two_units(ra) -> None:
+    """Two reports of one model, AU read as g/t in one and as ppb in the other: Δḡ was 2,75 − 2,75 = 0 «г/т» for
+    grades a thousand times apart, under the words «разности — в единицах A». ppm against g/t is one unit; the metal
+    of one family (grams) is one unit too; g/t against % is neither."""
+    mid = td37(ra)
+    gt = saved(ra, mid, "AU в г/т", density="RHO")
+    ppb = saved(ra, mid, "AU в ppb", density="RHO", elements=[{"field": "AU", "unit": "ppb"}])
+    ppm = saved(ra, mid, "AU в ppm", density="RHO", elements=[{"field": "AU", "unit": "ppm"}])
+    pct = saved(ra, mid, "AU в %", density="RHO", elements=[{"field": "AU", "unit": "%"}])
+
+    out = compare(ra, gt, ppb)
+    d = find(out)["delta"]
+    assert d["tonnes"] == 0.0 and d["elements"]["AU"]["grade"] is None  # not «0 г/т»
+    assert close(d["elements"]["AU"]["metal"], 1100.0 - 1.1)  # grams against grams
+    assert "grade_units_differ" in [w["code"] for w in out["warnings"]]
+    assert not any("в единицах A" in w["message"] for w in out["warnings"])
+
+    same = find(compare(ra, gt, ppm))["delta"]["elements"]["AU"]
+    assert same == {"grade": 0.0, "metal": 0.0}  # 1 ppm is 1 g/t
+
+    other = find(compare(ra, gt, pct))["delta"]["elements"]["AU"]
+    assert other == {"grade": None, "metal": None}  # grams minus tonnes is not a difference
