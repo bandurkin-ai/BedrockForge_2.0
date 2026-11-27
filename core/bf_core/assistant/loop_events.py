@@ -124,7 +124,8 @@ def status_of(ok: bool, text: str) -> str:
     """The status of the card of a command of the window by its result: a refusal of the user is `declined`."""
     if ok:
         return "ok"
-    return "declined" if text in (errors.TEXT_DECLINED, errors.TEXT_STOPPED, errors.TEXT_SKIPPED) else "error"
+    refusals = (errors.TEXT_DECLINED, errors.TEXT_STOPPED, errors.TEXT_SKIPPED, errors.TEXT_IMPORTED)
+    return "declined" if text in refusals else "error"
 
 
 # --- blocks of the API ------------------------------------------------------------------------------------------------

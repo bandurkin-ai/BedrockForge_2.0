@@ -263,14 +263,22 @@ def _meta(b: Built, base: Mapping[str, Any] | None, created: str) -> dict[str, A
     return out
 
 
+def check_inputs(conn: sa.Connection, b: Built) -> None:
+    """409 `model_changed` when an input changed since the pass took its fingerprints. Called before any file is put
+    (as in `mine.store.write_result`, 21.21б-2): a refused write leaves no file without an owner."""
+    if b.prints is None:
+        return
+    p = b.params
+    if input_prints(conn, int(b.model["id"]), b.fields, p.get("filter_id"), p.get("restrict")) != b.prints:
+        raise inputs_changed()
+
+
 def _record(conn: sa.Connection, report_id: int, b: Built) -> dict[str, Any]:
     from bf_core import lineage
 
     p = b.params
     model_id = int(b.model["id"])
     flt, rules = p.get("filter_id"), p.get("restrict")
-    if b.prints is not None and input_prints(conn, model_id, b.fields, flt, rules) != b.prints:
-        raise inputs_changed()
     nodes = input_nodes(conn, model_id, b.fields, flt, rules)
     refs = lineage.record(conn, lineage.Node(NODE, report_id), nodes)  # in the transaction of the write (ADR 0025 §4)
     return _inputs_meta(refs, model_id, {str(f).casefold(): str(f) for f in b.fields})
@@ -300,6 +308,7 @@ def create(conn: sa.Connection, store: BlobStore, name: Any, built: Built, autho
     """The report object with its files and the rows of the graph, in the transaction the caller opened (the last stage
     of the job). → {id, version, name}. 422 `too_many_reports`."""
     check_room(conn)
+    check_inputs(conn, built)
     final = free_name(conn, name)
     now = dialect.utcnow()
     meta = {**_meta(built, None, now.isoformat()), "uid": uuid.uuid4().hex}
@@ -319,6 +328,7 @@ def replace(conn: sa.Connection, store: BlobStore, report_id: int, built: Built,
     row = _row(conn, report_id)
     if expected_version is not None and int(row.version) != int(expected_version):
         raise conflict(int(row.version))
+    check_inputs(conn, built)
     old = dict(row.meta or {})
     meta = _meta(built, {k: old[k] for k in ("uid", "files") if k in old}, str(old.get("created_at") or ""))
     _put_all(conn, store, report_id, built.staged)
