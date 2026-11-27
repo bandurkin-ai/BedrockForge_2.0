@@ -5,6 +5,7 @@
  *
  * `ConfirmCard`, `PendingButtons` and `RunNotice` are pure views (the tests call them); the connected ones read `confirmStore` and `pendingStore`. A text is a text node, never markup.
  */
+import { useEffect, useRef, type ButtonHTMLAttributes } from "react";
 import { useApp } from "../../shell/AppContext";
 import { useStore } from "../../shell/useStore";
 import type { ToolItem } from "./wireTypes";
@@ -22,14 +23,27 @@ export interface ConfirmCardProps {
   onAnswer: (allow: boolean) => void;
 }
 
+/** A button that takes the focus when it appears (a view called as a function has no hooks: the effect lives here). */
+function FocusButton(props: ButtonHTMLAttributes<HTMLButtonElement> & { "data-testid"?: string }) {
+  const ref = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    ref.current?.focus();
+  }, []);
+  return <button type="button" ref={ref} {...props} />;
+}
+
 export function ConfirmCard({ view, onAnswer }: ConfirmCardProps) {
+  const uid = `confirm-${view.id}`;
   return (
-    <div className={css.confirm} role="group" aria-label={CONFIRM_TITLE} data-testid="confirm-card" data-command={view.commandId}>
-      <div className={css.head}>{CONFIRM_TITLE}</div>
+    // the question must not be missed: an alert dialog whose focus is on the safe answer («Отклонить»), which also scrolls the card into sight
+    <div className={css.confirm} role="alertdialog" aria-labelledby={`${uid}-head`} aria-describedby={`${uid}-desc`} data-testid="confirm-card" data-command={view.commandId}>
+      <div className={css.head} id={`${uid}-head`}>
+        {CONFIRM_TITLE}
+      </div>
       <div className={css.title} data-testid="confirm-title">
         {view.title}
       </div>
-      <p className={css.desc} data-testid="confirm-description">
+      <p className={css.desc} id={`${uid}-desc`} data-testid="confirm-description">
         {view.description}
       </p>
       {view.args.length > 0 ? (
@@ -40,9 +54,9 @@ export function ConfirmCard({ view, onAnswer }: ConfirmCardProps) {
         <div className={css.none}>Без аргументов</div>
       )}
       <div className={css.row}>
-        <button type="button" className={css.deny} data-testid="confirm-deny" onClick={() => onAnswer(false)}>
+        <FocusButton className={css.deny} data-testid="confirm-deny" onClick={() => onAnswer(false)}>
           Отклонить
-        </button>
+        </FocusButton>
         <button type="button" className={css.allow} data-testid="confirm-allow" onClick={() => onAnswer(true)}>
           Разрешить
         </button>

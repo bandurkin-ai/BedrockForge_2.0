@@ -334,15 +334,15 @@ describe("the history in the panel", () => {
   });
 });
 
-describe("offline: the history is read, only a question is not", () => {
-  it("without the internet (`online: false`) the list and a dialog open; a question is refused with the reason", async () => {
+describe("offline: the history is read, a question is left to the core", () => {
+  it("without the internet (`online: false`) the list and a dialog open; a question is not blocked here (the core answers `assistant_offline`)", async () => {
     statusStore.set({ status: { state: "connected", online: false } as never });
     projectRoutes({ last: null, dialogs: [PENDING] });
     await refreshDialogs();
     expect(dialogsStore.get().items).toHaveLength(2);
     expect((await openFlow(app, PENDING.head)).ok).toBe(true);
     expect(chatStore.get().dialog?.id).toBe("48");
-    expect(askUnavailable({ coreOnline: true })).toBe("Ассистент недоступен без интернета");
+    expect(askUnavailable({ coreOnline: true })).toBeNull();
   });
 });
 

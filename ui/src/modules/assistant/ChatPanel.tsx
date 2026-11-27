@@ -7,25 +7,27 @@
  * `ChatView` draws from what is known (the tests); `ChatPanel` is it connected to the stores and to the registry. `renderToolActions` and `tail` are the
  * slots of 23.15 (the buttons of a card that waits for the window, the confirmation card after the last item).
  */
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useApp } from "../../shell/AppContext";
 import type { App } from "../../shell/app";
 import { commandContext } from "../../shell/store";
 import { useRegistryVersion, useStore } from "../../shell/useStore";
 import { projectStore } from "../projects/state";
 import { Composer } from "./Composer";
+import { confirmStore } from "./confirm";
 import { restoreLastDialog } from "./history";
 import { HistoryPanel } from "./HistoryList";
 import { MessageList } from "./MessageList";
 import { askPrompt, QuickPromptsView, quickItems, type QuickItem } from "./QuickPrompts";
 import type { ChatState } from "./reduce";
-import { chatStore, panelViewStore, refreshStatus, statusStore } from "./state";
+import { checkConnection, chatStore, panelViewStore, refreshStatus, statusStore } from "./state";
 import type { AssistantStatus, DialogHead, ToolItem } from "./wireTypes";
 import css from "./ChatPanel.module.css";
 
 export const OFFLINE_TEXT = "Ассистент недоступен без интернета";
 export const NOT_CONNECTED_TEXT = "Claude не подключён";
 export const LOGIN_TEXT = "Идёт вход в аккаунт Anthropic";
+export const CORE_UNREACHABLE_TEXT = "Нет связи с ядром";
 
 export type PanelMode = "loading" | "unreachable" | "none" | "login" | "offline" | "ready";
 
@@ -35,12 +37,16 @@ export interface PanelState {
   blocked: string | null;
 }
 
-/** The state of the panel from the status of the connection (`GET /status`); `online: null` — no call yet, the panel does not guess. */
+/**
+ * The state of the panel from the status of the connection (`GET /status`); `online: null` — no call yet, the panel does not guess. «Нет интернета» (`online: false`)
+ * does not block the input: the core learns the net is back only from a call, so a question is the way to find out (it answers `assistant_offline` itself), and the banner
+ * has «Проверить связь».
+ */
 export function panelState(status: AssistantStatus | null, error: string | null): PanelState {
-  if (!status) return error ? { mode: "unreachable", blocked: error } : { mode: "loading", blocked: "Проверка подключения…" };
+  if (!status) return error ? { mode: "unreachable", blocked: CORE_UNREACHABLE_TEXT } : { mode: "loading", blocked: "Проверка подключения…" };
   if (status.state === "none") return { mode: "none", blocked: NOT_CONNECTED_TEXT };
   if (status.state === "login") return { mode: "login", blocked: LOGIN_TEXT };
-  if (status.online === false) return { mode: "offline", blocked: OFFLINE_TEXT };
+  if (status.online === false) return { mode: "offline", blocked: null };
   return { mode: "ready", blocked: null };
 }
 
@@ -70,6 +76,10 @@ export interface ChatActions {
   newDialog: () => void;
   history: () => void;
   quick: (prompt: string) => void;
+  /** «Стоп» of the input: the command `assistant.stop` */
+  stop: () => void;
+  /** «Проверить связь» of the banner «нет интернета» */
+  recheck: () => Promise<void>;
 }
 
 export interface ChatSlots {
@@ -105,7 +115,29 @@ function HeadButton({ label, reason, onClick, testId }: { label: string; reason:
   );
 }
 
-function Banners({ view, status, chat, actions, reasons }: { view: PanelState; status: AssistantStatus | null; chat: ChatState; actions: ChatActions; reasons: HeadReasons }) {
+function OfflineBanner({ recheck }: { recheck: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className={css.offline} role="status" data-testid="state-offline">
+      <div className={css.cardTitle}>{OFFLINE_TEXT}</div>
+      <p className={css.dim}>Остальные функции программы работают. Прежние диалоги можно читать.</p>
+      <button
+        type="button"
+        className={css.secondary}
+        data-testid="recheck"
+        disabled={busy}
+        onClick={() => {
+          setBusy(true);
+          void recheck().finally(() => setBusy(false));
+        }}
+      >
+        {busy ? "Проверка…" : "Проверить связь"}
+      </button>
+    </div>
+  );
+}
+
+function Banners({ view, status, chat, actions, reasons, error }: { view: PanelState; status: AssistantStatus | null; chat: ChatState; actions: ChatActions; reasons: HeadReasons; error: string | null }) {
   const temporary = chat.dialog?.temporary === true;
   return (
     <>
@@ -128,15 +160,11 @@ function Banners({ view, status, chat, actions, reasons }: { view: PanelState; s
           </button>
         </div>
       )}
-      {view.mode === "offline" && (
-        <div className={css.offline} role="status" data-testid="state-offline">
-          <div className={css.cardTitle}>{OFFLINE_TEXT}</div>
-          <p className={css.dim}>Остальные функции программы работают. Прежние диалоги можно читать.</p>
-        </div>
-      )}
+      {view.mode === "offline" && <OfflineBanner recheck={actions.recheck} />}
       {view.mode === "unreachable" && (
         <div className={css.offline} role="alert" data-testid="state-unreachable">
-          {view.blocked}
+          <div className={css.cardTitle}>{CORE_UNREACHABLE_TEXT}</div>
+          {error ? <p className={css.dim}>{error}</p> : null}
         </div>
       )}
       {(temporary || chat.note) && (
@@ -177,9 +205,9 @@ export function ChatView({ chat, status, statusError, quick, reasons, actions, r
         </div>
       ) : null}
       <div className={css.body}>
-        <Banners view={view} status={status} chat={chat} actions={actions} reasons={reasons} />
+        <Banners view={view} status={status} chat={chat} actions={actions} reasons={reasons} error={statusError} />
         {empty ? (
-          view.mode === "ready" ? (
+          view.mode === "ready" || view.mode === "offline" ? (
             <div className={css.empty} data-testid="chat-empty">
               <p className={css.text}>Спросите о данных проекта или попросите выполнить команду: «Покажи скважину DH-012 на разрезе».</p>
               <QuickPromptsView items={quick} onPick={actions.quick} />
@@ -189,7 +217,7 @@ export function ChatView({ chat, status, statusError, quick, reasons, actions, r
           <MessageList items={chat.items} status={chat.status} thinking={chat.thinking} renderToolActions={renderToolActions} tail={tail} />
         )}
       </div>
-      <Composer running={running} blocked={view.blocked} />
+      <Composer running={running} blocked={view.blocked} onStop={actions.stop} />
     </div>
   );
 }
@@ -200,6 +228,8 @@ export const chatActions = (app: Pick<App, "run">): ChatActions => ({
   newDialog: () => void app.run("assistant.new"),
   history: () => void app.run("assistant.history"),
   quick: (prompt) => askPrompt(app, prompt),
+  stop: () => void app.run("assistant.stop"),
+  recheck: checkConnection,
 });
 
 /** The panel in the right dock: `<ChatPanel />`. */
@@ -212,9 +242,11 @@ export function ChatPanel(slots: ChatSlots) {
   const ctx = commandContext(state);
   const panelView = useStore(panelViewStore, (s) => s.view);
   const projectUid = useStore(projectStore, (s) => s.current?.uid ?? null);
+  useStore(confirmStore, (s) => s.queue.length); // «История» is unavailable while a confirmation waits
+  // the status is read when the panel is shown and whenever the core comes up (a read that failed while it started must not stay «не подключён»)
   useEffect(() => {
-    if (statusStore.get().status === null) void refreshStatus();
-  }, []);
+    if (state.core === "online" || statusStore.get().status === null) void refreshStatus();
+  }, [state.core]);
   // the last dialog of the project is opened when the panel is shown (after a restart too); `history.ts` does it once per project and never over a dialog already started
   useEffect(() => {
     if (state.core === "online") void restoreLastDialog(projectUid);

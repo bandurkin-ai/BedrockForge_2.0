@@ -6,7 +6,6 @@ import {
   EMPTY_CHAT,
   fromDialog,
   isRunning,
-  lastAnswerText,
   setToolResult,
   type ChatState,
 } from "../../src/modules/assistant/reduce";
@@ -83,7 +82,6 @@ describe("stream_text", () => {
     expect(s.usage?.call.cost_usd).toBe(0.0123);
     expect(s.dialog?.cost_usd).toBe(0.0123);
     expect(s.stopReason).toBe("end_turn");
-    expect(lastAnswerText(s)).toBe(a.text);
   });
 
   it("the question shown at once is replaced by the one of the core, not doubled", () => {

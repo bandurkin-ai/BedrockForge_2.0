@@ -57,7 +57,7 @@ describe("ask", () => {
             frame(3, "turn.end", { state: "idle", stop_reason: "end_turn", dialog: HEAD("idle") }),
           ),
     );
-    expect(await ask("  Привет  ")).toEqual({ ok: true });
+    expect(await ask("  Привет  ")).toMatchObject({ ok: true });
     expect(chatStore.get().items[0]).toMatchObject({ kind: "user", text: "Привет" });
     expect(chatStore.get().status).toBe("running");
     await settled();

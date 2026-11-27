@@ -2,7 +2,7 @@
  * The context of the screen a question carries (Э23, 23.15; ТЗ 7.32 «Устройство»; docs/progress/e23-api.md §6): the project, the set and the hole, the panels and the open
  * windows, the view, the section line, the selected object, the state of the audit. The core puts it into the `<workspace>` block of the request.
  *
- * - ≤ 4 KB of JSON, every string ≤ 200 characters, `windows` ≤ 20 (a longer context is refused by the core with 422 `bad_param {context}`, so it is cut here: first the windows,
+ * - ≤ 4 KB of JSON for the core (3800 compact bytes here, see `CONTEXT_MAX_BYTES`), every string ≤ 200 characters, `windows` ≤ 20 (a longer context is refused by the core with 422 `bad_param {context}`, so it is cut here: first the windows,
  *   then the panels);
  * - no secrets: the key and the tokens are not in the state of the window; paths of files and the text of the questions are not collected;
  * - a gap stays a gap: no set — `set: null`, a section without a length limit — `section: null` (the contract asks for a number there, and 0 would be a lie), an audit that never ran —
@@ -22,7 +22,11 @@ import { tablesStore } from "../tables/state";
 import { objectName } from "../wireframes/named";
 import type { TurnContext } from "./wireTypes";
 
-export const CONTEXT_MAX_BYTES = 4096;
+/**
+ * The contract is 4096 bytes, but the core measures `json.dumps(…, ensure_ascii=False)` WITH spaces after `,` and `:` (≈ 100–150 bytes more than the compact text
+ * measured here), so the window keeps to 3800: a context of 4000–4096 compact bytes would be refused by the core at every question (422 `bad_param`).
+ */
+export const CONTEXT_MAX_BYTES = 3800;
 export const STRING_MAX = 200;
 export const WINDOWS_MAX = 20;
 

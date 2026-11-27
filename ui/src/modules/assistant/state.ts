@@ -14,7 +14,7 @@
 import { CoreError } from "../../shell/api";
 import { onCoreEvent } from "../jobs/state";
 import { Store } from "../../shell/store";
-import { cancelTurn, getDialog, getStatus, getUsage, listDialogs } from "./api";
+import { cancelTurn, getDialog, getStatus, getUsage, listDialogs, testConnection } from "./api";
 import { addLocalUser, applyEvents, dropPending, EMPTY_CHAT, fromDialog, setToolResult, type ChatState, type ReduceOptions } from "./reduce";
 import { continueTurn, resumeTurn, startTurn, type SegmentResult, type TurnStream } from "./stream";
 import type { AssistantStatus, DialogHead, Item, Pending, ToolDefinition, ToolResultIn, ToolStatus, TurnContext, TurnEnvelope, UsageReport } from "./wireTypes";
@@ -78,7 +78,8 @@ function onEvents(mine: number) {
   };
 }
 
-export type AskResult = { ok: true } | { ok: false; message: string; hint: string };
+/** `done` ends with the segment (the input gives the text back when the core refuses the question after the stream began). */
+export type AskResult = { ok: true; done?: Promise<SegmentResult> } | { ok: false; message: string; hint: string };
 
 /** Why a turn is closed without the answer of the model: the project of the dialog was deleted by this turn, or another project is open now. */
 export type CloseReason = "deleted" | "changed";
@@ -135,7 +136,7 @@ async function recover(dialogId: string | null, mine: number, notify: boolean, d
   try {
     const d = await getDialog(dialogId);
     if (mine !== epoch) return;
-    chatStore.set(fromDialog(d));
+    chatStore.set(fromDialog(d, reduceOpts()));
     if (d.head.state === "running") void follow(resumeTurn(dialogId, 0, { onEvents: onEvents(mine) }), mine, true, depth);
   } catch (e) {
     if (mine !== epoch) return;
@@ -157,8 +158,7 @@ export async function ask(text: string): Promise<AskResult> {
   // a command of the window that was not run: the core closes it itself («Не выполнено: пользователь продолжил диалог»)
   chatStore.set(addLocalUser(dropPending(before, "Не выполнено: пользователь продолжил диалог"), q, String(++localSeq)));
   const stream = startTurn({ dialog_id: before.dialog?.id ?? null, text: q, context: env.context(), tools: env.tools() }, { onEvents: onEvents(mine) });
-  void follow(stream, mine, true);
-  return { ok: true };
+  return { ok: true, done: follow(stream, mine, true) };
 }
 
 /** The results of the commands of the window (`pending.ts`): the core goes on with a new segment of the same dialog. */
@@ -192,7 +192,7 @@ export async function openDialog(id: string): Promise<void> {
   try {
     const d = await getDialog(id);
     if (mine !== epoch) return;
-    chatStore.set(fromDialog(d));
+    chatStore.set(fromDialog(d, reduceOpts()));
     if (d.head.state === "running") void follow(resumeTurn(id, 0, { onEvents: onEvents(mine) }), mine, true);
   } catch (e) {
     if (mine !== epoch) return;
@@ -218,11 +218,48 @@ export async function refreshStatus(): Promise<void> {
   }
 }
 
+/**
+ * «Проверить связь» of the banner «нет интернета»: the core learns whether Anthropic is reachable only from a call, so the connection is tested and the status
+ * read again (a failed test is the answer too: `online` of the status tells).
+ */
+export async function checkConnection(): Promise<void> {
+  try {
+    await testConnection();
+  } catch {
+    // the refusal of the test is not shown here: the status read below carries what the core knows
+  }
+  await refreshStatus();
+}
+
 export const DIALOGS_PAGE = 50;
 const DIALOGS_MAX = 200;
 
-/** The list is read again as far as it was shown (pages of 50 already loaded stay); an error keeps the rows read before (the history is read without the network). */
-export async function refreshDialogs(): Promise<void> {
+let dialogsFlight: Promise<void> | null = null;
+let dialogsAgain = false;
+
+/**
+ * The list is read again as far as it was shown (pages of 50 already loaded stay); an error keeps the rows read before (the history is read without the network).
+ * The end of a turn and `assistant.dialogs` of the bus ask for it together: the requests that come while a read goes on are one more read after it (not one each;
+ * and never an answer that began before the news — a project deleted by the turn must not stay in the list).
+ */
+export function refreshDialogs(): Promise<void> {
+  if (dialogsFlight) {
+    dialogsAgain = true;
+    return dialogsFlight;
+  }
+  const flight = (async () => {
+    do {
+      dialogsAgain = false;
+      await readDialogs();
+    } while (dialogsAgain);
+  })().finally(() => {
+    dialogsFlight = null;
+  });
+  dialogsFlight = flight;
+  return flight;
+}
+
+async function readDialogs(): Promise<void> {
   try {
     const shown = Math.ceil(dialogsStore.get().items.length / DIALOGS_PAGE) * DIALOGS_PAGE;
     const r = await listDialogs(0, Math.min(DIALOGS_MAX, Math.max(DIALOGS_PAGE, shown)));
@@ -252,10 +289,27 @@ export async function refreshUsage(): Promise<void> {
   }
 }
 
-/** `assistant.connection` and `assistant.dialogs` of the bus (§1) read the status and the list again. */
+let eventsStop: (() => void) | null = null;
+let eventsUsers = 0;
+
+/**
+ * `assistant.connection` and `assistant.dialogs` of the bus (§1) read the status and the list again. There is one subscription however many callers ask
+ * (`bind.ts` for the life of the window, the connection window while it is open); it ends with the last of them.
+ */
 export function startAssistantEvents(): () => void {
-  return onCoreEvent((event) => {
-    if (event === "assistant.connection") void refreshStatus();
-    else if (event === "assistant.dialogs") void refreshDialogs();
-  });
+  if (eventsUsers++ === 0) {
+    eventsStop = onCoreEvent((event) => {
+      if (event === "assistant.connection") void refreshStatus();
+      else if (event === "assistant.dialogs") void refreshDialogs();
+    });
+  }
+  let live = true;
+  return () => {
+    if (!live) return;
+    live = false;
+    if (--eventsUsers === 0) {
+      eventsStop?.();
+      eventsStop = null;
+    }
+  };
 }

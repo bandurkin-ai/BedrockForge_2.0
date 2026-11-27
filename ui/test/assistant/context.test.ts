@@ -22,6 +22,14 @@ const source = (over: Partial<ContextSource> = {}, state: Partial<ContextSource[
 });
 
 const bytes = (v: unknown) => new TextEncoder().encode(JSON.stringify(v)).length;
+/** The size the core measures: `json.dumps(raw, ensure_ascii=False)` has a space after `,` and `:`. */
+const pyText = (v: unknown): string =>
+  Array.isArray(v)
+    ? `[${v.map(pyText).join(", ")}]`
+    : v && typeof v === "object"
+      ? `{${Object.entries(v).map(([k, x]) => `${JSON.stringify(k)}: ${pyText(x)}`).join(", ")}}`
+      : JSON.stringify(v);
+const pyBytes = (v: unknown) => new TextEncoder().encode(pyText(v)).length;
 
 describe("buildContext", () => {
   it("has the shape of the contract", () => {
@@ -78,6 +86,15 @@ describe("buildContext", () => {
     expect(bytes(c)).toBeLessThanOrEqual(CONTEXT_MAX_BYTES);
     expect(c.windows.length).toBeLessThan(20);
     expect(c.project?.name).toHaveLength(200); // what the user works on stays
+  });
+
+  it("stays within 4096 bytes the way the core measures it (spaces after `,` and `:`), a context of 4000–4096 compact bytes does not pass", () => {
+    const wide = (i: number) => `${i}`.padEnd(200, "Ж");
+    for (const n of [0, 5, 12, 20]) {
+      const c = buildContext(source({ windows: Array.from({ length: n }, (_, i) => wide(i)) }, { projectName: wide(1), holeId: wide(2) }));
+      expect(pyBytes(c)).toBeLessThanOrEqual(4096);
+    }
+    expect(CONTEXT_MAX_BYTES).toBeLessThan(4096 - 100);
   });
 
   it("a typical context is far below the limit", () => {
