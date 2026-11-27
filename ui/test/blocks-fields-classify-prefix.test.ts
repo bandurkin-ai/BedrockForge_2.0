@@ -24,7 +24,7 @@ describe("the prefix of the fields of an estimate in the categories", () => {
   });
 
   it("a wrong prefix is told in Russian with a hint and the place, before the core is asked", () => {
-    for (const prefix of ["AU OK", "АУ_", "x".repeat(41), "a-b"]) {
+    for (const prefix of ["AU OK", "ЗОЛОТО OK", "x".repeat(41), "a-b"]) {
       const got = argsOfForm(1, form({ prefix }), []);
       expect(got.ok, prefix).toBe(false);
       if (got.ok) continue;
@@ -36,6 +36,14 @@ describe("the prefix of the fields of an estimate in the categories", () => {
     expect(req.ok).toBe(false);
     if (!req.ok) expect(req.issue).toMatchObject({ place: "prefix", param: "prefix" });
     expect(requestOfArgs({ model_id: 1, rules: JSON.stringify(RULES), prefix: "x".repeat(40) }).ok).toBe(true);
+  });
+
+  it("a prefix of any letters is accepted, like the prefix of an estimate («Золото» gives «ЗОЛОТО_OK_»)", () => {
+    for (const prefix of ["ЗОЛОТО_OK_", "Au_ok_", "Я".repeat(40)]) {
+      const got = argsOfForm(1, form({ prefix }), []);
+      expect(got.ok && got.args.prefix, prefix).toBe(prefix);
+      expect(requestOfArgs({ model_id: 1, rules: JSON.stringify(RULES), prefix }).ok, prefix).toBe(true);
+    }
   });
 
   it("withPrefix renames only the fields of an estimate, as the core does", () => {

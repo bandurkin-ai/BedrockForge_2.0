@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 from . import store as st
 from . import store_data as sd
+from .spec_parts import metal_family, metal_k
 
 if TYPE_CHECKING:
     import sqlalchemy as sa
@@ -52,17 +53,35 @@ def _side(row: dict[str, Any] | None) -> dict[str, Any] | None:
             "elements": {e: dict(v) for e, v in (row["elements"] or {}).items()}}  # fmt: skip
 
 
-def _delta(a: dict[str, Any], b: dict[str, Any], elements: list[str]) -> dict[str, Any]:
+def _units(info: dict[str, Any]) -> dict[str, Any]:
+    """{element (without case): its unit} of the parameters of a report."""
+    return {str(e.get("field")).casefold(): e.get("unit") for e in (info.get("params") or {}).get("elements") or []}
+
+
+def _one_unit(ua: Any, ub: Any) -> tuple[bool, bool]:
+    """(the grades, the metals) of an element of the two reports are numbers of one unit. g/t and ppm are one unit of
+    a grade; the metal is kept in the base unit of the family (grams — g/t, ppm, ppb; tonnes — %). A grade in g/t
+    minus a grade in % is not a difference: such a Δ is empty, never a number."""
+    if ua == ub:
+        return True, True
+    family = metal_family(ua)
+    same = family is not None and family == metal_family(ub)
+    return same and metal_k(ua) == metal_k(ub), same
+
+
+def _delta(a: dict[str, Any], b: dict[str, Any], elements: list[str],
+           units: tuple[dict[str, Any], dict[str, Any]] = ({}, {})) -> dict[str, Any]:  # fmt: skip
     out: dict[str, Any] = {"blocks": None if a["blocks"] is None or b["blocks"] is None else a["blocks"] - b["blocks"],
                            "volume": _sub(a["volume"], b["volume"]), "tonnes": _sub(a["tonnes"], b["tonnes"]),
                            "elements": {}}  # fmt: skip
     for e in elements:
         ea, eb = (a["elements"] or {}).get(e), (b["elements"] or {}).get(e)
-        out["elements"][e] = (
-            None
-            if ea is None or eb is None
-            else {"grade": _sub(ea["grade"], eb["grade"]), "metal": _sub(ea["metal"], eb["metal"])}
-        )
+        if ea is None or eb is None:
+            out["elements"][e] = None
+            continue
+        grade, metal = _one_unit(units[0].get(e.casefold()), units[1].get(e.casefold()))
+        out["elements"][e] = {"grade": _sub(ea["grade"], eb["grade"]) if grade else None,
+                              "metal": _sub(ea["metal"], eb["metal"]) if metal else None}  # fmt: skip
     return out
 
 
@@ -86,7 +105,8 @@ def _warnings(ia: dict[str, Any], ib: dict[str, Any], differ: bool) -> list[dict
     units_a = {e.get("field"): e.get("unit") for e in pa.get("elements") or []}
     units_b = {e.get("field"): e.get("unit") for e in pb.get("elements") or []}
     if any(units_a[k] != units_b[k] for k in units_a.keys() & units_b.keys()):
-        out.append(_warn("grade_units_differ", "Единицы содержания в отчётах разные: разности — в единицах A."))
+        out.append(_warn("grade_units_differ", "Единицы содержания в отчётах разные: разность содержаний (и металла, "
+                         "если он в разных единицах) для таких элементов не показана."))  # fmt: skip
     if pa.get("density") != pb.get("density"):
         out.append(_warn("density_differs", "Плотность в отчётах разная: разность тонн включает и её."))
     return out
@@ -108,6 +128,7 @@ def compare_reports(conn: sa.Connection, store: BlobStore, report_a: int, report
     elements = ea + [e for e in eb if e not in ea]
     rows_a, rows_b = sd.table_rows(ta, ea), sd.table_rows(tb, eb)
     by_b = {_key(r): r for r in rows_b}
+    units = (_units(ia), _units(ib))
     seen: set[tuple[Any, ...]] = set()
     rows: list[dict[str, Any]] = []
 
@@ -125,7 +146,7 @@ def compare_reports(conn: sa.Connection, store: BlobStore, report_a: int, report
         seen.add(key)
         a, b = _side(ra), _side(rb)
         assert a is not None and b is not None
-        rows.append(entry(ra, a, b, None, _delta(a, b, elements)))
+        rows.append(entry(ra, a, b, None, _delta(a, b, elements, units)))
     rows += [entry(rb, None, _side(rb), "b", None) for rb in rows_b if _key(rb) not in seen]
     ma, mb = ia.get("model") or {}, ib.get("model") or {}
     differ = ma.get("id") != mb.get("id") or (

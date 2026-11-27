@@ -1413,8 +1413,13 @@
   "status": 409,
   "body": {
    "field": "AU_OK_STATUS",
+   "kept": [],
+   "replaced": [
+    "AU · OK · окисл",
+    "AU · OK · перех"
+   ],
    "code": "field_exists",
-   "message": "Поле «AU_OK_STATUS» в модели уже есть.",
+   "message": "Поле «AU_OK_STATUS» в модели уже есть. Заменятся блоки строк: «AU · OK · окисл», «AU · OK · перех».",
    "hint": "Задайте другой префикс или замените поля."
   }
  },

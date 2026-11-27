@@ -72,11 +72,32 @@ def test_a_model_without_the_prefixed_field_is_422_with_the_prefixed_name_and_th
 def test_the_prefix_is_kept_for_the_rebuild_and_checked() -> None:
     spec = cat.parse({"scheme": "jorc", "prefix": " AU_OK_ "}, lambda sid: JORC)
     assert spec.prefix == "AU_OK_" and cat.parse({**spec.params(), "scheme": None}).prefix == "AU_OK_"
-    for bad in ("AU OK", "АУ_", "x" * 41, "a-b", 5):
+    for bad in ("AU OK", "x" * 41, "a-b", "ЗОЛОТО OK", "ЗОЛОТО-OK_", 5):
         with pytest.raises(ApiError) as ei:
             cat.parse({"scheme": "jorc", "prefix": bad}, lambda sid: JORC)
         assert (ei.value.status, ei.value.code, ei.value.extra["param"]) == (422, "bad_param", "prefix")
     assert cat.parse({"scheme": "jorc", "prefix": "x" * 40}, lambda sid: JORC).prefix == "x" * 40
+
+
+def test_a_prefix_of_any_letters_like_the_prefix_of_an_estimate_is_accepted() -> None:
+    """«Золото» gives «ЗОЛОТО_OK_» in the estimation: the same model must be classifiable (В5, group 2, № 2)."""
+    from bf_core.geostat.estimate import spec_parts as sp
+
+    assert sp.default_prefix("Золото", "ok") == "ЗОЛОТО_OK_"
+    for prefix in ("ЗОЛОТО_OK_", "Au_ok_", "Zn2_"):
+        assert cat.parse({"scheme": "jorc", "prefix": prefix}, lambda sid: JORC).prefix == prefix
+        assert sp.parse_outputs({"prefix": prefix}, "ok", "AU").prefix == prefix  # one rule for both
+    # the same classes of the same rule: the cyrillic prefix gives the same categories
+    plain = jorc_model(EDGES)
+    want = run(plain, {"scheme": "jorc", "estimate": "EST"})
+    got = run(
+        prefixed_model(plain, "ЗОЛОТО_OK_"), {"scheme": "jorc", "estimate": "ЗОЛОТО_OK_EST", "prefix": "ЗОЛОТО_OK_"}
+    )
+    assert np.array_equal(got.codes, want.codes) and got.labels == want.labels
+    # the limit is the same: 40 letters, no more; no space, no «-»
+    assert sc.check_prefix("Я" * 40) == "Я" * 40
+    with pytest.raises(ApiError):
+        sc.check_prefix("Я" * 41)
 
 
 def test_prefixed_renames_only_the_fields_of_an_estimate_in_every_node() -> None:

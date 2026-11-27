@@ -176,6 +176,9 @@ class FieldPlan:
     key: str
     labels: _Labels | None = None
     emptied: int = 0
+    guess: str | None = None  # the role the name suggests, before «one density and one fraction a model»
+    lo: float = np.inf  # the least and the greatest value read (a number field whose `guess` is in `WATCHED`)
+    hi: float = -np.inf
 
     def spec(self, source: Mapping[str, Any]) -> dict[str, Any]:
         dtype = "cat" if self.kind == "category" else "f8"
@@ -197,13 +200,69 @@ def plan_fields(res: Resolved, kinds: Mapping[str, str], opts: BlockOptions) -> 
         if role is not None and role not in (bs.CATEGORY_ROLES if kind == "category" else bs.NUMBER_ROLES):
             raise _err("blocks_options", f"Поле «{name}»: роль «{role}» не подходит к его типу.",
                        "Число — содержание, плотность или доля объёма; текст — код или класс.")  # fmt: skip
+        guess = role
         if role in ("density", "frac") and role in taken:
             role = None  # one density and one fraction a model; the first field with the name keeps the role
         taken.add(role or "")
         unit = choice["unit"] if "unit" in choice else (None if kind == "category" else br.guess_unit(column))
         labels = _Labels(name) if kind == "category" else None
-        plans.append(FieldPlan(column, name, kind, text, unit, role, f"f{i}", labels))
+        plans.append(FieldPlan(column, name, kind, text, unit, role, f"f{i}", labels, guess=guess))
     return plans
+
+
+FRAC_TOP = 1.0 + 1e-9  # as `blocks.fields_ops._check_role`: a share of the volume lies in 0…1
+WATCHED = ("frac", "density", "grade")  # the roles the values of a field can refuse (`check_roles`)
+
+
+def check_roles(plans: Sequence[FieldPlan], chosen: Mapping[str, dict[str, Any]]) -> list[str]:
+    """The roles the values of the file refuse, once it is read (the wizard of the import shows the same by its
+    sample, `object_blockfile._inspect`); a role the user chose himself is left as it is. Lines for the journal.
+
+      * `frac` — a field named as the share of the volume (FRAC) whose values are not shares: percents 0…100, a
+        code of «пусто» left as a number (−99). The share multiplies the volume and the tonnage of every block
+        (checks, report, regularization), so a field that is not a share stays a plain number and the volume of a
+        block is its size (`fields_ops._check_role` refuses the role on an edit the same way);
+      * `density`, `grade` — a constant field (ТЗ 7.31: «постоянное DENSITY = 2,6 пропускается»): it tells the
+        blocks nothing apart, and the defaults of the report and of the resources skip a constant field anyway.
+    """
+    notes: list[str] = []
+    for p in plans:
+        if p.role not in WATCHED or "role" in chosen.get(p.column, {}) or not _fits(p.role, p):
+            continue
+        if p.role == "frac":
+            notes.append(f"Поле «{p.name}» не принято за долю объёма блока: его значения ({p.lo:g} … {p.hi:g}) выходят "
+                         "за 0…1. Объём блоков взят по их размерам; если это доля — исправьте значения (например, "
+                         "укажите код пустого) и загрузите модель заново.")  # fmt: skip
+        else:
+            what = "плотность" if p.role == "density" else "содержание"
+            notes.append(f"Поле «{p.name}» постоянное ({p.lo:g}): роль «{what}» ему не присвоена. "
+                         "Задайте роль в свойствах поля, если она нужна.")  # fmt: skip
+        p.role = None
+    for role in ("density", "frac"):  # the role of the model goes to another candidate the names found
+        if any(p.role == role for p in plans):
+            continue
+        for p in _candidates(role, plans):
+            if "role" not in chosen.get(p.column, {}) and not _fits(role, p):
+                p.role = role
+                break
+    return notes
+
+
+def _fits(role: str | None, p: FieldPlan) -> bool:
+    """The values read refuse this role: a share outside 0…1, a constant density or grade. A field without a single
+    value (`hi < lo`) refuses nothing — an empty field keeps the role of its name."""
+    if role not in WATCHED or p.hi < p.lo:
+        return False
+    if role == "frac":
+        return p.lo < 0.0 or p.hi > FRAC_TOP
+    return bool(p.lo == p.hi)
+
+
+def _candidates(role: str, plans: Sequence[FieldPlan]) -> list[FieldPlan]:
+    """The fields whose names suggest `role`: a field named SG first (ТЗ 7.31 «меняющееся поле SG»), then file
+    order."""
+    found = [p for p in plans if p.guess == role and p.kind == "number"]
+    return sorted(found, key=lambda p: (p.name.casefold() != "sg", plans.index(p)))
 
 
 # --- the spool ---------------------------------------------------------------------------------------------------

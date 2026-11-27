@@ -17,6 +17,7 @@ import sqlalchemy as sa
 
 import bf_core
 from bf_core.blocks.filters.remap import remap_filters
+from bf_core.blocks.remap import remap_blocks
 from bf_core.db import dialect, migrate
 from bf_core.db.schema import blobs, project_md, project_meta
 from bf_core.drillholes.planned_remap import remap_planned
@@ -274,6 +275,8 @@ def _restore(
     remap_clouds(conn, maps.get("objects", {}))
     remap_charts(conn, maps.get("objects", {}))  # ids inside the settings of charts (ADR 0019 §2)
     remap_geostat(conn, maps.get("objects", {}), maps.get("dh_tables", {}))  # variogram models (ADR 0022 §12)
+    # the block models first: the hash of a restrictor is made from the rules of its filter with the old ids
+    remap_blocks(conn, maps.get("objects", {}))  # ids in `inputs` and `source.params` of the block models
     remap_filters(conn, maps.get("objects", {}))  # ids of wireframes in the rules of the filters (ADR 0023 §8)
     remap_implicit(conn, maps.get("objects", {}), maps.get("dh_tables", {}), maps.get("dh_results", {}))  # ADR 0026 §26
     remap_planned(conn, maps.get("objects", {}))  # ADR 0026 §26: meta.set_id of the planned holes

@@ -123,7 +123,10 @@ async function followRun(model: { name: string }, body: RunBody): Promise<string
     started = await startRun(body).catch(async (e: unknown) => {
       // the fields are in the model already: the person says «Заменить поля …?» (the same question for the assistant: it replaces data)
       if (e instanceof CoreError && e.code === "field_exists" && body.replace !== true) {
-        const ok = await askConfirm({ title: "Заменить поля", message: `${e.message}\n\nПоля с префиксом строк будут записаны заново; остальные поля модели «${model.name}» не изменятся.`, okLabel: "Заменить", danger: true });
+        // the core names the rows whose blocks are replaced and those of other domains of the same prefix whose values stay (`kept`)
+        const kept = Array.isArray(e.body?.kept) && e.body.kept.length > 0;
+        const tail = kept ? "Блоки других доменов этого префикса сохранятся" : "Поля с префиксом строк будут записаны заново";
+        const ok = await askConfirm({ title: "Заменить поля", message: `${e.message}\n\n${tail}; остальные поля модели «${model.name}» не изменятся.`, okLabel: "Заменить", danger: true });
         if (!ok) throw new CoreError(0, "declined", "Оценка не запущена.", "Задайте другой префикс выходных полей или подтвердите замену.");
         return startRun({ ...body, replace: true });
       }

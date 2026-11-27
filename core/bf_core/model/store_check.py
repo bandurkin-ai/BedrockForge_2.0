@@ -227,6 +227,14 @@ def _trend_sources(conn: sa.Connection, trend_id: int | None) -> list[tuple[str,
         return []
 
 
+def _result_set(conn: sa.Connection, result_id: Any) -> int | None:
+    """The set the composites of a shell belong to (None — the result is gone)."""
+    if isinstance(result_id, bool) or not isinstance(result_id, int):
+        return None
+    got = conn.execute(sa.select(dh_results.c.set_id).where(dh_results.c.id == result_id)).scalar()
+    return None if got is None else int(got)
+
+
 def inputs_of(conn: sa.Connection, spec: ModelSpec) -> list[dict[str, Any]]:
     """`meta.inputs` of a model (e19-api §2.3), in the order of its table: the set (trajectories), the table of the
     codes and the tables of the shells, the composites of the shells, the layers of the manual data, the trend, the
@@ -250,6 +258,8 @@ def inputs_of(conn: sa.Connection, spec: ModelSpec) -> list[dict[str, Any]]:
         if g.params.get("source") == "table":
             sid = g.params.get("set_id") or (spec.data.set_id if spec.data is not None else None)
             add(SET, sid)
+        elif g.params.get("source") == "composites":  # their points lie on the trajectories of the set they are of
+            add(SET, _result_set(conn, g.params.get("result_id")))
     if spec.data is not None:
         add(TABLE, int(spec.data.table))
     for g in shells:

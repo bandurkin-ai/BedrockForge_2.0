@@ -157,7 +157,8 @@ def cast(values: np.ndarray, dtype: str) -> np.ndarray:
 
 def written(w: W, estimation_id: int) -> dict[str, np.ndarray]:
     """What `estimate.run` writes for the row: the fields of `spec.columns()` of the model, by `kernel.run` in portions
-    (a parent — once, the result goes to every row of it; a block out of the domain or of the restrictor — STATUS 1).
+    (a parent — once, the result goes to every row of it that is in the domain; a block out of the domain or of the
+    restrictor — STATUS 1, also in a parent whose other rows are estimated).
     Returns {field name: column in the memory form}."""
     with dialect.read_tx(w.project.engine) as conn:
         row = st.get(conn, estimation_id)
@@ -191,6 +192,8 @@ def written(w: W, estimation_id: int) -> dict[str, np.ndarray]:
     for c in spec.columns():
         col = np.concatenate([r.values[c["key"]] for r in results])
         col = cast(col if inverse is None else col[inverse], c["dtype"])
+        if inverse is not None:  # as the job: a parent of two domains gives its estimate to the rows of the domain only
+            col = np.where(bl.mask, col, 1.0 if c["key"] == "STATUS" else np.nan)
         out[c["name"]] = col
     return out
 

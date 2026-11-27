@@ -203,7 +203,24 @@ def delete(conn: sa.Connection, estimation_id: int) -> dict[str, Any]:
 def field_owner(conn: sa.Connection, node: Any) -> Any | None:
     """The row that fills a field of an estimation (`node` — `bm_field`: the model and the casefolded name): of the
     rows the graph records as its inputs (they follow the ids of a `.bfggis` import, `source.params` do not), the one
-    whose prefix starts the name of the field; None — the field is not one of an estimation or the row is gone."""
+    whose prefix starts the name of the field; None — the field is not one of an estimation or the row is gone. Of the
+    rows of one prefix (`field_rows`) — the first that is «устарел» by its own check: its job is what makes the field
+    current (the job of another row would carry the old blocks of this one, and the field would stay «устарел»)."""
+    rows = field_rows(conn, node)
+    if len(rows) > 1:  # the rows of one prefix: «Перестроить» runs the one that is «устарел», not the first by habit
+        from .store_check import freshness
+
+        for n in rows:
+            meta = conn.execute(sa.select(objects.c.meta).where(objects.c.id == n.id, objects.c.kind == KIND)).scalar()
+            if meta is not None and freshness(conn, meta)["stale"]:
+                return n
+    return rows[0] if rows else None
+
+
+def field_rows(conn: sa.Connection, node: Any) -> list[Any]:
+    """Every row that fills a field of an estimation, in the order of the graph: the rows of one prefix share the
+    field, each its own domain (№ 77), so a field of a plan has several (`field_owner` is the first of them: one job
+    to rebuild the field). Empty — the field is not one of an estimation or the rows are gone."""
     from bf_core.blocks import schema as bs
     from bf_core.lineage import store as ls
 
@@ -211,7 +228,8 @@ def field_owner(conn: sa.Connection, node: Any) -> Any | None:
         objects.c.kind == bs.KIND, objects.c.id == node.id)).scalar()  # fmt: skip
     field = next((f for f in (meta or {}).get("fields") or [] if str(f.get("name", "")).casefold() == node.sub), None)
     if ((field or {}).get("source") or {}).get("op") != "estimate":
-        return None
+        return []
+    out = []
     for ref in ls.inputs_of(conn, [node]).get(node, []):
         if ref.node.kind != LINEAGE_KIND:
             continue
@@ -219,8 +237,8 @@ def field_owner(conn: sa.Connection, node: Any) -> Any | None:
             objects.c.id == ref.node.id, objects.c.kind == sb.KIND)).scalar()  # fmt: skip
         prefix = str(((got or {}).get("outputs") or {}).get("prefix") or "").casefold()
         if got is not None and prefix and node.sub.startswith(prefix):
-            return ref.node
-    return None
+            out.append(ref.node)
+    return out
 
 
 # --- reading ----------------------------------------------------------------------------------------------------------

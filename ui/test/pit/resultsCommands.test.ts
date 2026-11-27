@@ -17,6 +17,7 @@ import { val } from "../../src/modules/pit/resultsModel";
 import { SolidWindow } from "../../src/modules/pit/SolidWindow";
 import { SurfacesWindow } from "../../src/modules/pit/SurfacesWindow";
 import { loadScenarios, pitStore, selectScenario } from "../../src/modules/pit/state";
+import { answerClaude } from "../claude-confirm";
 import { answer, ID, installCore, newApp, teardown, waitFor, type Core } from "./harness";
 import { installResults, type ResultsCore } from "./resultsHarness";
 
@@ -70,7 +71,9 @@ describe("the declarations", () => {
 describe("unavailable without a result: the reason says what to do", () => {
   it("no scenario chosen: not a reason while a scenario has a result (the command asks for `scenario_id`); none has: run one; a scenario without a result: run it", async () => {
     for (const id of ["pit.surfaces", "pit.solid"]) expect(app.registry.reason(id), id).toBeNull();
-    const none = await run("pit.surfaces", {}, "claude");
+    const noneRun = run("pit.surfaces", {}, "claude");
+    await answerClaude(true, "pit.surfaces");
+    const none = await noneRun;
     expect(none.result).toContain("Не задан сценарий карьера");
     await withRows([{ has_result: false }]);
     for (const id of ["pit.surfaces", "pit.solid"]) expect(app.registry.reason(id), id).toBe("Нет сценариев с результатом: запустите расчёт");
@@ -131,7 +134,9 @@ describe("`pit.surfaces`", () => {
     expect([s.phase, s.scenarioId, s.result?.wireframes.length]).toEqual(["done", ID.scenario, 3]);
   });
   it("from the assistant without `shells`: all the shells (an empty body); the interface is not opened", async () => {
-    const r = await run("pit.surfaces", { scenario_id: ID.scenario }, "claude");
+    const asked = run("pit.surfaces", { scenario_id: ID.scenario }, "claude");
+    await answerClaude(true, "pit.surfaces"); // 23.15: a card of the chat, the wireframes are replaced in place
+    const r = await asked;
     expect(r.ok).toBe(true);
     expect(sentTo("/surfaces")[0].body).toEqual({});
     expect(windowOfSurfaces()).toBeNull();

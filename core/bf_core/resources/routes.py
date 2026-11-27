@@ -148,18 +148,23 @@ def get_report(svc: Svc, request: Request, report_id: int) -> dict[str, Any]:
         control = st.read_control(conn, store, report_id) or {}
         sp, roles = view.stored_spec(conn, store, info["params"] or {})
         template_id = q.template or sp.template_id
-        form = None
+        form, notes = None, []
         if template_id is not None:
-            template = templates.get(conn, template_id)  # 404 `template_not_found`
-            table = st.read_table(conn, store, report_id)
-            form = view.form_table(table, rr.elements_of(sp), template, roles, q.cutoff)
+            # the template asked for: 404 `template_not_found`; the one the report was saved with and that was deleted
+            # since: the report opens without its form (a template is a view) and says so
+            template = templates.get(conn, template_id) if q.template else templates.saved_with(conn, template_id)
+            if template is None:
+                notes = [templates.gone(template_id)]
+            else:
+                table = st.read_table(conn, store, report_id)
+                form = view.form_table(table, rr.elements_of(sp), template, roles, q.cutoff)
     excluded = control.pop("excluded", None)
     graph = info["graph"]
     rows = view.api_rows(page["rows"], len(sp.keys))
     out = view.report_json(sp, report_id=report_id, name=info["name"], version=info["version"], saved=True,
                            model=info["model"], rows=rows, rows_total=page["rows_total"], truncated=False,
                            totals=info["totals"], curve=curve, control=control or None, excluded=excluded, form=form,
-                           warnings=info["warnings"] or [], files=info["files"])  # fmt: skip
+                           warnings=[*(info["warnings"] or []), *notes], files=info["files"])  # fmt: skip
     out.update({"params_hash": info["params_hash"], "page": page["page"], "size": page["size"], "state": info["state"],
                 "stale": graph["stale"], "stale_reason": graph["stale_reason"], "graph": graph,
                 "error": info["error"], "inputs": info["inputs"], "fields": info["fields"],

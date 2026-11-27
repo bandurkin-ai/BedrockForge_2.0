@@ -162,7 +162,7 @@ def _counts(plan: jp.Plan, r: jp.RowRun) -> dict[str, Any]:
             "samples": _samples_counts(r.samples.counts)}  # fmt: skip
 
 
-def _log(plan: jp.Plan, carried: bool) -> list[str]:
+def _log(plan: jp.Plan) -> list[str]:
     lines: list[str] = []
     many = len(plan.rows) > 1
     for r in plan.rows:
@@ -181,8 +181,11 @@ def _log(plan: jp.Plan, carried: bool) -> list[str]:
         if t.neg_kv:
             lines.append(f"{who}У {_blocks(t.neg_kv)} дисперсия кригинга отрицательна (округление): записано 0.")
         lines += [who + w for w in r.restrictor.warnings]
-    if carried:
-        lines.append("Домены строк плана, не вошедших в запуск, сохранены: их значения перенесены из прежних полей.")
+    kept = [s.name for g in plan.groups if g.carry for s in g.siblings]
+    if kept:
+        who = ", ".join(f"«{n}»" for n in dict.fromkeys(kept) if n)
+        tail = f" (строки {who})." if who else "."
+        lines.append(f"Домены строк, не вошедших в запуск, сохранены: их значения перенесены из прежних полей{tail}")
     return lines
 
 
@@ -299,7 +302,7 @@ def run_estimate(
     return {"model_id": plan.model.id, "version": version, "plan_id": plan.plan_id, "fields": plan.names,
             "rows": [{"estimation_id": r.id, "prefix": r.prefix, "label": r.spec.target.label,
                       "counts": _counts(plan, r)} for r in plan.rows],
-            "merged": merged, "log": _log(plan, any(g.carry for g in plan.groups)), "stages": clock.stages(),
+            "merged": merged, "log": _log(plan), "stages": clock.stages(),
             "events": _events(plan)}  # fmt: skip
 
 

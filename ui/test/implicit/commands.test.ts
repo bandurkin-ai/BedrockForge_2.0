@@ -16,6 +16,7 @@ import { wizardWindow } from "../../src/modules/implicit/bind";
 import { implicitStore, loadRows } from "../../src/modules/implicit/state";
 import { putForm, setForm, WIZARD_WINDOW, wizardStore } from "../../src/modules/implicit/wizardState";
 import { EMPTY_FORM } from "../../src/modules/implicit/form";
+import { answerClaude } from "../claude-confirm";
 import { buildResult, FIELD, ID, installCore, NAME, newApp, teardown, waitFor, type Core } from "./harness";
 
 let app: App;
@@ -27,6 +28,12 @@ beforeEach(() => {
 afterEach(teardown);
 
 const ids = commands.map((c) => c.id);
+/** `implicit.update` asked by Claude: a card of the chat is answered «Разрешить» (it replaces the outputs in place). */
+const updateAsClaude = async (args: Record<string, unknown>) => {
+  const run = app.registry.execute("implicit.update", args, "claude");
+  await answerClaude(true, "implicit.update");
+  return run;
+};
 const requests = (route: string) => core.sent.filter((r) => `${r.method} ${r.path}` === route);
 const ctx = { hasProject: true, hasSet: true, hasHole: false, hasObject: false, hasSection: false, editing: false, coreOnline: true };
 const flat = (s: string): string => s.replace(/[\u00a0\u202f]/g, " ");
@@ -236,7 +243,7 @@ describe("implicit.save", () => {
 describe("implicit.update", () => {
   it("a built model is updated (POST …/update with the version stored), the answer tells the result", async () => {
     await loadRows();
-    const r = await app.registry.execute("implicit.update", { model_id: ID.model }, "claude");
+    const r = await updateAsClaude({ model_id: ID.model });
     expect(r.ok).toBe(true);
     expect(requests(`POST /implicit/models/${ID.model}/update`)[0].body).toEqual({ expected_version: core.version });
     expect(requests(`POST /implicit/models/${ID.model}/build`)).toHaveLength(0);
@@ -257,14 +264,14 @@ describe("implicit.update", () => {
   it("the patches and the bricks taken from the earlier run are told", async () => {
     await loadRows();
     core.job.result = buildResult({ stats: { points: 41230, patches: 57, max_residual: 3.2e-9, cond_max: 2.4e7, eta_max: 0, seconds: 10.5, reused: { patches: 55, bricks: 1840 }, by_group: [] }, reused: { patches: 55, bricks: 1840 } });
-    const r = await app.registry.execute("implicit.update", { model_id: ID.model }, "claude");
+    const r = await updateAsClaude({ model_id: ID.model });
     expect(flat(r.result)).toContain("взято участков 55, кирпичей 1 840");
     expect(r.result).toContain("наибольшая невязка 3,2e-9 м");
   });
   it("the checks of the surface failed (`iso_check`): the job is done, the answer is the refusal of the core with its words", async () => {
     await loadRows();
     core.job.result = buildResult({ state: "error", error: { code: "iso_check", group: 3, message: "Поверхность группы «Алевролит» не прошла проверки: самопересечения.", hint: "Уменьшите шаг h или проверьте данные группы." } });
-    const r = await app.registry.execute("implicit.update", { model_id: ID.model }, "claude");
+    const r = await updateAsClaude({ model_id: ID.model });
     expect(r.ok).toBe(false);
     expect(r.result).toContain("«Алевролит» не прошла проверки");
     expect(r.result).toContain("Уменьшите шаг h");
@@ -272,27 +279,27 @@ describe("implicit.update", () => {
   it("the job failed, was cancelled", async () => {
     await loadRows();
     core.job = { status: "failed", result: null, error: { code: "rbf_singular", message: "Система RBF участка вырождена.", hint: "Включите сглаживание «Авто» или задайте s > 0." } };
-    const f = await app.registry.execute("implicit.update", { model_id: ID.model }, "claude");
+    const f = await updateAsClaude({ model_id: ID.model });
     expect(f.ok).toBe(false);
     expect(f.result).toContain("вырождена");
     expect(f.result).toContain("«Авто»");
     core.job = { status: "cancelled", result: null, error: null };
     jobsStore.set({ jobs: [], workers: null, error: null }); // the same job number: the stub reuses it
-    const c = await app.registry.execute("implicit.update", { model_id: ID.model }, "claude");
+    const c = await updateAsClaude({ model_id: ID.model });
     expect(c).toMatchObject({ ok: true });
     expect(c.result).toContain("отменено: ничего не записано");
   });
   it("the refusals before the job: a model that is building, a version that moved, a model that is not there, none chosen", async () => {
     await loadRows();
     core.force(`POST /implicit/models/${ID.model}/update`, { status: 409, body: { code: "version_conflict", version: 5, message: "Модель изменена другим окном.", hint: "Перечитайте модель." } });
-    const a = await app.registry.execute("implicit.update", { model_id: ID.model }, "claude");
+    const a = await updateAsClaude({ model_id: ID.model });
     expect(a.ok).toBe(false);
     expect(a.result).toContain("изменена другим окном");
-    const b = await app.registry.execute("implicit.update", { model_id: ID.noModel }, "claude");
+    const b = await updateAsClaude({ model_id: ID.noModel });
     expect(b.result).toContain(`№${ID.noModel} не найдена`);
     core.models.push({ ...core.models[0], id: 9, name: "Вторая" });
     await loadRows();
-    const c = await app.registry.execute("implicit.update", {}, "claude");
+    const c = await updateAsClaude({});
     expect(c.result).toContain("Модель не выбрана");
   });
   it("the list follows the core: `implicit.changed` reads it again, another project clears it", async () => {

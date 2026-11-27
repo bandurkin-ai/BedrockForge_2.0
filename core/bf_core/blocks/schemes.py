@@ -55,7 +55,9 @@ ESTIMATE_FIELDS = frozenset(
     ("STATUS", "EST", "KV", "NS", "NH", "NHY", "AD", "DMIN", "PASS", "SLOPE", "KE", "LAGR", "SNW", "NOCT", "ETYPE")
 )
 _PROB = re.compile(r"^P[0-9]{1,2}$")
-_PREFIX = re.compile(rf"^[A-Za-z0-9_]{{1,{MAX_PREFIX}}}$")
+# The one rule of a field prefix, shared with the estimation (`geostat/estimate/spec_parts.py`): letters of any alphabet
+# («Золото» gives «ЗОЛОТО_OK_»), digits and «_», 1–40.
+PREFIX_RE = re.compile(rf"\w{{1,{MAX_PREFIX}}}")
 _ID = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 
 JORC_RULES = (
@@ -144,15 +146,15 @@ def check_name(raw: Any) -> str:
 
 
 def check_prefix(raw: Any, param: str = "prefix") -> str:
-    """The prefix of the fields of an estimate: empty (None, «») — none; else 1–40 of A–Z, a–z, 0–9, «_»."""
+    """The prefix of the fields of an estimate: empty (None, «») — none; else 1–40 letters, numerals, «_»."""
     if raw is None:
         return ""
     if not isinstance(raw, str):
         raise bad(param, "Префикс полей оценки — текст.", "Введите префикс или оставьте поле пустым.")
     text = raw.strip()
-    if text and not _PREFIX.match(text):
-        raise bad(param, f"Префикс полей оценки — до {MAX_PREFIX} знаков: латинские буквы, цифры и «_».",
-                  "Например: EST_ или AU_OK_.")  # fmt: skip
+    if text and not PREFIX_RE.fullmatch(text):
+        raise bad(param, f"Префикс полей оценки — до {MAX_PREFIX} знаков: буквы, цифры и «_».",
+                  "Например: EST_ или ЗОЛОТО_OK_.")  # fmt: skip
     return text
 
 
