@@ -17,6 +17,7 @@ from bf_core.resources import job as rj
 from bf_core.resources import store as st
 from tests.resapi_world import BODY, RS, get, model, ok, ra, refused, run  # noqa: F401 - the fixture
 from tests.test_resources_compare import close, compare, find, saved, td37
+from tests.test_resources_export import book, csv_lines, export, jorc_report, out, sheet_lines, w  # noqa: F401
 from tests.test_resources_forms import AU, GKZ, cell, grp
 
 
@@ -55,6 +56,20 @@ def test_a_balance_table_that_was_counted_and_has_no_block_is_zero() -> None:
     assert cell(form, "Итого", "balance:tonnes") == {"value": 0.0, "text": "0"}
     assert cell(form, "Итого", "offbalance:tonnes") == {"value": 0.0, "text": "0"}
     assert not any("борт" in w.casefold() for w in form["warnings"])
+
+
+def test_the_book_and_the_csv_of_such_a_form_keep_the_cells_empty_and_say_why(w: Any, out: Path) -> None:
+    """Т8.10-5 for the same case: the numbers of the files are the numbers shown — no «0» in the book or in the CSV."""
+    ident = jorc_report(w)  # a report with no balance cut-offs
+    export(w, ident, out / "gkz.xlsx", template="gkz")
+    lines = sheet_lines(book(out / "gkz.xlsx")["Отчёт"])
+    head = next(i for i, r in enumerate(lines) if r[0] == "Строка")
+    body = [r for r in lines[head + 1 :] if r[0] in ("A", "B", "C1", "C2", "A + B + C1", "Итого")]
+    assert len(body) == 6 and all(v is None for r in body for v in r[1:])
+    assert any("не задан балансовый борт" in str(v) for r in lines for v in r if v)
+    export(w, ident, out / "gkz.csv", format="csv", what="form", template="gkz")
+    rows = csv_lines(out / "gkz.csv")
+    assert rows[0][0] == "Строка" and all(v == "" for r in rows[1:] for v in r[1:])
 
 
 # --- «Сравнить отчёты»: an element in other units ---------------------------------------------------------------------
