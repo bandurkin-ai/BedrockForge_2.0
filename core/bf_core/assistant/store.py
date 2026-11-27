@@ -47,6 +47,7 @@ from bf_core.db.schema import objects
 from bf_core.storage.blobs import BlobStore, drop_owner
 
 from . import store_parts as sp
+from .store_import import close_copied_pending
 from .store_parts import (
     DEFAULT_TITLE,
     KIND,
@@ -390,7 +391,8 @@ class Dialogs:
         """The dialog into `dst`: a project that keeps it, or the temporary ones. A temporary dialog is moved
         (№ 130: the project was opened meanwhile; the same `uid`), a saved one is copied and the source stays by
         default (решение 31: a change of the project — the old one keeps the version before; a new `uid`). The parts
-        are copied as they are (the same blobs). Returns the head in `dst`."""
+        are copied as they are (the same blobs); the pending of a saved dialog is closed in the copy (Э26: its commands
+        carry the numbers of the old project, `store_import`). Returns the head in `dst`."""
         temporary, key = _parse(dialog_id)
         if temporary:
             with self.temp.lock:
@@ -403,7 +405,9 @@ class Dialogs:
                 row = self._row(conn, key)
             meta = sp.check_meta(row.meta)
             title = str(row.name)
-            parts = [Encoded(blob, raw) for blob, _part, raw in sp.load_parts(store, meta["parts"], meta["bytes"])]
+            loaded = sp.load_parts(store, meta["parts"], meta["bytes"])
+            parts = [Encoded(blob, raw) for blob, _part, raw in loaded]
+            meta = close_copied_pending(meta, parts, [part for _blob, part, _raw in loaded])  # Э26 В5: old numbers
             meta["uid"] = sp.new_meta()["uid"]
         meta["parts"] = [hashlib.sha256(e.blob).hexdigest() for e in parts]
         meta["bytes"] = sum(e.raw for e in parts)

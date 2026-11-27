@@ -106,6 +106,39 @@ def test_change_of_project_copies_the_dialog_and_the_old_keeps_the_version_befor
         b.engine.dispose()
 
 
+def test_change_of_project_closes_the_pending_commands_of_the_copy(tmp_path: Path, temp: sp.TempDialogs) -> None:
+    """Э26 В5: the commands waiting for the window carry the numbers of the old project: the copy in another project
+    (and in the temporary ones) has no pending, its card is `declined`; the source keeps its pending."""
+    from bf_core.assistant import errors
+
+    a, b = project_in(tmp_path, "a"), project_in(tmp_path, "b")
+    try:
+        da, db = Dialogs(a, temp), Dialogs(b, temp)
+        h = ask(da, "Удали набор 12")
+        waiting = item("tool", 5, tool_use_id="t9", name="ui_data_delete", side="ui", title="Удалить",
+                       status="waiting", args={"ids": [12]}, summary="")  # fmt: skip
+        pending = {
+            "id": "p-9",
+            "tools": [{"tool_use_id": "t9", "name": "ui_data_delete", "args": {"ids": [12]}, "item_id": "i5"}],
+            "data_results": [],
+        }
+        da.append(h["id"], [], [waiting], pending=pending)
+        before = da.read(h["id"])
+        for dst, where in ((db, "project"), (Dialogs(None, temp), "temporary")):
+            copied = da.copy_to(h["id"], dst)
+            got = dst.read(copied["id"])
+            assert got.pending is None and got.meta["pending"] is None and got.head["state"] == "idle", where
+            cards = [i for i in got.items if i["id"] == "i5"]
+            assert [c["status"] for c in cards] == ["waiting", "declined"] and cards[1]["title"] == "Удалить", where
+            assert cards[1]["summary"] == errors.TEXT_IMPORTED and got.messages == before.messages, where
+            dst.append(copied["id"], [], [item("user", 9, text="повтори")], questions=1)  # it goes on
+        after = da.read(h["id"])  # the source is as it was
+        assert after.pending == before.pending and after.items == before.items and after.head["state"] == "pending"
+    finally:
+        a.engine.dispose()
+        b.engine.dispose()
+
+
 # --- delete, the collector of the blobs, the views of the project ----------------------------------
 
 

@@ -19,6 +19,8 @@ unreadable parts) loses only its pending (the cards stay as they were).
 from __future__ import annotations
 
 import copy
+import hashlib
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 import sqlalchemy as sa
@@ -49,6 +51,41 @@ def _closed_cards(entries: list[dict[str, Any]], shown: list[dict[str, Any]], at
     return out
 
 
+def without_pending(meta: dict[str, Any]) -> dict[str, Any]:
+    """The meta with the pending dropped: the state `idle`."""
+    out = copy.deepcopy(meta)
+    out["pending"], out["state"] = None, "idle"
+    return out
+
+
+def closing_part(meta: dict[str, Any], parts: Iterable[Mapping[str, Any]], at: str) -> sp.Encoded | None:
+    """The part that finishes the waiting cards of `meta.pending` (`parts` — the decoded parts of the dialog), or None
+    when there is no room for one more part. The caller stores it and takes the meta from `sp.grown` (pending=None)."""
+    shown = [i for part in parts for i in part.get("items") or [] if isinstance(i, dict)]
+    entries = [t for t in (meta.get("pending") or {}).get("tools") or [] if isinstance(t, dict)]
+    enc = sp.encode(sp.part_of(len(meta["parts"]) + 1, at, [], _closed_cards(entries, shown, at)))
+    try:
+        sp.check_room(meta, enc.raw)
+    except ApiError:
+        return None
+    return enc
+
+
+def close_copied_pending(
+    meta: dict[str, Any], parts: list[sp.Encoded], decoded: Iterable[Mapping[str, Any]]
+) -> dict[str, Any]:
+    """`Dialogs.copy_to` of a saved dialog into another project: the pending of the copy is closed the same way. The new
+    part is appended to `parts`; the new meta is returned (the caller recomputes `parts` and `bytes`)."""
+    if not meta.get("pending"):
+        return meta
+    at = sp.stamp()
+    enc = closing_part(meta, decoded, at)
+    if enc is None:
+        return without_pending(meta)
+    parts.append(enc)
+    return sp.grown(meta, hashlib.sha256(enc.blob).hexdigest(), enc.raw, at=at, state="idle", pending=None)
+
+
 def close_imported_pending(conn: sa.Connection, store: BlobStore) -> int:
     """Closes the `pending` of every dialog of the project of `conn` (see the module); the number of dialogs changed."""
     rows = conn.execute(sa.select(objects.c.id, objects.c.meta).where(objects.c.kind == sp.KIND)).all()
@@ -58,23 +95,18 @@ def close_imported_pending(conn: sa.Connection, store: BlobStore) -> int:
             meta = sp.check_meta(row.meta)
         except ApiError:
             continue  # a damaged dialog is listed as `error` and is deleted by the user
-        pending = meta.get("pending")
-        if not pending:
+        if not meta.get("pending"):
             continue
         closed += 1
         at = sp.stamp()
-        entries = [t for t in pending.get("tools") or [] if isinstance(t, dict)]
-        new = copy.deepcopy(meta)
-        new["pending"], new["state"] = None, "idle"
+        new = without_pending(meta)
         try:
-            shown: list[dict[str, Any]] = []
-            for _blob, part, _raw in sp.load_parts(store, meta["parts"], meta["bytes"]):
-                shown += [i for i in part.get("items") or [] if isinstance(i, dict)]
-            enc = sp.encode(sp.part_of(len(meta["parts"]) + 1, at, [], _closed_cards(entries, shown, at)))
-            sp.check_room(meta, enc.raw)
-        except ApiError:  # unreadable parts or no room for one more: the pending goes, the cards stay as they were
-            pass
+            decoded = [part for _blob, part, _raw in sp.load_parts(store, meta["parts"], meta["bytes"])]
+        except ApiError:  # unreadable parts: the pending goes, the cards stay as they were
+            enc = None
         else:
+            enc = closing_part(meta, decoded, at)  # None: no room for one more part, the same
+        if enc is not None:
             sha = store.commit_staged(
                 conn, store.stage_bytes(enc.blob), media_type=sp.MEDIA, owner_kind=sp.OWNER, owner_id=int(row.id),
                 role=sp.ROLE,
