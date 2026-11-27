@@ -254,6 +254,18 @@ describe("estimate.run", () => {
     const posts = requests("POST /geostat/estimate/run");
     expect(posts.map((p) => p.body.replace)).toEqual([false, true]);
   });
+  it("the core names the rows of other domains whose values stay: the question says so", async () => {
+    await loadRows();
+    const body = { ...A.run_field_exists.body, kept: ["Руда"], replaced: ["Порода"], message: "Поле «AU_OK_STATUS» в модели уже есть. Заменятся блоки строк: «Порода». Значения других доменов — строк «Руда» — сохранятся." };
+    core.force("POST /geostat/estimate/run", { status: 409, body });
+    const run = app.registry.execute("estimate.run", { estimation_ids: String(ID.row) }, "user");
+    await waitFor(() => dialogStore.get().queue.length > 0);
+    const d = dialogStore.get().queue[0];
+    expect(d.kind === "confirm" && d.options.message).toContain("«Руда» — сохранятся");
+    expect(d.kind === "confirm" && d.options.message).toContain("Блоки других доменов этого префикса сохранятся");
+    if (d.kind === "confirm") d.resolve(false);
+    await run;
+  });
   it("«Нет» на вопрос о замене: оценка не запущена", async () => {
     await loadRows();
     core.force("POST /geostat/estimate/run", A.run_field_exists);
