@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 
 from bf_core.api.errors import ApiError
-from bf_core.assistant import errors, loop, prices, schemas_dialog
+from bf_core.assistant import errors, loop, prices, schemas_dialog, usage
 from bf_core.assistant.loop_events import LoopEnv, Tally
 from tests.assistant.mock_anthropic import MockAnthropic
 from tests.assistant.mock_scenario import load_scenario
@@ -410,6 +410,8 @@ def test_context_exceeded_is_retried_once_with_a_shorter_window(
     assert [n["item"]["code"] for n in of(events, "notice")] == ["context_trimmed"]
     stored = env.dialogs.read(dialog_id).messages  # the dialog keeps what it had: the window is only for the request
     assert "я" * 100 in str(stored[2]["content"][0]["content"])
+    lines = usage.usage_path(env.connection.data_dir).read_text(encoding="utf-8").splitlines()
+    assert len(lines) == (2 if how == "stop_reason" else 1)  # an answer that came and was refused is billed
 
 
 def test_context_exceeded_again_is_an_error(env: LoopEnv, mock_anthropic: MockAnthropic) -> None:
@@ -458,3 +460,45 @@ def test_a_call_without_a_price_makes_the_cost_unknown_not_zero() -> None:
     assert t.dialog()["cost_usd"] is None and t.segment_usage()["cost_usd"] is None  # type: ignore[index]
     assert t.dialog()["tokens"]["input"] == 200 and t.dialog()["questions"] == 1
     assert Tally().segment_usage() is None
+
+
+# --- the real read tools ------------------------------------------------------------------------------------------
+
+
+def test_real_data_tools_on_the_demo_project(pclient: Any, mock_anthropic: MockAnthropic, tmp_path: Any) -> None:
+    """No replaced registry: `data_summary` and `data_audit` read the demo project and the dialog lands in it."""
+    from bf_core.assistant.connection import Connection
+    from bf_core.assistant.segments import Segments
+    from bf_core.assistant.store import Dialogs
+    from bf_core.projects.service import projects_of
+    from tests.assistant.mock_anthropic import TEST_API_KEY
+
+    assert pclient.post("/api/v1/projects/demo").status_code == 200
+    project = projects_of(pclient.core).require_current()
+    conn = Connection(
+        tmp_path / "data", env={"BF_ASSISTANT_BASE_URL": mock_anthropic.base_url, "ANTHROPIC_API_KEY": TEST_API_KEY}
+    )
+    env = LoopEnv(conn, Dialogs(project), Segments())
+    mock_anthropic.use_scenario("data_tools")
+    events = ask(env, "Что не так с данными?")
+    ends = of(events, "tool.end")
+    assert [e["status"] for e in ends] == ["ok", "ok"] and end_of(events)["state"] == "idle"
+    sent = messages_sent(mock_anthropic)
+    first = blocks(sent[1]["messages"][-1], "tool_result")[0]
+    audit = blocks(sent[2]["messages"][-1], "tool_result")[0]["content"]
+    assert "Скважины 2025" in first["content"] and "is_error" not in first
+    assert '"e":6' in audit.replace(" ", "")
+    tools = [t["name"] for t in sent[0]["tools"]]
+    assert set(tools[:9]) == {
+        "data_tree",
+        "data_summary",
+        "data_holes",
+        "data_hole",
+        "data_history",
+        "data_audit",
+        "data_findings",
+        "data_table",
+        "data_stats",
+    }
+    head = end_of(events)["dialog"]
+    assert head["project_uid"] == project.uid and env.dialogs.list()["total"] == 1

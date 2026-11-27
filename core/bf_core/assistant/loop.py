@@ -365,11 +365,11 @@ class _Turn:
             if res.error is None and not res.cancelled:
                 self.conn.note_call(None)
                 if window.is_context_exceeded(stop_reason=res.stop_reason):
+                    self._record(res)  # the call was billed, whatever comes next
                     self._partial_item(res, interrupted=True)
                     if not ctx_retried and self._shrink():
                         ctx_retried = True
                         continue
-                    self._record(res)
                     self._fail("assistant_api_error")
                     return None
                 return res
