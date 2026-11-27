@@ -262,9 +262,13 @@ class GridScan:
         return _snap(float(gaps.min()))
 
     def _div_of(self, a: int, parent: float) -> int:
-        """The smallest 2^L (L ≤ 7) at which every size of the axis is a whole number of sub-cells (7 — when none)."""
+        """The smallest 2^L (L ≤ 7) at which every size of the axis is a whole number of sub-cells (7 — when none).
+        Blocks all of one size are whole parents only when that size is the parent's: a parent given by the file or the
+        wizard may be bigger (every block of the model split in two along Z) — then they are sub-blocks too."""
         sizes = self._sizes[a]
-        if not len(sizes) or float(sizes.max()) - float(sizes.min()) <= TOL:
+        if not len(sizes):
+            return 1
+        if float(sizes.max()) - float(sizes.min()) <= TOL and abs(float(sizes.max()) - parent) <= TOL:
             return 1
         start = max(0, math.ceil(math.log2(parent / float(sizes.min())) - 1e-9)) if sizes.min() < parent else 0
         for level in range(min(start, MAX_LEVEL), MAX_LEVEL + 1):
