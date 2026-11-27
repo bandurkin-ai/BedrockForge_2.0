@@ -5,7 +5,8 @@
  *   an unavailable command are refused with a reason, `confirm` waits for the card of the chat, the log gets the source «Claude»). The command is found by the `name` of the
  *   tool (`findByToolName`): `Pending.tools[].command` may be null. The result of a command is cut to 4000 characters. When all are done the results go to the core
  *   (`submitResults`) and the turn goes on. «Стоп» (`stop`): the command that runs is left to finish, a question of confirmation is declined, the rest get «Пользователь остановил ход»;
- *   the results are sent all the same (§11.4).
+ *   the results are sent all the same (§11.4). `project.delete` ran: the dialog went with the project (решение 32), so nothing is sent — the feed gets a notice (`closeTurn`);
+ *   the same notice (another text) when the core answers 404 `assistant_dialog_not_found` to the results (a project was opened meanwhile).
  * - A dialog opened with `pending` (after a restart, решение 23) is not run by itself: the cards show «Выполнить» / «Отклонить» (`runPendingCards`, `declinePendingCards`).
  * - The run is dropped (nothing is sent) when the pending of the dialog is not the one it was started for any more: a new question, a new or another dialog.
  *
@@ -17,7 +18,7 @@ import { DECLINED, type CommandRegistry, type RunResult } from "../../shell/regi
 import { Store } from "../../shell/store";
 import { declineAllConfirms } from "./confirm";
 import type { ChatState } from "./reduce";
-import { chatStore, markTool, submitResults } from "./state";
+import { chatStore, closeTurn, markTool, submitResults, type CloseReason } from "./state";
 import type { Pending, PendingTool, ToolResultIn, ToolStatus } from "./wireTypes";
 
 export const RESULT_MAX = 4000;
@@ -44,6 +45,8 @@ export interface PendingIo {
   working: (on: boolean) => void;
   /** the results go to the core; null — nothing to continue (the pending is gone) */
   submit: (results: ToolResultIn[]) => Promise<unknown> | null;
+  /** the turn ends here, nothing is sent: the dialog is gone with the project (a notice in the feed, the chat is idle) */
+  close: (reason: CloseReason) => void;
 }
 
 export const liveIo: PendingIo = {
@@ -51,15 +54,21 @@ export const liveIo: PendingIo = {
   mark: markTool,
   working: (on) => chatStore.set({ status: on ? "running" : "pending", thinking: false }),
   submit: submitResults,
+  close: closeTurn,
 };
 
 export interface RunReport {
   results: ToolResultIn[];
   /** the results were handed to the core */
   submitted: boolean;
+  /** `project.delete` ran in this turn: the dialog went with the project, the results were not sent */
+  closed?: CloseReason;
   /** `busy` — a run is going; `stale` — the pending of the dialog changed under the run */
   skipped?: "busy" | "stale";
 }
+
+/** The command that deletes the open project: the dialog of the project is deleted with it (ADR 0029 решение 32). */
+export const DELETE_PROJECT = "project.delete";
 
 export const pendingStore = new Store<{ running: string | null }>({ running: null });
 
@@ -108,10 +117,12 @@ export class PendingRunner {
     pendingStore.set({ running: pending.id });
     this.io.working(true);
     const results: ToolResultIn[] = [];
+    let deleted = false;
     try {
       for (const tool of pending.tools) {
         if (!this.fresh(pending.id)) this.stopped = true;
         const r: ToolResultIn = this.stopped ? { tool_use_id: tool.tool_use_id, ok: false, text: STOPPED } : await this.one(tool);
+        if (r.ok && findByToolName(this.registry.list(), tool.name)?.id === DELETE_PROJECT) deleted = true;
         results.push(r);
         this.io.mark(tool.item_id, statusOf(r), r.text);
       }
@@ -120,6 +131,10 @@ export class PendingRunner {
       pendingStore.set({ running: null });
     }
     if (!this.fresh(pending.id)) return { results, submitted: false, skipped: "stale" };
+    if (deleted) {
+      this.io.close("deleted");
+      return { results, submitted: false, closed: "deleted" };
+    }
     const sent = this.io.submit(results);
     if (!sent) {
       this.io.working(false);

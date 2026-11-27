@@ -31,17 +31,19 @@ interface Harness {
   io: PendingIo;
   marks: [string, ToolStatus, string][];
   submitted: ToolResultIn[][];
+  closed: string[];
   working: boolean[];
   /** the pending the dialog waits for now (null — it is gone) */
   state: { pending: Pending | null; items: Item[] };
 }
 
 function harness(pending: Pending | null, submit: PendingIo["submit"] | null = null): Harness {
-  const h = { marks: [], submitted: [], working: [], state: { pending, items: pending ? pending.tools.map((t) => toolItem(t.item_id, t.name)) : [] } } as unknown as Harness;
+  const h = { marks: [], submitted: [], closed: [], working: [], state: { pending, items: pending ? pending.tools.map((t) => toolItem(t.item_id, t.name)) : [] } } as unknown as Harness;
   h.io = {
     chat: () => ({ pending: h.state.pending, items: h.state.items, status: "pending" }),
     mark: (id, status, summary) => h.marks.push([id, status, summary]),
     working: (on) => h.working.push(on),
+    close: (reason) => h.closed.push(reason),
     submit: submit ?? ((results) => (h.submitted.push(results), Promise.resolve(null))),
   };
   return h;
@@ -252,6 +254,29 @@ describe("PendingRunner.run", () => {
     const rep = await first;
     expect(rep.submitted).toBe(false);
     expect(h.working).toEqual([true, false]);
+  });
+});
+
+describe("project.delete (the dialog goes with the project, решение 32)", () => {
+  it("a deleted project closes the turn: the results are not sent", async () => {
+    const r = registry([cmd("project.delete", () => "Проект удалён")]);
+    const pending = pendingOf({ name: "ui_project_delete" });
+    const h = harness(pending);
+    const rep = await new PendingRunner(r, h.io).run(pending);
+    expect(rep).toMatchObject({ submitted: false, closed: "deleted" });
+    expect(h.closed).toEqual(["deleted"]);
+    expect(h.submitted).toEqual([]);
+    expect(h.marks).toEqual([["i0", "ok", "Проект удалён"]]);
+  });
+
+  it("a refused or failed deletion goes on as usual: the project is still there", async () => {
+    const r = registry([cmd("project.delete", () => Promise.reject(new Error("Проект не открыт")))]);
+    const pending = pendingOf({ name: "ui_project_delete" });
+    const h = harness(pending);
+    const rep = await new PendingRunner(r, h.io).run(pending);
+    expect(rep.closed).toBeUndefined();
+    expect(h.closed).toEqual([]);
+    expect(h.submitted).toHaveLength(1);
   });
 });
 
