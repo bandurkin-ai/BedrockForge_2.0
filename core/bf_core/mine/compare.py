@@ -239,13 +239,14 @@ def _pit_field(model_fields: Sequence[Mapping[str, Any]], sc: Scenario, side: st
 
 
 def _tonnes(sc: Scenario, cols: Mapping[str, np.ndarray], vol: np.ndarray) -> np.ndarray:
-    """volume · density of every row of a portion: the density is a field or a number; NaN → the default density."""
+    """volume · density of every row of a portion: the density is a field or a number; a block with no density — NaN,
+    0 or below, as the run reads it (`econ_kernels.row_econ`) — takes the default density, NaN when there is none."""
     dens = sc.params.get("density")
     n = vol.shape[0]
     d = np.asarray(cols[dens], dtype=np.float64) if isinstance(dens, str) else np.full(n, float(dens or np.nan))
     default = sc.params.get("default_density")
-    if default is not None:
-        d = np.where(np.isnan(d), float(default), d)
+    with np.errstate(invalid="ignore"):
+        d = np.where(np.isfinite(d) & (d > 0.0), d, np.nan if default is None else float(default))
     out: np.ndarray = vol * d
     return out
 
