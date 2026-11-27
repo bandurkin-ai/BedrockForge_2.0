@@ -161,7 +161,19 @@ def test_a_new_step_or_a_new_geometry_is_a_new_key(cj) -> None:  # type: ignore[
     assert len([p for p in files_under(project.folder) if p.suffix == ".bfa"]) == 3 + 3 + 1
 
 
-def test_one_job_a_series_and_a_cancel_leaves_no_file(job_module, pclient) -> None:  # type: ignore[no-untyped-def]
+@pytest.fixture()
+def slow_cut(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every plane of the workers takes >= 10 ms (`tests/slow_section_cut.py`): the job of 2 x 499 planes cannot end
+    in under 10 s. Before the core starts, like `job_module`."""
+    monkeypatch.setenv("BF_EXTRA_JOB_MODULES", "bf_core.sections.cache_job,tests.slow_section_cut")
+    monkeypatch.setenv("BF_TEST_CUT_DELAY_S", "0.01")
+
+
+def test_one_job_a_series_and_a_cancel_leaves_no_file(slow_cut, pclient) -> None:  # type: ignore[no-untyped-def]
+    """The job `b` has to be met running with a progress: the scheduler writes it to the database at most once a
+    second, so a job that is done in about that time shows `running` with 0.0 and then `done` - a race of the test
+    with the speed of the machine, not a fault of the job. The workers cut slowly (`slow_cut`): `b` runs >= 10 s,
+    the cancel comes in the middle of it."""
     c = pclient
     assert c.post(f"{API}/projects", json={"name": "Отмена кеша"}).status_code == 200
     project = projects_of(c.core).require_current()
