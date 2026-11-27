@@ -19,7 +19,7 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from . import errors
+from . import data_tools, errors, prefs, tools
 from . import store_parts as sp
 from .connection import Connection
 from .schemas import ToolResult
@@ -275,3 +275,18 @@ def capped(model: str, effort: str) -> str:
     if cap and effort in EFFORTS and cap in EFFORTS and EFFORTS.index(effort) > EFFORTS.index(cap):
         return cap
     return effort
+
+
+def resolved(conn: Connection) -> prefs.Resolved:
+    environ = getattr(conn, "_environ", None)
+    return prefs.resolve(conn.data_dir, environ() if callable(environ) else None)
+
+
+def tools_of(ui_tools: list[Any]) -> tuple[list[dict[str, Any]], frozenset[str]]:
+    api = tools.build_api_tools(ui_tools, data_tools.definitions())
+    return tools.with_cache_control(api), tools.known_ui_names(api)
+
+
+def set_of(context: dict[str, Any]) -> int | None:
+    value = (context.get("set") or {}).get("id")
+    return int(value) if isinstance(value, int) and not isinstance(value, bool) else None

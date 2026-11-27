@@ -35,14 +35,11 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-import anthropic
-
 from bf_core.api.errors import ApiError
 
-from . import data_tools, errors, prefs, prices, prompt, tools, usage, window
+from . import data_tools, errors, prices, prompt, tools, usage, window
 from . import store_parts as sp
-from .connection import Connection
-from .loop_call import CallResult, classify, request_params, stream_message
+from .loop_call import CallResult, classify, is_effort_refusal, request_params, stream_message
 from .loop_events import (
     EFFORT_CAP,
     LoopEnv,
@@ -57,11 +54,14 @@ from .loop_events import (
     merge_items,
     new_id,
     notice_item,
+    resolved,
+    set_of,
     status_of,
     text_only,
     tool_item,
     tool_result,
     tool_uses,
+    tools_of,
     user_item,
 )
 from .schemas import ToolResult, ToolResultsBody, TurnBody
@@ -79,29 +79,14 @@ EMPTY_ERROR = "Ошибка"
 # --- the entries ------------------------------------------------------------------------------------------------------
 
 
-def _resolved(conn: Connection) -> prefs.Resolved:
-    environ = getattr(conn, "_environ", None)
-    return prefs.resolve(conn.data_dir, environ() if callable(environ) else None)
-
-
-def _tools_of(ui_tools: list[Any]) -> tuple[list[dict[str, Any]], frozenset[str]]:
-    api = tools.build_api_tools(ui_tools, data_tools.definitions())
-    return tools.with_cache_control(api), tools.known_ui_names(api)
-
-
-def _set_of(context: dict[str, Any]) -> int | None:
-    value = (context.get("set") or {}).get("id")
-    return int(value) if isinstance(value, int) and not isinstance(value, bool) else None
-
-
 def start_turn(env: LoopEnv, body: TurnBody) -> Segment:
     """A question (`dialog_id: null` - a new dialog). The refusals come before any stream; the answer is the
     events of the returned segment."""
     if not env.connection.is_connected():
         raise errors.refuse("assistant_not_connected")
-    api_tools, known = _tools_of(list(body.tools))
+    api_tools, known = tools_of(list(body.tools))
     context = body.context.model_dump(mode="json")
-    r = _resolved(env.connection)
+    r = resolved(env.connection)
     loaded: Loaded | None = None
     if body.dialog_id is None:
         head = env.dialogs.create(make_title(body.text))
@@ -117,7 +102,7 @@ def start_turn(env: LoopEnv, body: TurnBody) -> Segment:
         head = loaded.head
     plan = Plan(
         "question", body.text, [], context, api_tools, known, r.model, r.effort, head, loaded, loaded is None,
-        pending=(loaded.meta.get("pending") if loaded else None), set_id=_set_of(context),
+        pending=(loaded.meta.get("pending") if loaded else None), set_id=set_of(context),
     )  # fmt: skip
     return _launch(env, seg, plan)
 
@@ -126,7 +111,7 @@ def start_continue(env: LoopEnv, dialog_id: str, body: ToolResultsBody) -> Segme
     """The results of the commands of the window for the `pending` of a dialog (§9)."""
     if not env.connection.is_connected():
         raise errors.refuse("assistant_not_connected")
-    api_tools, known = _tools_of(list(body.tools))
+    api_tools, known = tools_of(list(body.tools))
     seg = env.segments.start(dialog_id)
     try:
         loaded = env.dialogs.read(dialog_id)
@@ -143,10 +128,10 @@ def start_continue(env: LoopEnv, dialog_id: str, body: ToolResultsBody) -> Segme
         env.segments.release(seg)
         raise
     context = body.context.model_dump(mode="json")
-    r = _resolved(env.connection)
+    r = resolved(env.connection)
     plan = Plan(
         "continue", None, list(body.results), context, api_tools, known, r.model, r.effort, loaded.head, loaded, False,
-        pending=pending, set_id=_set_of(context), rounds=int(pending.get("rounds") or 0),
+        pending=pending, set_id=set_of(context), rounds=int(pending.get("rounds") or 0),
     )  # fmt: skip
     return _launch(env, seg, plan)
 
@@ -379,7 +364,7 @@ class _Turn:
             failure = res.error
             assert failure is not None
             self.conn.note_call(failure)
-            lower = lower_effort(self.effort) if self._is_effort_refusal(failure) else None
+            lower = lower_effort(self.effort) if is_effort_refusal(failure) else None
             if lower is not None:
                 self.effort = EFFORT_CAP[self.plan.model] = lower
                 continue
@@ -388,12 +373,6 @@ class _Turn:
                 continue
             self._api_failure(failure)
             return None
-
-    @staticmethod
-    def _is_effort_refusal(exc: BaseException) -> bool:
-        if not isinstance(exc, anthropic.BadRequestError):
-            return False
-        return "effort" in str(getattr(exc, "message", exc)).lower()
 
     def _shrink(self) -> bool:
         """After «the context does not fit»: shorten the old results, thoughts and screens at once (once per call)."""

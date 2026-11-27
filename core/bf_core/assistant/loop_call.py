@@ -191,3 +191,10 @@ def classify(res: CallResult) -> Kind:
     if res.started and (is_transport_error(exc) or isinstance(exc, anthropic.APIStatusError)):
         return "interrupted"
     return "api"
+
+
+def is_effort_refusal(exc: BaseException) -> bool:
+    """A 400 of the API that says the depth (`output_config.effort`) is not supported by the model (решение 14)."""
+    if not isinstance(exc, anthropic.BadRequestError):
+        return False
+    return "effort" in str(getattr(exc, "message", exc)).lower()
