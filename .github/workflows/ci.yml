@@ -13,11 +13,18 @@ concurrency:
   cancel-in-progress: true
 permissions:
   contents: read
+env:
+  # число шардов; должно совпасть с длиной matrix.shard соответствующего задания (шаг «Число шардов совпадает…»)
+  CORE_SHARDS: "4"
+  BENCH_SHARDS: "5"
 
 jobs:
-  core:
-    name: Ядро (ruff, mypy, pytest SQLite, лицензии)
+  # Ядро: pytest идёт шардами (tools/ci/shard_tests.py делит файлы тестов по весам из tools/ci/test_weights.json);
+  # полнота шардов (ничего не потеряно и не продублировано) доказывается в core-lint, итог — в `core`.
+  core-lint:
+    name: "Ядро: ruff, mypy, лицензии, полнота шардов"
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults: { run: { working-directory: core } }
     steps:
       - uses: actions/checkout@v7
@@ -26,9 +33,58 @@ jobs:
       - run: uv sync --locked
       - run: uv run ruff check . ../bench ../tools
       - run: uv run mypy bf_core
-      - run: uv run pytest -q --tb=short
       - name: Лицензии Python (без GPL/LGPL/AGPL)
         run: uv run python ../tools/ci/check_licenses_py.py pyproject.toml
+      - name: Полнота шардов pytest (объединение шардов == все тесты)
+        run: uv run python ../tools/ci/shard_tests.py --check --of "$CORE_SHARDS"
+      - name: Полнота шардов замеров (объединение == сценарии профиля ci)
+        run: uv run python ../tools/ci/shard_bench.py --check --of "$BENCH_SHARDS"
+
+  core-pytest:
+    name: "Ядро: pytest ${{ matrix.shard }}/${{ strategy.job-total }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4] # длина списка == CORE_SHARDS (проверяется в первом шаге)
+    defaults: { run: { working-directory: core } }
+    steps:
+      - name: Число шардов совпадает с CORE_SHARDS
+        run: '[ "${{ strategy.job-total }}" = "$CORE_SHARDS" ]'
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with: { version: "0.13.6", enable-cache: true, cache-dependency-glob: core/uv.lock }
+      - run: uv sync --locked
+      - name: pytest, шард ${{ matrix.shard }}/${{ strategy.job-total }}
+        run: |
+          mapfile -t files < <(uv run python ../tools/ci/shard_tests.py --shard "${{ matrix.shard }}" --of "$CORE_SHARDS")
+          echo "Файлов в шарде: ${#files[@]}"
+          uv run pytest -q --tb=short --durations=15 --junitxml="$RUNNER_TEMP/junit.xml" "${files[@]}"
+      # per-file seconds for refreshing tools/ci/test_weights.json (shard_tests.py --update-weights)
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: junit-pytest-${{ matrix.shard }}
+          path: ${{ runner.temp }}/junit.xml
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # Итоговая проверка с прежним именем: на ней можно строить защиту ветки, число и состав шардов от неё скрыты.
+  core:
+    name: Ядро (ruff, mypy, pytest SQLite, лицензии)
+    needs: [core-lint, core-pytest]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Итог
+        env:
+          LINT: ${{ needs.core-lint.result }}
+          PYTEST: ${{ needs.core-pytest.result }}
+        run: |
+          echo "ruff, mypy, лицензии, полнота шардов: $LINT; pytest (все шарды): $PYTEST"
+          [ "$LINT" = success ] && [ "$PYTEST" = success ]
 
   core-pg:
     name: Ядро, слой БД на PostgreSQL 16
@@ -100,28 +156,71 @@ jobs:
           retention-days: 30
           if-no-files-found: ignore
 
+  # Замеры идут шардами (tools/ci/shard_bench.py): у каждого шарда свой раннер, ветка и база мерятся на нём
+  # парой (правило «на том же раннере»), сравнение — по сценариям шарда. Итог и общий отчёт — в `bench-all`.
   bench:
-    name: Замеры (профиль ci, сравнение с базой)
+    name: "Замеры ${{ matrix.shard }}/${{ strategy.job-total }}"
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5] # длина списка == BENCH_SHARDS (проверяется в первом шаге)
     steps:
+      - name: Число шардов совпадает с BENCH_SHARDS
+        run: '[ "${{ strategy.job-total }}" = "$BENCH_SHARDS" ]'
       - uses: actions/checkout@v7
-        with: { fetch-depth: 0 }
       - uses: astral-sh/setup-uv@v7
         with: { version: "0.13.6", enable-cache: true, cache-dependency-glob: core/uv.lock }
       - run: uv sync --locked --no-dev
         working-directory: core
+      - name: Сценарии шарда
+        id: scn
+        run: echo "names=$(python3 tools/ci/shard_bench.py --shard "${{ matrix.shard }}" --of "$BENCH_SHARDS")" >> "$GITHUB_OUTPUT"
       - name: Замер ветки
-        run: uv run --project core python -m bench.run --profile ci --check --repeat 3 --out bench/out/head.json
+        env: { NAMES: "${{ steps.scn.outputs.names }}" }
+        run: |
+          # shellcheck disable=SC2086  # NAMES is a space-separated list for --only
+          uv run --project core python -m bench.run --profile ci --check --repeat 3 --only $NAMES --out bench/out/head.json
+      - name: База — получение
+        id: base
+        if: github.event_name == 'pull_request'
+        env: { BASE_REF: "${{ github.base_ref }}" }
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_REF"
+          git worktree add ../base FETCH_HEAD
+          # the numba cache of the base is keyed by the CONTENT of its kernels and benches: the base is the same for
+          # every PR until main moves, so this cache hits across PRs (the head's kernels change with every push)
+          key=$(git rev-parse FETCH_HEAD:core/bf_core FETCH_HEAD:core/uv.lock FETCH_HEAD:bench 2>/dev/null | tr -d '\n' || true)
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          # numba validates its cache by the mtime+size of the source file; a fresh checkout has a new mtime every run
+          (cd ../base && git ls-files -z 'core/bf_core/*.py' 'bench/*.py' 'bench/**/*.py' | xargs -r -0 touch -d '2000-01-01 00:00:00 UTC')
+      - name: База — кеш numba
+        id: numba-base
+        if: github.event_name == 'pull_request' && steps.base.outputs.key != ''
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/numba-base
+          key: numba-bench-base-${{ matrix.shard }}-${{ steps.base.outputs.key }}
       - name: Замер базы
         if: github.event_name == 'pull_request'
+        env:
+          NAMES: "${{ steps.scn.outputs.names }}"
+          NUMBA_CACHE_DIR: ${{ runner.temp }}/numba-base
         run: |
-          git worktree add ../base "origin/${{ github.base_ref }}"
+          # shellcheck disable=SC2086  # NAMES is a space-separated list for --only
           if [ -f ../base/bench/run.py ]; then
-            (cd ../base/core && uv sync --locked --no-dev) && (cd ../base && uv run --project core python -m bench.run --profile ci --repeat 3 --out ../BedrockForge_base.json)
+            (cd ../base/core && uv sync --locked --no-dev) && (cd ../base && uv run --project core python -m bench.run --profile ci --repeat 3 --only $NAMES --out ../BedrockForge_base.json)
             cp ../BedrockForge_base.json bench/out/base.json
           else
             echo "В базовой ветке замеров нет"
           fi
+      - name: База — сохранить кеш numba
+        if: always() && github.event_name == 'pull_request' && steps.base.outputs.key != '' && steps.numba-base.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/numba-base
+          key: numba-bench-base-${{ matrix.shard }}-${{ steps.base.outputs.key }}
       - name: Сравнение (> 20 % и ≥ 0,25 с — ошибка)
         if: github.event_name == 'pull_request'
         run: |
@@ -130,7 +229,36 @@ jobs:
           fi
       - uses: actions/upload-artifact@v7
         if: always()
-        with: { name: bench-ci, path: bench/out/, retention-days: 30 }
+        with: { name: "bench-ci-${{ matrix.shard }}", path: bench/out/, retention-days: 30 }
+
+  # Итоговая проверка с прежним именем + прежний артефакт bench-ci (head.json, base.json со всеми сценариями).
+  bench-all:
+    name: Замеры (профиль ci, сравнение с базой)
+    needs: [bench]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        if: needs.bench.result != 'cancelled'
+        with: { pattern: "bench-ci-*", path: shards }
+      - name: Общий отчёт (все шарды)
+        if: needs.bench.result != 'cancelled'
+        run: |
+          python3 tools/ci/bench_merge.py --out bench-ci/head.json shards/*/head.json
+          if ls shards/*/base.json >/dev/null 2>&1; then
+            python3 tools/ci/bench_merge.py --out bench-ci/base.json shards/*/base.json
+            python3 bench/run.py --compare bench-ci/base.json bench-ci/head.json | tee -a "$GITHUB_STEP_SUMMARY" || true
+          fi
+      - uses: actions/upload-artifact@v7
+        if: needs.bench.result != 'cancelled'
+        with: { name: bench-ci, path: bench-ci/, retention-days: 30, if-no-files-found: ignore }
+      - name: Итог
+        env: { RESULT: "${{ needs.bench.result }}" }
+        run: |
+          echo "Замеры, все шарды: $RESULT"
+          [ "$RESULT" = success ]
 
   repo-rules:
     name: Правила репозитория
