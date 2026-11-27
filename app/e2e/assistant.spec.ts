@@ -58,7 +58,10 @@ async function restart(): Promise<void> {
 }
 
 /** Every file of the profile (settings, logs of the shell and of the core, projects, the store of the assistant) except the store of the key itself. */
-const profileFiles = () => walk([userData]).filter((f) => f !== BIN);
+// The packaged app (BF_APP_EXE) writes its logs to the real %LOCALAPPDATA%\BedrockForge\logs, not to the profile of the test (BF_LOCAL_DIR is set for the launches without the .exe only):
+// the search of the secrets covers that folder too.
+const searchRoots = (): string[] => [userData, ...(process.env.BF_APP_EXE && process.env.LOCALAPPDATA ? [path.join(process.env.LOCALAPPDATA, "BedrockForge", "logs")] : [])];
+const profileFiles = () => walk(searchRoots()).filter((f) => f !== BIN);
 
 test.describe.serial("Claude assistant: key, commands, confirmation, history, usage, offline, account, secret", () => {
   test.beforeAll(async () => {
@@ -244,8 +247,8 @@ test.describe.serial("Claude assistant: key, commands, confirmation, history, us
     expectSealed(BIN, "api_key", [TEST_KEY]);
     // the test store (BF_E2E, no encryption on Linux) keeps the secret as JSON behind a «BFTEST1» mark: the only file that may hold it;
     // a sealed one (DPAPI on Windows) is searched like any other file: the key is found nowhere
-    expect(filesWith([userData], TEST_KEY)).toEqual(clearHolders(BIN));
-    expect(filesWith([userData], WRONG_KEY)).toEqual([]);
+    expect(filesWith(searchRoots(), TEST_KEY)).toEqual(clearHolders(BIN));
+    expect(filesWith(searchRoots(), WRONG_KEY)).toEqual([]);
     const files = profileFiles();
     expect(files.some((f) => f.endsWith("shell.log")) && files.some((f) => f.endsWith("core.log"))).toBe(true); // the logs were part of the search
     expect(files.some((f) => f.includes(`${path.sep}assistant${path.sep}`) && f.endsWith("usage.jsonl"))).toBe(true);
@@ -391,10 +394,10 @@ test.describe.serial("Claude assistant: key, commands, confirmation, history, us
   test("the secret at the end: neither keys, nor the tokens of the account are in the files, the logs and the usage journal", async () => {
     test.setTimeout(120_000);
     await close(app); // the logs are flushed and the files are closed
-    expect(filesWith([userData], TEST_KEY)).toEqual([]); // the key was replaced by the account in the test store
-    expect(filesWith([userData], WRONG_KEY)).toEqual([]);
+    expect(filesWith(searchRoots(), TEST_KEY)).toEqual([]); // the key was replaced by the account in the test store
+    expect(filesWith(searchRoots(), WRONG_KEY)).toEqual([]);
     for (const token of ACCOUNT_TOKENS) {
-      const hits = filesWith([userData], token);
+      const hits = filesWith(searchRoots(), token);
       expect(hits, `${token} outside the test store connection.bin (a sealed one holds no token in the clear)`).toEqual(hits.filter((f) => clearHolders(BIN).includes(f)));
     }
     const files = profileFiles();

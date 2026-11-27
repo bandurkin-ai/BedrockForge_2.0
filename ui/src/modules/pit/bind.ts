@@ -224,8 +224,9 @@ export async function runNew(app: App, a: Args, source: CommandSource): Promise<
     throw asError(r);
   }
   pitStore.set({ scenarioIssue: null });
+  // The list is read before the command ends: the next step of a new scenario («Экономика») checks the id against it (a refusal «не найден» on a slow machine otherwise).
+  await loadScenarios();
   await selectScenario(made.id);
-  void loadScenarios();
   return `Сценарий «${made.name}» №${made.id} создан. ${readyText()} Цены и затраты — в команде «Экономика», типы пород — в «Породы».`.trim();
 }
 
