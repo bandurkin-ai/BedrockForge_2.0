@@ -27,7 +27,8 @@ from bf_core.audit import service
 from bf_core.audit.rules import EXAMPLE_FIELDS, RULES
 from bf_core.db import dialect
 
-from .data_table import clean, error, fit, page_args, project_of, require_set, sig6
+from .data_table import clean, error, fit, page_args, project_of, require_set, tick
+from .data_tools import num
 
 LETTER = {"error": "E", "warning": "W", "info": "I"}
 FULL = {"e": "error", "w": "warning", "i": "info", "error": "error", "warning": "warning", "info": "info"}
@@ -100,7 +101,7 @@ def _example(e: dict[str, Any]) -> dict[str, Any]:
         if isinstance(v, bool) or v is None:
             out[label] = v
         elif isinstance(v, int | float):
-            out[label] = sig6(float(v)) if isinstance(v, float) else v
+            out[label] = num(v)  # an int as it is; a float keeps its integer part
         else:
             out[label] = clean(v, 80)
     return out
@@ -122,6 +123,7 @@ def data_findings(ctx: Any, params: dict[str, Any]) -> dict[str, Any]:
                                limit=limit)  # fmt: skip
     rows = []
     for f in got["findings"]:
+        tick(ctx)
         r = RULES.get(f["code"])
         rows.append({
             "rule": f["code"],

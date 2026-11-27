@@ -13,6 +13,7 @@ after a reload of the window) takes them from the buffer. The core finishes a se
                                            segment; it never raises
     seg.cancel()                           the flag of `POST …/cancel`; the loop closes the stream of the API
     SEGMENTS.get(dialog_id)                the running segment or None (`GET …/stream`: None — 204)
+    SEGMENTS.ensure_room()                 at most `MAX_RUNNING` (8) segments at once, else 409 `assistant_busy`
     SEGMENTS.busy()                        ids of the dialogs with a running segment (`state: "running"` of the heads)
 
 A finished segment leaves the registry at once: a reader that comes later finds the dialog already written (a second
@@ -37,6 +38,9 @@ log = logging.getLogger("bf_core.assistant")
 
 BUFFER_EVENTS = 2000  # решение 24
 KEEPALIVE_S = 15.0  # §1: `: keepalive` every 15 s
+MAX_RUNNING = 8  # turns at once: each holds a thread of the loop and a stream of the API
+TOO_MANY = "Слишком много ответов одновременно."
+TOO_MANY_HINT = "Дождитесь окончания одного из ответов или остановите лишний кнопкой «Стоп»."
 
 
 @dataclass(frozen=True)
@@ -172,9 +176,19 @@ class Segments:
         with self._lock:
             if dialog_id in self._running:
                 raise refuse("assistant_busy")
+            self._room()
             seg = Segment(dialog_id, segment_id, limit)
             self._running[dialog_id] = seg
             return seg
+
+    def _room(self) -> None:
+        if len(self._running) >= MAX_RUNNING:
+            raise refuse("assistant_busy", TOO_MANY, TOO_MANY_HINT)
+
+    def ensure_room(self) -> None:
+        """409 `assistant_busy` when `MAX_RUNNING` segments run (no new dialog is made for a turn that cannot start)."""
+        with self._lock:
+            self._room()
 
     def release(self, seg: Segment) -> None:
         """The loop is over (or could not begin): the dialog is free."""
@@ -218,4 +232,4 @@ class Segments:
 
 SEGMENTS = Segments()
 
-__all__ = ["BUFFER_EVENTS", "KEEPALIVE_S", "SEGMENTS", "Event", "Segment", "Segments"]
+__all__ = ["BUFFER_EVENTS", "KEEPALIVE_S", "MAX_RUNNING", "SEGMENTS", "Event", "Segment", "Segments"]

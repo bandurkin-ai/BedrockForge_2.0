@@ -27,7 +27,6 @@ The functions are registered at the bottom with `data_tools.register(name, schem
 from __future__ import annotations
 
 import json
-import math
 import re
 from collections.abc import Callable, Iterable
 from typing import Any
@@ -37,6 +36,8 @@ import sqlalchemy as sa
 from bf_core.api.errors import ApiError
 from bf_core.db import dialect
 from bf_core.db.schema import dh_tables, objects
+
+from .data_tools import num
 
 MAX_LIMIT = 200
 DEFAULT_LIMIT = 50
@@ -56,11 +57,6 @@ def clean(value: Any, limit: int = CELL_LEN) -> str:
     """A text of the project for the model: no control and direction characters, one line, ≤ `limit` signs."""
     text = _SPACES.sub(" ", _CONTROL.sub(" ", str(value))).strip()
     return text if len(text) <= limit else text[: limit - 1] + "…"
-
-
-def sig6(v: float) -> float:
-    """6 significant digits (ADR 0029); NaN and ±inf are not numbers of a table."""
-    return float(f"{v:.6g}") if math.isfinite(v) else math.nan
 
 
 def error(code: str, message: str, hint: str = "", status: int = 422) -> ApiError:
@@ -112,6 +108,13 @@ def require_set(project: Any, ctx: Any, params: dict[str, Any]) -> tuple[int, st
     if name is None:
         raise error("set_not_found", f"Набор скважин {set_id} не найден.", "Сверьтесь с деревом проекта.", 404)
     return set_id, str(name)
+
+
+def tick(ctx: Any) -> None:
+    """The cooperative stop of `data_tools.DataCall.check()`; a plain context (tests) has none."""
+    check = getattr(ctx, "check", None)
+    if callable(check):
+        check()
 
 
 def fit(rows: Iterable[Any], budget: int = BUDGET) -> list[Any]:
@@ -207,9 +210,13 @@ def _cell(v: Any) -> Any:
         return None
     if isinstance(v, bool):
         return v
-    if isinstance(v, int | float):
-        f = sig6(float(v))
-        return None if math.isnan(f) else f
+    if isinstance(v, int):
+        return v  # an id or a sample number is never rounded
+    if isinstance(v, float):
+        return num(v)  # 6 significant digits, the integer part is kept; NaN / inf -> None (a gap is not 0)
+    item = getattr(v, "item", None)  # a numpy scalar
+    if callable(item):
+        return _cell(item())
     return clean(v)
 
 
@@ -224,7 +231,9 @@ def data_table(ctx: Any, params: dict[str, Any]) -> dict[str, Any]:
     snap = snapshot_of(project, set_id, key)
     cols, default = _pick_columns(snap, params.get("columns"), title)
     hole = None if params.get("hole_id") in (None, "") else _hole_id(snap, params["hole_id"])
+    tick(ctx)
     got = page(snap, offset=offset, limit=limit, hole=hole)
+    tick(ctx)
     total = int(got["total"])
     rows = fit([_cell(r[c.key]) for c in cols] for r in got["rows"])
     end = offset + len(rows)
@@ -276,6 +285,7 @@ def data_stats(ctx: Any, params: dict[str, Any]) -> dict[str, Any]:
     project = project_of(ctx)
     set_id, _ = require_set(project, ctx, params)
     tabs = _tables(project, set_id)
+    tick(ctx)
     name = params.get("table")
     if isinstance(name, str) and dialect.name_key(name) in ("устья", "инклинометрия", "collar", "survey"):
         raise error("table_not_interval", f"«{clean(name, 80)}» — не таблица проб или интервалов.",
@@ -293,8 +303,10 @@ def data_stats(ctx: Any, params: dict[str, Any]) -> dict[str, Any]:
     dom = params.get("domain")
     if dom not in (None, ""):
         settings["domain"] = _fields(infos, dom, ("text",), "поле домена", t.name).name
+    tick(ctx)
     try:
         res = routes_more.domains_of(project, rc.checked("domains", settings))
+        tick(ctx)  # a call that outlived its time ends here, before the answer is built
     except StatsError as exc:
         if exc.code != "no_values":
             raise error(exc.code, exc.message, exc.hint) from exc

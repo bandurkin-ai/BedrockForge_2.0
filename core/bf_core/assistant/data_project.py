@@ -109,7 +109,7 @@ def _lineage_kind(kind: str, registered: set[str]) -> str | None:
     return f"object:{kind}" if f"object:{kind}" in registered else None
 
 
-def _nodes(conn: sa.Connection) -> list[dict[str, Any]]:
+def _nodes(call: DataCall, conn: sa.Connection) -> list[dict[str, Any]]:
     """Every node of the tree in the order of the panel: folders, objects, the tables of a set under it."""
     rows = conn.execute(
         sa.select(objects.c.id, objects.c.kind, objects.c.name, objects.c.folder, objects.c.parent_id, objects.c.state)
@@ -131,6 +131,7 @@ def _nodes(conn: sa.Connection) -> list[dict[str, Any]]:
     children: dict[int, list[Any]] = {}
     top: list[Any] = []
     for r in rows:
+        call.check()
         (children.setdefault(int(r.parent_id), []) if r.parent_id is not None else top).append(r)
 
     def key(r: Any) -> tuple[str, int, str, str]:
@@ -145,6 +146,7 @@ def _nodes(conn: sa.Connection) -> list[dict[str, Any]]:
     seen: set[str] = set()
 
     def add(r: Any, base: str) -> None:
+        call.check()
         path = f"{base}/{r.name}" if base else r.name
         node: dict[str, Any] = {"path": path, "kind": r.kind, "id": int(r.id), "name": r.name}
         if r.kind == "drillhole_set":
@@ -201,7 +203,7 @@ def _freshness(call: DataCall, conn: sa.Connection, page: list[dict[str, Any]]) 
 def tree(call: DataCall, args: dict[str, Any]) -> dict[str, Any]:
     offset = offset_of(args)
     with dialect.read_tx(call.project.engine) as conn:
-        nodes = _nodes(conn)
+        nodes = _nodes(call, conn)
         page = nodes[offset : offset + TREE_PAGE]
         _freshness(call, conn, page)
     total = len(nodes)
@@ -250,7 +252,7 @@ def _audit(conn: sa.Connection, set_id: int) -> dict[str, Any] | None:
     return {"e": t.get("error", 0), "w": t.get("warning", 0), "i": t.get("info", 0), "stale": bool(last["stale"])}
 
 
-def _project_summary(conn: sa.Connection) -> dict[str, Any]:
+def _project_summary(call: DataCall, conn: sa.Connection) -> dict[str, Any]:
     from bf_core.projects.store import summary
 
     meta = conn.execute(sa.select(project_meta.c.name, project_meta.c.crs, project_meta.c.description)).one()
@@ -266,7 +268,9 @@ def _project_summary(conn: sa.Connection) -> dict[str, Any]:
         for s, n in conn.execute(sa.select(dh_holes.c.set_id, sa.func.count()).group_by(dh_holes.c.set_id))
     }
     boxes = [r.extent for r in conn.execute(sa.select(objects.c.extent).where(objects.c.state == "ready"))]
-    boxes += [_set_extent(conn, int(s.id)) for s in sets]
+    for s in sets:
+        call.check()
+        boxes.append(_set_extent(conn, int(s.id)))
     return {
         "name": meta.name,
         "description": {k: v for k, v in (meta.description or {}).items() if v},
@@ -277,13 +281,17 @@ def _project_summary(conn: sa.Connection) -> dict[str, Any]:
     }
 
 
-def _set_summary(conn: sa.Connection, set_id: int) -> dict[str, Any]:
+def _set_summary(call: DataCall, conn: sa.Connection, set_id: int) -> dict[str, Any]:
     s = require_set(conn, set_id)
     h = dh_holes
-    n_holes, n_collars, metres = conn.execute(
-        sa.select(sa.func.count(), sa.func.sum(sa.case((h.c.has_collar.is_(True), 1), else_=0)), sa.func.sum(h.c.td))
-        .where(h.c.set_id == set_id)
-    ).one()  # fmt: skip
+    n_holes, n_collars, metres, no_depth = conn.execute(
+        sa.select(
+            sa.func.count(),
+            sa.func.sum(sa.case((h.c.has_collar.is_(True), 1), else_=0)),
+            sa.func.sum(h.c.td),
+            sa.func.sum(sa.case((h.c.td.is_(None), 1), else_=0)),
+        ).where(h.c.set_id == set_id)
+    ).one()
     n_surveys = int(conn.execute(sa.select(sa.func.count()).where(dh_surveys.c.set_id == set_id)).scalar_one())
     tabs: list[dict[str, Any]] = [
         {"name": "Устья", "kind": "collar", "rows": int(n_collars or 0),
@@ -298,6 +306,7 @@ def _set_summary(conn: sa.Connection, set_id: int) -> dict[str, Any]:
         .where(dh_tables.c.set_id == set_id, dh_tables.c.state == "ready", dh_columns.c.deleted.is_(False))
         .order_by(dh_columns.c.table_id, dh_columns.c.position, dh_columns.c.id)
     ):
+        call.check()
         cols.setdefault(int(c.table_id), []).append(c)
         if c.role == "component":
             components[(c.name, c.unit)] = None
@@ -307,6 +316,7 @@ def _set_summary(conn: sa.Connection, set_id: int) -> dict[str, Any]:
         .where(dh_tables.c.set_id == set_id, dh_tables.c.state == "ready")
         .order_by(kind_order, dh_tables.c.id)
     ):
+        call.check()
         names = [c.name for c in cols.get(int(t.id), [])]
         tabs.append({"name": t.name, "kind": t.kind, "rows": int(t.row_count), "fields": names[:FIELDS_MAX]})
     results = int(conn.execute(sa.select(sa.func.count()).where(dh_results.c.set_id == set_id)).scalar_one())
@@ -315,7 +325,8 @@ def _set_summary(conn: sa.Connection, set_id: int) -> dict[str, Any]:
         "name": s.name,
         "crs": s.crs,
         "holes": int(n_holes),
-        "metres": None if metres is None else float(metres),
+        "metres": None if metres is None else float(metres),  # the sum of the known depths only ...
+        "holes_without_depth": int(no_depth or 0),  # ... these holes have none (a gap is not 0 m)
         "tables": tabs,
         "components": [{"name": n, "unit": u} for n, u in components],
         "processing_results": results,
@@ -328,10 +339,10 @@ def summary_of(call: DataCall, args: dict[str, Any]) -> dict[str, Any]:
     """Without `set_id` - the project (its sets with their numbers), with it - that set."""
     with dialect.read_tx(call.project.engine) as conn:
         if args.get("set_id") is None:
-            out = _project_summary(conn)
+            out = _project_summary(call, conn)
             call.summary = f"Проект «{clean(out['name'], 80)}»: наборов {len(out['sets'])}"
             return out
-        out = _set_summary(conn, int(args["set_id"]))
+        out = _set_summary(call, conn, int(args["set_id"]))
     call.summary = f"Набор «{clean(out['name'], 80)}»: скважин {out['holes']}"
     return out
 
@@ -382,6 +393,7 @@ def _edits(call: DataCall, conn: sa.Connection, kind: str, ident: int, set_id: i
     else:
         return []
     names = {str(t.id): t.name for t in conn.execute(sa.select(dh_tables.c.id, dh_tables.c.name))}
+    call.check()
     rows = actions.history(call.project, sid, table=table, limit=EDITS_MAX)
     return [{"at": e["at"], "action": e["action"], "summary": _edit_summary(e, names)} for e in rows]
 

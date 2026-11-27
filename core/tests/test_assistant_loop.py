@@ -216,7 +216,8 @@ def test_cut_stream_keeps_the_partial_text(env: LoopEnv, mock_anthropic: MockAnt
     assistant = [i for i in loaded.items if i["kind"] == "assistant"][0]
     assert assistant["interrupted"] is True and assistant["text"] == text_of(events) and assistant["text"] != ""
     assert [i["kind"] for i in loaded.items] == ["user", "assistant", "error"]
-    assert loaded.messages[-1] == {"role": "assistant", "content": [{"type": "text", "text": assistant["text"]}]}
+    assert loaded.messages == []  # решение 6: the partial text is in the ribbon only, the history did not change
+    assert head["questions"] == 0  # the question was not answered: a retry counts it
     assert len(mock_anthropic.requests_to("/v1/messages")) == 1  # no retry of a stream that began
 
 
@@ -302,7 +303,9 @@ def test_depth_unsupported_down_to_low_is_an_error(env: LoopEnv, mock_anthropic:
     )
     events = ask(env, "Сводка по проекту")
     assert of(events, "error")[0]["item"]["code"] == "assistant_api_error"
-    assert [b["output_config"]["effort"] for b in messages_sent(mock_anthropic)] == ["medium", "low"]
+    # the ladder ends with no depth at all; nothing is remembered: the model refused every try
+    assert [b.get("output_config", {}).get("effort") for b in messages_sent(mock_anthropic)] == ["medium", "low", None]
+    assert loop.EFFORT_CAP == {}
 
 
 @pytest.mark.parametrize(("stop", "code"), [("max_tokens", "max_tokens"), ("refusal", "refusal")])

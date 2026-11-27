@@ -321,7 +321,8 @@ def _period(acc: dict[str, dict[str, int]]) -> dict[str, Any]:
 
 
 def _view(a: dict[str, int]) -> dict[str, Any]:
-    # a period of unpriced calls only has no cost at all (null), not a zero
+    # a period of unpriced calls only has no cost at all (null), not a zero; a period without requests costs a true
+    # $0 (e23-api §4: the sum of the known; the window shows null as «цена неизвестна», which would be wrong there)
     cost = None if a["requests"] and a["unpriced"] == a["requests"] else a["cost_nano"] / _NANO
     return {
         "requests": a["requests"],

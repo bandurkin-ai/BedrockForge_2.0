@@ -31,15 +31,14 @@ from __future__ import annotations
 
 import logging
 import threading
-import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
 from bf_core.api.errors import ApiError
 
-from . import data_tools, errors, prices, prompt, tools, usage, window
+from . import data_tools, errors, prices, prompt, tools, window
 from . import store_parts as sp
-from .loop_call import CallResult, classify, is_effort_refusal, request_params, stream_message
+from .loop_call import CallResult, classify, effort_refusal, request_params, stream_message
 from .loop_events import (
     EFFORT_CAP,
     LoopEnv,
@@ -47,6 +46,7 @@ from .loop_events import (
     Tally,
     assistant_item,
     capped,
+    card_of,
     clip,
     error_item,
     last_uses,
@@ -54,6 +54,8 @@ from .loop_events import (
     merge_items,
     new_id,
     notice_item,
+    pending_of,
+    record_call,
     resolved,
     set_of,
     status_of,
@@ -84,13 +86,19 @@ def start_turn(env: LoopEnv, body: TurnBody) -> Segment:
     events of the returned segment."""
     if not env.connection.is_connected():
         raise errors.refuse("assistant_not_connected")
+    env.segments.ensure_room()  # before a new dialog is made for nothing
     api_tools, known = tools_of(list(body.tools))
     context = body.context.model_dump(mode="json")
     r = resolved(env.connection)
+    set_id = set_of(context)
     loaded: Loaded | None = None
     if body.dialog_id is None:
         head = env.dialogs.create(make_title(body.text))
-        seg = env.segments.start(head["id"])
+        try:
+            seg = env.segments.start(head["id"])
+        except BaseException:  # the limit of turns was reached by another request meanwhile
+            _forget(env, head["id"])
+            raise
     else:
         seg = env.segments.start(body.dialog_id)
         try:
@@ -102,7 +110,7 @@ def start_turn(env: LoopEnv, body: TurnBody) -> Segment:
         head = loaded.head
     plan = Plan(
         "question", body.text, [], context, api_tools, known, r.model, r.effort, head, loaded, loaded is None,
-        pending=(loaded.meta.get("pending") if loaded else None), set_id=set_of(context),
+        pending=(loaded.meta.get("pending") if loaded else None), set_id=set_id,
     )  # fmt: skip
     return _launch(env, seg, plan)
 
@@ -112,6 +120,9 @@ def start_continue(env: LoopEnv, dialog_id: str, body: ToolResultsBody) -> Segme
     if not env.connection.is_connected():
         raise errors.refuse("assistant_not_connected")
     api_tools, known = tools_of(list(body.tools))
+    context = body.context.model_dump(mode="json")
+    r = resolved(env.connection)
+    set_id = set_of(context)
     seg = env.segments.start(dialog_id)
     try:
         loaded = env.dialogs.read(dialog_id)
@@ -127,11 +138,9 @@ def start_continue(env: LoopEnv, dialog_id: str, body: ToolResultsBody) -> Segme
     except BaseException:
         env.segments.release(seg)
         raise
-    context = body.context.model_dump(mode="json")
-    r = resolved(env.connection)
     plan = Plan(
         "continue", None, list(body.results), context, api_tools, known, r.model, r.effort, loaded.head, loaded, False,
-        pending=pending, set_id=set_of(context), rounds=int(pending.get("rounds") or 0),
+        pending=pending, set_id=set_id, rounds=int(pending.get("rounds") or 0),
     )  # fmt: skip
     return _launch(env, seg, plan)
 
@@ -149,9 +158,17 @@ def read_dialog(env: LoopEnv, dialog_id: str) -> dict[str, Any]:
     return dialog
 
 
-def _launch(env: LoopEnv, seg: Segment, plan: Plan) -> Segment:
-    turn = _Turn(env, seg, plan)
+def _forget(env: LoopEnv, dialog_id: str) -> None:
+    """A dialog made for a question that did not start: an empty one is not listed, still it is not left behind."""
     try:
+        env.dialogs.delete(dialog_id)
+    except Exception:  # noqa: BLE001 - an empty dialog is purged later anyway
+        log.debug("assistant: an empty dialog was not removed", exc_info=True)
+
+
+def _launch(env: LoopEnv, seg: Segment, plan: Plan) -> Segment:
+    try:
+        turn = _Turn(env, seg, plan)  # nothing may raise after the segment is taken but the release
         threading.Thread(target=turn.run, name=f"assistant-{seg.id}", daemon=True).start()
     except BaseException:
         env.segments.release(seg)
@@ -242,7 +259,7 @@ class _Turn:
         if p.kind == "question":
             assert p.text is not None
             blocks: list[dict[str, Any]] = []
-            if p.pending:  # решение 23, № 131: a question closes a `pending` nobody answered
+            if last_uses(self.history):  # решение 23, № 131: a question closes the calls nobody answered
                 blocks += self._result_blocks({}, errors.TEXT_SKIPPED, self.held_items)
             blocks += prompt.user_content(p.text, p.context)
             item = user_item(p.text)
@@ -276,29 +293,9 @@ class _Turn:
             out.append(tool_result(tid, text or (EMPTY_OK if ok else EMPTY_ERROR), not ok))
             entry = ui.get(tid)
             if entry is not None:
-                cards.append(self._card_of(entry, status_of(ok, text), text, res.title if res else None))
+                shown = self.plan.loaded.items if self.plan.loaded else []
+                cards.append(card_of(entry, status_of(ok, text), text, res.title if res else None, shown))
         return out
-
-    def _card_of(self, entry: dict[str, Any], status: str, text: str, title: str | None) -> dict[str, Any]:
-        old: dict[str, Any] = next(
-            (
-                i
-                for i in reversed(self.plan.loaded.items if self.plan.loaded else [])
-                if i.get("id") == entry["item_id"]
-            ),
-            {},
-        )
-        return tool_item(
-            item_id=entry["item_id"],
-            tool_use_id=entry["tool_use_id"],
-            name=entry["name"],
-            side="ui",
-            title=title or old.get("title") or entry["name"],
-            args=entry.get("args") or {},
-            status=status,
-            summary=text,
-            at=old.get("at"),
-        )
 
     # --- the cycle ------------------------------------------------------------------------------------------------
 
@@ -326,6 +323,7 @@ class _Turn:
     def _call(self) -> CallResult | None:
         """One call of the API, with the retries of the depth and of the window; None - the segment ends in an error."""
         ctx_retried = False
+        learned: str | None = None  # a depth that was accepted after a refusal: remembered once a call went through
         while True:
             self.calls += 1
             try:
@@ -347,6 +345,8 @@ class _Turn:
             item_id = new_id("a")
             res = stream_message(client, params, self.seg, item_id, self.plan.model)
             self.item_id = item_id
+            if learned is not None and (res.started or (res.error is None and not res.cancelled)):
+                EFFORT_CAP[self.plan.model] = learned
             if res.error is None and not res.cancelled:
                 self.conn.note_call(None)
                 if window.is_context_exceeded(stop_reason=res.stop_reason):
@@ -364,9 +364,11 @@ class _Turn:
             failure = res.error
             assert failure is not None
             self.conn.note_call(failure)
-            lower = lower_effort(self.effort) if is_effort_refusal(failure) else None
+            refusal = effort_refusal(failure, self.effort)
+            lower = lower_effort(self.effort, refusal) if refusal else None
             if lower is not None:
-                self.effort = EFFORT_CAP[self.plan.model] = lower
+                self.effort = learned = lower
+                self.calls -= 1  # a refused request gave nothing: it is not one of the 25 calls
                 continue
             if window.is_context_exceeded(error=failure) and not ctx_retried and self._shrink():
                 ctx_retried = True
@@ -401,29 +403,12 @@ class _Turn:
 
     def _record(self, res: CallResult) -> None:
         """The cost of the call: the usage file, the totals, the event `usage`."""
-        u = res.usage
-        if not any(u.values()):
-            return
-        cost = prices.cost(res.model, u["input"], u["output"], u["cache_read"], u["cache_write"])
-        long = prices.is_long(res.model, u["input"], u["cache_read"], u["cache_write"])
-        try:
-            usage.record(
-                self.conn.data_dir,
-                model=res.model,
-                input=u["input"],
-                output=u["output"],
-                cache_read=u["cache_read"],
-                cache_write=u["cache_write"],
-                dialog_uid=self.head.get("uid"),
-                project_uid=getattr(self.project, "uid", None),
-            )
-        except (OSError, ValueError):  # a lost line of the account must not break the turn
-            log.warning("assistant: the line of usage was not written", exc_info=True)
-        self.tally.add(u, cost)
-        if res.model not in self.s.models:
-            self.s.models.append(res.model)
-        call = {"model": res.model, **u, "cost_usd": cost, "long": long}
-        self._emit("usage", {"call": call, "dialog": self.tally.dialog()})
+        data = record_call(
+            res, data_dir=self.conn.data_dir, head=self.head, project=self.project, tally=self.tally,
+            models=self.s.models,
+        )  # fmt: skip
+        if data is not None:
+            self._emit("usage", data)
 
     def _stopped(self, res: CallResult | None) -> None:
         """The user stopped the segment: the partial text stays, the rest of the answer goes (решение 7)."""
@@ -443,10 +428,10 @@ class _Turn:
             return False
         if kind == "interrupted":
             self._record(res)
-            if res.text:
-                self._partial_item(res, interrupted=True)
-                self.history.append({"role": "assistant", "content": [{"type": "text", "text": res.text}]})
-                self._consume()
+            if res.text:  # the text stays in the ribbon; the history of the API does not take it (решение 6: a retry
+                self._partial_item(res, interrupted=True)  # sends the same request) unless the pairing needs it
+                if self.s.consumed:  # an earlier round of this question is in the history: keep the roles in turn
+                    self.history.append({"role": "assistant", "content": [{"type": "text", "text": res.text}]})
             self._fail("assistant_interrupted")
             return False
         self._record(res)
@@ -500,22 +485,7 @@ class _Turn:
         self.items.extend(card for _, card in ui_calls)
         self.history.append({"role": "assistant", "content": res.content})
         if ui_calls:
-            self.s.pending = {
-                "id": "p-" + uuid.uuid4().hex[:16],
-                "created_at": sp.stamp(),
-                "tools": [
-                    {
-                        "tool_use_id": u["id"],
-                        "name": u["name"],
-                        "command": None,
-                        "args": u.get("input") or {},
-                        "item_id": c["id"],
-                    }
-                    for u, c in ui_calls
-                ],
-                "data_results": list(done.values()),
-                "rounds": self.calls,
-            }
+            self.s.pending = pending_of(ui_calls, done, self.calls)
             self.s.state = "pending"
             return False
         self.history.append({"role": "user", "content": [done[str(u["id"])] for u in uses]})
@@ -541,15 +511,16 @@ class _Turn:
         pending = s.pending
         messages = self.history[self.base_len :]
         meta_state = "error" if s.state == "error" else "idle"
+        questions = 1 if p.kind == "question" else 0
         if not s.consumed and s.state == "error":  # nothing was answered: the history stays as it was, a retry is clean
-            messages = []
+            messages, questions = [], 0  # and the question is not counted (nor `last_at` moved): a retry counts it
             pending = p.pending
             meta_state = "error"
             self.items = [i for i in self.items if i["kind"] != "tool"]
         try:
             head = self.env.dialogs.append(
                 self.dialog_id, messages, self.items,
-                questions=1 if p.kind == "question" else 0,
+                questions=questions,
                 usage=self.tally.segment_usage(), models=s.models, prices_version=prices.PRICES_VERSION,
                 state=meta_state, pending=pending,
             )  # fmt: skip

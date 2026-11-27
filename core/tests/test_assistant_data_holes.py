@@ -129,6 +129,19 @@ def test_card_of_a_hole(demo) -> None:  # type: ignore[no-untyped-def]
     assert call(demo, "data_hole", {"hole_id": "dh-012"}, set_id=SET_ID)[1]["hole_id"] == "DH-012"  # other case
 
 
+def test_a_stale_audit_is_marked_in_the_list_and_the_card(fresh) -> None:  # type: ignore[no-untyped-def]
+    from bf_core.db.schema import objects
+
+    _, page = call(fresh, "data_holes", {"set_id": SET_ID, "limit": 3})
+    assert "stale" not in page  # the audit of the demo is current
+    with dialect.write_tx(fresh.engine) as conn:
+        conn.execute(sa.update(objects).where(objects.c.id == SET_ID).values(version=objects.c.version + 1))
+    _, page = call(fresh, "data_holes", {"set_id": SET_ID, "limit": 3})
+    assert page["stale"] is True and page["note"].startswith("Результат аудита устарел")
+    _, card = call(fresh, "data_hole", {"set_id": SET_ID, "hole_id": "DH-012"})
+    assert card["stale"] is True and card["note"] == page["note"] and card["findings"]
+
+
 def test_a_hole_that_is_not_there(demo) -> None:  # type: ignore[no-untyped-def]
     res, _ = call(demo, "data_hole", {"set_id": SET_ID, "hole_id": "DH-0999"})
     assert res.is_error and "«DH-0999» не найдена" in res.text and "Похожие: DH-0" in res.text
