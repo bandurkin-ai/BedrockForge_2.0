@@ -6,6 +6,7 @@ A real process of `tests/assistant/fake_ant.py` (a launcher in `BF_ANT_PATH`) an
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 from pathlib import Path
@@ -16,7 +17,7 @@ import pytest
 from bf_core.api.errors import ApiError
 from bf_core.assistant import login as login_mod
 from bf_core.assistant.connection import Connection
-from bf_core.assistant.login import LoginManager, ant_available, ant_path
+from bf_core.assistant.login import OUTPUT_LIMIT, LoginManager, _Session, ant_available, ant_path
 from tests.assistant import conftest as fx
 from tests.assistant.fake_ant import DEFAULT_CODE
 from tests.assistant.mock_anthropic import (
@@ -104,6 +105,50 @@ def test_ant_gets_its_own_profile_folder_and_no_credentials_of_the_machine(
     assert env["ANTHROPIC_CONFIG_DIR"] == str(tmp_path / "x")
     assert not {"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_PROFILE", "ANTHROPIC_BASE_URL"} & set(env)
     assert env["NO_COLOR"] == "1" and env["TERM"] == "dumb"
+
+
+def test_ant_gets_only_an_allow_list_of_the_environment(manager: LoginManager, monkeypatch: pytest.MonkeyPatch) -> None:
+    for name, value in (("MY_SECRET_TOKEN", "x"), ("GITHUB_TOKEN", "y"), ("BF_CORE_TOKEN", "z"), ("LC_ALL", "C")):
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("HTTPS_PROXY", "http://127.0.0.1:1")
+    env = manager._child_env(Path("/x"))
+    assert not {"MY_SECRET_TOKEN", "GITHUB_TOKEN", "BF_CORE_TOKEN"} & set(env)
+    assert env["LC_ALL"] == "C" and env["HTTPS_PROXY"] == "http://127.0.0.1:1" and "PATH" in env
+
+
+def test_ant_path_is_absolute(ant: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(ant.parent)
+    found = ant_path({"BF_ANT_PATH": ant.name})
+    assert found is not None and Path(found).is_absolute() and Path(found) == ant.resolve()
+
+
+def test_the_output_of_ant_is_bounded(tmp_path: Path) -> None:
+    session = _Session(tmp_path, 10.0)
+
+    class _Stream:
+        def __init__(self) -> None:
+            self.chunks = [b"x" * 4096] * 100 + [b"tail", b""]
+
+        def read1(self, n: int) -> bytes:
+            return self.chunks.pop(0)
+
+    session._pump(_Stream())
+    assert len(session.output) <= OUTPUT_LIMIT and session.output.endswith("tail")
+
+
+def test_stale_profile_folders_are_swept(conn: Connection, ant: Path, tmp_base: Path) -> None:
+    old, fresh, other = tmp_base / "ant-old", tmp_base / "ant-fresh", tmp_base / "keep-me"
+    for folder in (old, fresh, other):
+        (folder / "credentials").mkdir(parents=True)
+        (folder / "credentials" / "bedrockforge.json").write_text('{"refresh_token": "r"}')
+    long_ago = time.time() - 3600
+    os.utime(old, (long_ago, long_ago))
+    m = LoginManager(conn, base_dir=tmp_base, url_timeout=10.0, finish_timeout=10.0)
+    started = m.start()  # the first start removes what is older than a login can live
+    assert not old.exists() and fresh.exists() and other.exists()
+    assert m.sweep_stale(everything=True) == 1 and not fresh.exists() and other.exists()  # not the live folder
+    assert len(_folders(tmp_base)) == 2
+    m.cancel(started.login_id)
 
 
 def test_the_default_folder_is_in_the_local_profile(

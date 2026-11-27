@@ -525,8 +525,11 @@ if (!app.requestSingleInstanceLock()) {
     if (quitting) return;
     e.preventDefault();
     quitting = true;
-    claude.stop();
-    void core.stop().finally(() => app.exit(0));
+    // the last rotated token of the account is sealed before the core goes (at most 2 s)
+    void claude
+      .closing(2000)
+      .then(() => core.stop())
+      .finally(() => app.exit(0));
   });
   void app.whenReady().then(boot);
 }

@@ -41,6 +41,7 @@ from typing import Any, Protocol
 
 import sqlalchemy as sa
 
+from bf_core.api.errors import ApiError
 from bf_core.db import dialect
 from bf_core.db.schema import objects
 from bf_core.storage.blobs import BlobStore, drop_owner
@@ -136,10 +137,10 @@ class Dialogs:
             raise sp.not_found()
         return row
 
-    def _head(self, row: Any, busy: Collection[str] = ()) -> dict[str, Any]:
+    def _head(self, row: Any, busy: Collection[str] = (), meta: Mapping[str, Any] | None = None) -> dict[str, Any]:
         assert self.project is not None
         uid = self.project.uid
-        return sp.head_of(str(row.id), str(row.name), row.meta, project_uid=uid, temporary=False, busy=busy)
+        return sp.head_of(str(row.id), str(row.name), meta or row.meta, project_uid=uid, temporary=False, busy=busy)
 
     @staticmethod
     def _temp_head(d: TempDialog, busy: Collection[str] = ()) -> dict[str, Any]:
@@ -231,7 +232,7 @@ class Dialogs:
         project = self._need(write=True)
         store = self._store()
         with dialect.read_tx(project.engine) as conn:
-            meta = self._row(conn, key).meta
+            meta = sp.check_meta(self._row(conn, key).meta)  # a dialog of another person's project may be forged
         seq = len(meta["parts"]) + 1
         enc = sp.encode(sp.part_of(seq, at, messages, items))
         sp.check_room(meta, enc.raw)
@@ -239,10 +240,11 @@ class Dialogs:
         try:
             with dialect.write_tx(project.engine) as conn:
                 row = self._row(conn, key)
-                if len(row.meta["parts"]) != seq - 1:
+                current = sp.check_meta(row.meta)
+                if len(current["parts"]) != seq - 1:
                     raise sp.busy()
                 sha = store.commit_staged(conn, staged, media_type=MEDIA, owner_kind=OWNER, owner_id=key, role=ROLE)
-                grown = sp.grown(row.meta, sha, enc.raw, **kwargs)
+                grown = sp.grown(current, sha, enc.raw, **kwargs)
                 conn.execute(
                     sa.update(objects)
                     .where(objects.c.id == key)
@@ -275,21 +277,17 @@ class Dialogs:
                 d = self._temp(key)
                 head, meta, blobs = self._temp_head(d, busy), copy.deepcopy(d.meta), [e.blob for e in d.parts]
             note = self.note
+            decoded = [sp.decode_sized(blob) for blob in blobs]
         else:
             project = self._need(write=False)
             with dialect.read_tx(project.engine) as conn:
                 row = self._row(conn, key)
-            head, meta = self._head(row, busy), row.meta
-            store, blobs, note = self._store(), [], None
-            for sha in meta["parts"]:
-                try:
-                    blobs.append(store.read_bytes(sha))
-                except OSError:
-                    raise sp.broken() from None
+            meta = sp.check_meta(row.meta)
+            head, note = self._head(row, busy, meta), None
+            decoded = [(part, raw) for _blob, part, raw in sp.load_parts(self._store(), meta["parts"], meta["bytes"])]
         messages: list[Any] = []
         items: list[Any] = []
-        for blob in blobs:
-            part = sp.decode(blob)
+        for part, _raw in decoded:
             messages += part.get("messages") or []
             items += part.get("items") or []
         return Loaded(head, messages, items, sp.public_pending(meta), note, meta)
@@ -310,17 +308,34 @@ class Dialogs:
                         objects.c.kind == KIND, objects.c.state == "ready"
                     )
                 ).all()
-            out += [(r.meta["last_at"], int(r.id), r) for r in rows if not sp.is_empty(r.meta)]
+            for r in rows:
+                meta, broken = self._listed_meta(r)
+                if not sp.is_empty(meta):
+                    out.append((meta["last_at"], int(r.id), (r, meta, broken)))
         if not self.persistent:
             out += [(d.meta["last_at"], d.seq, d) for d in self.temp.all() if not sp.is_empty(d.meta)]
         return out
+
+    @staticmethod
+    def _listed_meta(row: Any) -> tuple[dict[str, Any], bool]:
+        """The meta of a listed dialog; a forged one (a `.bfggis` of another person) is shown as a dialog in the state
+        `error` that can be deleted, it does not break the list."""
+        try:
+            return sp.check_meta(row.meta), False
+        except ApiError:
+            meta = sp.new_meta(f"broken-{row.id}", "1970-01-01T00:00:00Z")
+            meta.update(state="error", questions=1)
+            return meta, True
 
     def list(self, offset: int = 0, limit: int = 50, busy: Collection[str] = ()) -> dict[str, Any]:
         """`GET /dialogs`: {total, items [DialogHead]}, the newest question first; with a project that keeps the new
         dialogs — those of the project, otherwise the temporary ones (and those the read-only project holds)."""
         entries = sorted(self._entries(), key=lambda e: (e[0], e[1]), reverse=True)
         page = entries[max(offset, 0) : max(offset, 0) + max(limit, 0)]
-        heads = [self._temp_head(e[2], busy) if isinstance(e[2], TempDialog) else self._head(e[2], busy) for e in page]
+        heads = [
+            self._temp_head(e[2], busy) if isinstance(e[2], TempDialog) else self._head(e[2][0], busy, e[2][1])
+            for e in page
+        ]
         return {"total": len(entries), "items": heads}
 
     def last(self, busy: Collection[str] = ()) -> dict[str, Any] | None:
@@ -386,13 +401,9 @@ class Dialogs:
             store = self._store()
             with dialect.read_tx(self.project.engine) as conn:  # type: ignore[union-attr]
                 row = self._row(conn, key)
-            title, meta, parts = str(row.name), copy.deepcopy(row.meta), []
-            for sha in meta["parts"]:
-                try:
-                    blob = store.read_bytes(sha)
-                except OSError:
-                    raise sp.broken() from None
-                parts.append(Encoded(blob, sp.raw_size(blob)))
+            meta = sp.check_meta(row.meta)
+            title = str(row.name)
+            parts = [Encoded(blob, raw) for blob, _part, raw in sp.load_parts(store, meta["parts"], meta["bytes"])]
             meta["uid"] = sp.new_meta()["uid"]
         meta["parts"] = [hashlib.sha256(e.blob).hexdigest() for e in parts]
         meta["bytes"] = sum(e.raw for e in parts)

@@ -34,6 +34,7 @@ from __future__ import annotations
 import copy
 import json
 import math
+import re
 import threading
 import uuid
 from collections.abc import Collection, Mapping, Sequence
@@ -45,6 +46,7 @@ import zstandard
 
 from bf_core.api.errors import ApiError
 from bf_core.db import dialect
+from bf_core.storage.blobs import BlobStore
 
 from .errors import refuse
 
@@ -65,6 +67,9 @@ TOKEN_KEYS = ("input", "output", "cache_read", "cache_write")
 NOTE_NO_PROJECT = "Диалог не сохранится: проект не открыт"
 NOTE_READ_ONLY = "Диалог не сохранится: проект открыт только для просмотра"
 TEMP_PREFIX = "t-"
+MAX_PENDING = 4 << 20  # the JSON of `meta.pending` (the commands waiting for the window)
+BLOB_SLACK = 1024  # a part file may be this much larger than the JSON in it (the frame headers)
+_SHA = re.compile(r"^[0-9a-f]{64}$")
 
 
 # --- errors -----------------------------------------------------------------------------------------------------------
@@ -153,15 +158,49 @@ def encode(part: Mapping[str, Any]) -> Encoded:
     return Encoded(zstandard.ZstdCompressor(level=ZSTD_LEVEL).compress(raw), len(raw))
 
 
-def decode(blob: bytes) -> dict[str, Any]:
+def decode_sized(blob: bytes, limit: int = MAX_BYTES) -> tuple[dict[str, Any], int]:
+    """(the part, the size of its JSON); a JSON larger than `limit` is 409 `assistant_dialog_broken`."""
+    if limit <= 0:
+        raise broken()
+    limit = min(limit, MAX_BYTES)
     try:
-        raw = zstandard.ZstdDecompressor().decompress(blob, max_output_size=MAX_BYTES)
+        # `max_output_size` is ignored by the library when the frame header states a size: the header is checked here
+        if zstandard.frame_content_size(blob) > limit:
+            raise broken()
+        raw = zstandard.ZstdDecompressor().decompress(blob, max_output_size=limit)
         part = json.loads(raw)
-    except (zstandard.ZstdError, ValueError):  # a cut file, a flipped bit, a part above the limit
+    except (zstandard.ZstdError, ValueError, RecursionError):  # a cut file, a flipped bit, a part above the limit
         raise broken() from None
     if not isinstance(part, dict):
         raise broken()
-    return part
+    for key in ("messages", "items"):
+        if not isinstance(part.get(key) or [], list):
+            raise broken()
+    return part, len(raw)
+
+
+def decode(blob: bytes) -> dict[str, Any]:
+    return decode_sized(blob)[0]
+
+
+def load_parts(store: BlobStore, shas: Sequence[str], limit: int) -> list[tuple[bytes, dict[str, Any], int]]:
+    """(file, part, size of the JSON) of the parts of a dialog of a project. The file of a `.bfggis` of another
+    person is not trusted: a wrong name, a missing or oversized file, or JSON beyond `limit` (`meta.bytes`) in all is
+    409 `assistant_dialog_broken`; the sum of the sizes is counted while reading."""
+    out: list[tuple[bytes, dict[str, Any], int]] = []
+    left = limit
+    for sha in shas:
+        try:
+            path = store.path_of(sha)
+            if path.stat().st_size > left + BLOB_SLACK:
+                raise broken()
+            blob = store.read_bytes(sha)
+        except (OSError, ValueError):
+            raise broken() from None
+        part, size = decode_sized(blob, left)
+        left -= size
+        out.append((blob, part, size))
+    return out
 
 
 def raw_size(blob: bytes) -> int:
@@ -211,10 +250,80 @@ def new_meta(uid: str | None = None, at: str | None = None) -> dict[str, Any]:
     }
 
 
+def _bad() -> ValueError:
+    return ValueError("meta")
+
+
+def _text(value: Any, limit: int = 64) -> str:
+    if not isinstance(value, str) or not value or len(value) > limit:
+        raise _bad()
+    return value
+
+
+def check_meta(meta: Any) -> dict[str, Any]:
+    """The meta of a dialog of a project, which may come from a `.bfggis` of another person: the shape, the version, the
+    parts (≤ 400 names of 64 hex signs) and the size (≤ 32 MiB) are checked; a copy with only the known keys is
+    returned. Anything else is 409 `assistant_dialog_broken` (not a 500)."""
+    try:
+        return _check_meta(meta)
+    except (KeyError, TypeError, ValueError, AttributeError, OverflowError):
+        raise broken() from None
+
+
+def _check_meta(meta: Any) -> dict[str, Any]:
+    if not isinstance(meta, Mapping) or meta.get("v") != META_VERSION:
+        raise _bad()
+    parts, size = meta["parts"], meta["bytes"]
+    if not isinstance(parts, list) or len(parts) > MAX_PARTS:
+        raise _bad()
+    if not all(isinstance(x, str) and _SHA.match(x) for x in parts):
+        raise _bad()
+    if isinstance(size, bool) or not isinstance(size, int) or not 0 <= size <= MAX_BYTES:
+        raise _bad()
+    cost = meta.get("cost_usd")
+    if cost is not None and (isinstance(cost, bool) or not isinstance(cost, int | float) or not math.isfinite(cost)):
+        raise _bad()
+    models = meta.get("models") or []
+    if not isinstance(models, list) or len(models) > 64:
+        raise _bad()
+    if not all(isinstance(m, str) and len(m) <= 200 for m in models):
+        raise _bad()
+    state = meta.get("state") or "idle"
+    tokens = meta.get("tokens") or {}
+    if state not in STATES or not isinstance(tokens, Mapping):
+        raise _bad()
+    pending = meta.get("pending") or None
+    if pending is not None:
+        if not isinstance(pending, Mapping) or not isinstance(pending.get("id"), str):
+            raise _bad()
+        if not isinstance(pending.get("tools") or [], list) or not isinstance(pending.get("data_results") or [], list):
+            raise _bad()
+        if len(json.dumps(pending, default=str)) > MAX_PENDING:
+            raise _bad()
+        pending = copy.deepcopy(dict(pending))
+    prices_version = meta.get("prices_version")
+    return {
+        "v": META_VERSION,
+        "uid": _text(meta["uid"]),
+        "created_at": _text(meta["created_at"]),
+        "last_at": _text(meta["last_at"]),
+        "questions": _count(meta.get("questions")),
+        "cost_usd": None if cost is None else float(cost),
+        "cost_unknown": bool(meta.get("cost_unknown")),
+        "tokens": {k: _count(tokens.get(k)) for k in TOKEN_KEYS},
+        "models": list(models),
+        "state": state,
+        "pending": pending,
+        "parts": list(parts),
+        "bytes": size,
+        "prices_version": None if prices_version is None else _text(prices_version, 200),
+    }
+
+
 def _count(value: Any) -> int:
     try:
         return max(int(value or 0), 0)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return 0
 
 

@@ -47,8 +47,14 @@ def test_a_body_over_8_mb_is_413(demo) -> None:  # type: ignore[no-untyped-def]
 def test_the_estimation_and_the_graph_are_limited_too(pclient) -> None:  # type: ignore[no-untyped-def]
     pad = b'{"pad": "' + b"x" * bl.BODY_LIMIT + b'"}'
     deep = b'{"pad": ' + b"[" * 5000 + b"]" * 5000 + b"}"
-    for url in (f"{API}/geostat/estimate/run", f"{API}/geostat/estimate/inspect", f"{API}/geostat/estimations",
-                f"{API}/geostat/estimation-plans", f"{API}/lineage/status", f"{API}/lineage/rebuild"):
+    for url in (
+        f"{API}/geostat/estimate/run",
+        f"{API}/geostat/estimate/inspect",
+        f"{API}/geostat/estimations",
+        f"{API}/geostat/estimation-plans",
+        f"{API}/lineage/status",
+        f"{API}/lineage/rebuild",
+    ):
         r = post(pclient, url, pad)
         assert r.status_code == 413 and r.json()["code"] == "request_too_large", (url, r.status_code)
         r = post(pclient, url, deep)
@@ -58,8 +64,12 @@ def test_the_estimation_and_the_graph_are_limited_too(pclient) -> None:  # type:
 def test_the_simulation_is_limited_too(pclient) -> None:  # type: ignore[no-untyped-def]
     pad = b'{"pad": "' + b"x" * bl.BODY_LIMIT + b'"}'
     deep = b'{"pad": ' + b"[" * 5000 + b"]" * 5000 + b"}"
-    for url in (f"{API}/geostat/simulations", f"{API}/geostat/simulate/run", f"{API}/geostat/simulate/post",
-                f"{API}/geostat/simulations/1/post"):
+    for url in (
+        f"{API}/geostat/simulations",
+        f"{API}/geostat/simulate/run",
+        f"{API}/geostat/simulate/post",
+        f"{API}/geostat/simulations/1/post",
+    ):
         r = post(pclient, url, pad)
         assert r.status_code == 413 and r.json()["code"] == "request_too_large", (url, r.status_code)
         r = post(pclient, url, deep)
@@ -103,6 +113,16 @@ def test_depth_and_other_paths() -> None:
     assert bl.depth_over(b'{"a": [1, [2, {"b": 3}]]}', 3)
     assert not bl.depth_over(b'"[[[[\\"[[["', 1)  # an escaped quote inside a string
     assert not bl.depth_over(b"[]" * 1000, 1) and bl.depth_over(b"[[]]", 1)
+
+
+def test_depth_is_linear_on_a_pathological_body() -> None:
+    import time
+
+    started = time.perf_counter()
+    for body in (b'"' + b'\\"' * 80_000, b'"' * 160_000, b"\\" * 160_000, b'["' + b'\\\\"' * 40_000 + b"]" * 100):
+        assert isinstance(bl.depth_over(body, 4), bool)
+    assert time.perf_counter() - started < 1.0
+    assert bl.depth_over(b'"\\\\"[[[[[', 4) and not bl.depth_over(b'"\\\\" "[[[[[" [[', 4)  # `\\"` closes the string
 
 
 def test_other_routes_are_not_limited(pclient) -> None:  # type: ignore[no-untyped-def]

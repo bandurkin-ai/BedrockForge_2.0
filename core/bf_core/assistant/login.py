@@ -52,6 +52,16 @@ URL_TIMEOUT_S = 30.0  # the address of the sign-in must appear in the output
 TOTAL_TIMEOUT_S = 600.0  # the whole login: start -> finish
 FINISH_TIMEOUT_S = 60.0  # `ant` after the code: exchange of the code, writing of the profile
 CLEANUP_TRIES = 20
+OUTPUT_LIMIT = 64 * 1024  # of the output of `ant` only the tail is kept
+# The environment of `ant` is an allow-list: nothing else of the core's environment (tokens, keys, paths) reaches it.
+CHILD_ENV_NAMES = frozenset(
+    {
+        "PATH", "SYSTEMROOT", "SYSTEMDRIVE", "TEMP", "TMP", "TMPDIR", "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA",
+        "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "REQUESTS_CA_BUNDLE", "NODE_EXTRA_CA_CERTS", "LANG", "NO_COLOR",
+        "TERM",
+    }
+)  # fmt: skip
+CHILD_ENV_PREFIXES = ("LC_", "SSL_CERT_", "FAKE_ANT_")  # FAKE_ANT_*: the test double of `ant` (tests/assistant)
 
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 _URL_DONE = re.compile(r"https://[^\s<>\"']+(?=\s)")  # the address is complete when whitespace follows
@@ -62,7 +72,7 @@ def ant_path(env: Mapping[str, str] | None = None) -> str | None:
     """The path of `ant` from `BF_ANT_PATH` (the shell sets it to `resources\\ant\\ant.exe`) if the file exists."""
     value = (os.environ if env is None else env).get(ENV_ANT_PATH)
     if value and Path(value).is_file():
-        return value
+        return str(Path(value).resolve())  # absolute: `ant` runs with `cwd` = its profile folder
     return None
 
 
@@ -87,7 +97,8 @@ def _remove_tree(folder: Path) -> None:
         if not folder.exists():
             return
         time.sleep(0.05 * (attempt + 1))
-    log.warning("assistant login: the profile folder could not be removed")
+    # the next start of the core (or of a login) removes it: `sweep_stale`; the name holds no secret
+    log.warning("assistant login: the profile folder %s could not be removed, it will be removed later", folder.name)
 
 
 class _Session:
@@ -116,7 +127,7 @@ class _Session:
                     break
                 text = decoder.decode(chunk)
                 with self.cond:
-                    self.output += text
+                    self.output = (self.output + text)[-OUTPUT_LIMIT:]
                     self.cond.notify_all()
         except (OSError, ValueError):
             pass
@@ -222,6 +233,7 @@ class LoginManager:
         self.url_timeout, self.total_timeout, self.finish_timeout = url_timeout, total_timeout, finish_timeout
         self._lock = threading.RLock()
         self._session: _Session | None = None
+        self._swept = False
 
     # ---- environment ----
     def _environ(self) -> Mapping[str, str]:
@@ -230,14 +242,43 @@ class LoginManager:
     def ant_available(self) -> bool:
         return ant_path(self._environ()) is not None
 
+    def _base(self) -> Path:
+        return self._base_dir or paths.local_app_dir() / "tmp"
+
     def _new_folder(self) -> Path:
-        base = self._base_dir or paths.local_app_dir() / "tmp"
+        base = self._base()
         base.mkdir(parents=True, exist_ok=True)
         return Path(tempfile.mkdtemp(prefix="ant-", dir=base))  # 0700 on POSIX; the name is random
 
+    def sweep_stale(self, *, everything: bool = False) -> int:
+        """Removes the `ant-*` profile folders left by a killed core or a failed removal (they hold the tokens in
+        the clear): all of them at the start of the core (`everything`), else those older than a login can live."""
+        try:
+            found = [p for p in self._base().glob("ant-*") if p.is_dir()]
+        except OSError:
+            return 0
+        with self._lock:
+            live = self._session.folder if self._session is not None else None
+        limit = time.time() - self.total_timeout
+        removed = 0
+        for folder in found:
+            try:
+                if folder == live or (not everything and folder.stat().st_mtime > limit):
+                    continue
+            except OSError:
+                continue
+            _remove_tree(folder)
+            removed += not folder.exists()
+        if removed:
+            log.info("assistant login: %d stale profile folder(s) removed", removed)
+        return removed
+
     def _child_env(self, folder: Path) -> dict[str, str]:
-        drop = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_PROFILE", "ANTHROPIC_BASE_URL")
-        env = {k: v for k, v in self._environ().items() if k not in drop}
+        env = {
+            k: v
+            for k, v in self._environ().items()
+            if k.upper() in CHILD_ENV_NAMES or k.upper().startswith(CHILD_ENV_PREFIXES)
+        }
         env["ANTHROPIC_CONFIG_DIR"] = str(folder)
         env.update(NO_COLOR="1", TERM="dumb", PYTHONUNBUFFERED="1")
         return env
@@ -275,6 +316,9 @@ class LoginManager:
             current = self._session
             if current is not None and current.state in ("starting", "finishing"):
                 raise errors.refuse("assistant_login_busy")
+            if not self._swept:
+                self._swept = True
+                self.sweep_stale()
             folder = self._new_folder()
             session = _Session(folder, self.total_timeout)
             previous, self._session = current, session
@@ -416,6 +460,8 @@ def get_login() -> LoginManager:
     with _manager_lock:
         if _manager is None:
             _manager = LoginManager(get_connection())
+            _manager.sweep_stale(everything=True)  # the start of the core: no login of this process exists yet
+            _manager._swept = True
         return _manager
 
 
