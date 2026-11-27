@@ -37,9 +37,13 @@ describe("the rows of the list (the real answer `dialogs_list`)", () => {
       expect(rows[i]).toContain(formatCost(h.cost_usd));
     }
     expect(formatWhen("2026-11-26T10:00:12Z", "UTC")).toMatch(/2026.*10:00/);
-    expect(rowsOf(view())[0]).toContain("5 вопросов");
-    expect(rowsOf(view())[0]).toContain("≈ $0,2143");
-    expect(rowsOf(view())[1]).toContain("1 вопрос<");
+    // The numbers come from the real answer of the core (they change when the samples are regenerated): the row shows them as they are.
+    const first = LIST.items[0];
+    expect(rowsOf(view())[0]).toContain(questionsText(first.questions));
+    expect(rowsOf(view())[0]).toContain(formatCost(first.cost_usd));
+    expect(rowsOf(view())[0]).toContain("≈ $");
+    expect(questionsText(1)).toBe("1 вопрос");
+    expect(questionsText(5)).toBe("5 вопросов");
   });
 
   it("the order of the core is kept (new first); the titles are texts, never markup", () => {
