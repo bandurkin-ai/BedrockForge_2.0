@@ -27,6 +27,7 @@ from bf_core.db import dialect
 from bf_core.resources import job as rj
 from bf_core.resources import store as st
 from tests.estapi_util import finish, read_only
+from tests.golden import assert_same
 from tests.resapi_world import API, BODY, RS, many_groups, model, ra  # noqa: F401 - the fixtures
 from tests.test_blocks_fields_store import add_fields
 
@@ -145,13 +146,11 @@ def compare_answers(c: Any, mid: int, base: dict[str, Any]) -> dict[str, Any]:
 
 
 def masked(x: Any) -> Any:
-    """The floats to 9 significant digits; what varies from run to run is left out."""
+    """What varies from run to run is left out; the floats are compared by `tests/golden.py`."""
     if isinstance(x, dict):
         return {k: masked(v) for k, v in x.items() if k not in SKIP}
     if isinstance(x, list):
         return [masked(v) for v in x]
-    if isinstance(x, float):
-        return float(f"{x:.9g}")
     return x
 
 
@@ -173,7 +172,7 @@ def test_answers_are_what_the_core_answers(ra) -> None:  # type: ignore[no-untyp
         write({"_note": NOTE, **built, **theirs})
         stored = json.loads(DATA.read_text(encoding="utf-8"))
     for key in KEYS:
-        assert masked(built[key]) == masked(stored[key]), f"{key}: BF_REGEN_RESOURCES=1, {Path(__file__).name}"
+        assert_same(masked(stored[key]), masked(built[key]), f"({key}: BF_REGEN_RESOURCES=1, {Path(__file__).name})")
     assert "настоящ" in stored["_note"]
 
 

@@ -24,8 +24,9 @@ from bf_core.blocks import check_job
 from bf_core.db import dialect
 from bf_core.db.schema import objects
 from bf_core.jobs.context import JobError
+from tests.golden import assert_same
 from tests.test_archive import wait_job
-from tests.test_blocks_fields_window_answers import answer, first_diff, masked
+from tests.test_blocks_fields_window_answers import answer, masked
 from tests.test_blocks_report import BL, put, rc  # noqa: F401
 
 DATA = Path(__file__).parent / "data" / "blocks" / "check_window_answers.json"
@@ -132,7 +133,7 @@ def test_check_window_answers_are_what_the_core_answers(rc) -> None:  # type: ig
         DATA.parent.mkdir(parents=True, exist_ok=True)
         DATA.write_text(json.dumps(built, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     a = json.loads(DATA.read_text(encoding="utf-8"))
-    assert masked(a) == masked(built), first_diff(masked(a), masked(built))
+    assert_same(masked(a), masked(built))
     ids = a["ids"]
     for key in ("clean", "dirty"):
         c = a[key]

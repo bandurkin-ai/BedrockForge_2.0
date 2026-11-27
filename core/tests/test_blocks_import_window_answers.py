@@ -23,6 +23,7 @@ from typing import Any
 import pytest
 
 from tests.formats.dm_builder import F, build
+from tests.golden import ROUNDED, assert_same
 from tests.test_archive import wait_job
 from tests.test_blocks_infer import ORIGIN, PARENT
 from tests.test_datamine_blocks import octree_dm
@@ -248,4 +249,5 @@ def test_the_answers_the_wizard_of_blocks_is_read_against(ic) -> None:  # type: 
     if REGEN:
         DATA.write_text(json.dumps(got, ensure_ascii=False, indent=1, sort_keys=True) + "\n", encoding="utf-8")
     saved = json.loads(DATA.read_text(encoding="utf-8"))
-    assert got == saved, "the answers of the core changed: regenerate with BF_REGEN_BLOCKS_IMPORT=1"
+    # the file keeps 9 digits (`masked`): another processor may fall on the other side of a rounding, 1e−8
+    assert_same(saved, got, "the answers of the core changed: regenerate with BF_REGEN_BLOCKS_IMPORT=1", rel=ROUNDED)

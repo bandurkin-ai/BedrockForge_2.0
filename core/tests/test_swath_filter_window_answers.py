@@ -23,6 +23,7 @@ import pytest
 
 from bf_core.stats import blocks_cache as bc
 from bf_core.stats import swath_sub as ss
+from tests.golden import assert_same
 from tests.test_filters_store import API, FL, cond, fc, group, make, wire  # noqa: F401
 from tests.test_swath_api import blocks, samples, settings, swath_routes  # noqa: F401
 from tests.test_swath_sub import DIV, GRID, put, rows_of
@@ -99,8 +100,6 @@ def masked(x: Any) -> Any:
         return {k: (type(v).__name__ if k in VARYING else masked(v)) for k, v in x.items()}
     if isinstance(x, list):
         return [masked(v) for v in x]
-    if isinstance(x, float):
-        return float(f"{x:.9g}")
     return x
 
 
@@ -121,7 +120,7 @@ def test_swath_filter_answers_are_what_the_core_answers(swath_routes, fc) -> Non
         DATA.parent.mkdir(parents=True, exist_ok=True)
         DATA.write_text(json.dumps(built, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
     stored = json.loads(DATA.read_text(encoding="utf-8"))
-    assert masked(stored) == masked(built)
+    assert_same(masked(stored), masked(built))
     # what the client relies on
     ok, bad = stored["ok"], stored["refused"]
     plain, filt = ok["filter"]["body"]["series"]

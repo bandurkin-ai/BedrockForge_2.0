@@ -24,6 +24,7 @@ import sqlalchemy as sa
 
 from bf_core.db import dialect
 from bf_core.db.schema import objects, settings
+from tests.golden import assert_same
 from tests.test_archive import wait_job
 from tests.test_blocks_fill_jobs import P, body
 from tests.test_blocks_report import API, BL, put, rc  # noqa: F401
@@ -367,13 +368,12 @@ def build(c: Any) -> dict[str, Any]:
 
 
 def masked(x: Any) -> Any:
-    """The floats to 9 significant digits (the same run gives the same bits; another machine may differ in the last)."""
+    """What varies from run to run is left out; the floats are compared by `tests/golden.py` (the last digits of another
+    machine differ)."""
     if isinstance(x, dict):
         return {k: masked(v) for k, v in x.items() if k not in SKIPPED}
     if isinstance(x, list):
         return [masked(v) for v in x]
-    if isinstance(x, float):
-        return float(f"{x:.9g}")
     if isinstance(x, str) and x.startswith("fld:"):
         return "fld:"  # the file of a field is named by its sha (the times of the file vary)
     return x
@@ -431,7 +431,7 @@ def test_fields_window_answers_are_what_the_core_answers(rc) -> None:  # type: i
         DATA.parent.mkdir(parents=True, exist_ok=True)
         DATA.write_text(json.dumps(built, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     a = json.loads(DATA.read_text(encoding="utf-8"))
-    assert masked(a) == masked(built), first_diff(masked(a), masked(built))
+    assert_same(masked(a), masked(built))
     # what the window relies on: the calculator
     ck = a["check"]
     assert ck["number"]["body"] == {

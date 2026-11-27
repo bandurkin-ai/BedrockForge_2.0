@@ -26,6 +26,7 @@ from bf_core.blocks import jobs as bj
 from bf_core.blocks.fill import jobs as fj
 from bf_core.db import dialect
 from bf_core.wireframes import store as wf
+from tests.golden import ROUNDED, assert_same
 from tests.test_archive import wait_job
 from tests.test_blocks_fill_jobs import A_BOX, B_BOX, GRID_VOLUME, _surface, add_field, body, plain_model, prototype  # noqa: F401
 from tests.test_blocks_ops_api import BL, setup_core
@@ -354,7 +355,7 @@ def test_build_window_answers_are_what_the_core_answers(oc) -> None:  # type: ig
         DATA.parent.mkdir(parents=True, exist_ok=True)
         DATA.write_text(json.dumps(built, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     stored = json.loads(DATA.read_text(encoding="utf-8"))
-    assert masked(stored) == masked(built)
+    assert_same(masked(stored), masked(built), rel=ROUNDED)  # the file keeps 9 digits: a boundary is 1e−8
     # what the windows rely on
     pv = stored["prototype"]["previews"]
     assert pv["extent"]["body"]["parents"] == 6 * 5 * 4 and len(pv["extent"]["body"]["frame"]) == 8
