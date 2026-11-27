@@ -15,8 +15,10 @@ import {
   answered,
   assistantEnv,
   chat,
+  clearHolders,
   closeConnection,
   connectionWindow,
+  expectSealed,
   filesWith,
   makeFakeAnt,
   money,
@@ -26,6 +28,7 @@ import {
   openConnection,
   showChat,
   showLog,
+  storedKind,
   usage,
   walk,
   type MockAnthropic,
@@ -54,7 +57,7 @@ async function restart(): Promise<void> {
   await start();
 }
 
-/** Every file of the profile (settings, logs of the shell and of the core, projects, the store of the assistant) except the test store of the key. */
+/** Every file of the profile (settings, logs of the shell and of the core, projects, the store of the assistant) except the store of the key itself. */
 const profileFiles = () => walk([userData]).filter((f) => f !== BIN);
 
 test.describe.serial("Claude assistant: key, commands, confirmation, history, usage, offline, account, secret", () => {
@@ -106,8 +109,9 @@ test.describe.serial("Claude assistant: key, commands, confirmation, history, us
     await expect(win.getByTestId("key-input")).toHaveValue("");
     const seen = [await win.innerText(), await page.locator("body").innerText(), await page.content(), JSON.stringify((await coreApi(page, "GET", "/assistant/status")).body)];
     for (const text of seen) expect(text).not.toContain(TEST_KEY);
-    // the shell seals the key of the core to the profile (the test store under BF_E2E: no DPAPI on the runner)
-    await expect.poll(() => fs.existsSync(BIN), { timeout: 30_000 }).toBe(true);
+    // the shell seals the key of the core to the profile: the test store under BF_E2E where the OS has no encryption (Linux runner), DPAPI on Windows
+    await expect.poll(() => storedKind(page, BIN), { timeout: 30_000 }).toBe("api_key");
+    expectSealed(BIN, "api_key", [TEST_KEY]);
     // the status bar: «Claude: ключ · <модель>»
     await expect(page.getByTestId("claude-status")).toHaveText(/^Claude: ключ · \S+/);
     expect(await page.getByTestId("claude-status").getAttribute("data-tone")).toBe("ok");
@@ -237,9 +241,10 @@ test.describe.serial("Claude assistant: key, commands, confirmation, history, us
   test("the secret: the test key is nowhere in the profile, the projects and the logs except the test store connection.bin", async () => {
     test.setTimeout(120_000);
     expect(fs.existsSync(BIN)).toBe(true);
-    // the test store (BF_E2E, no DPAPI on Linux) keeps the secret as JSON behind a «BFTEST1» mark: the only file that may hold it
-    expect(fs.readFileSync(BIN, "latin1").startsWith("BFTEST1\n")).toBe(true);
-    expect(filesWith([userData], TEST_KEY)).toEqual([BIN]);
+    expectSealed(BIN, "api_key", [TEST_KEY]);
+    // the test store (BF_E2E, no encryption on Linux) keeps the secret as JSON behind a «BFTEST1» mark: the only file that may hold it;
+    // a sealed one (DPAPI on Windows) is searched like any other file: the key is found nowhere
+    expect(filesWith([userData], TEST_KEY)).toEqual(clearHolders(BIN));
     expect(filesWith([userData], WRONG_KEY)).toEqual([]);
     const files = profileFiles();
     expect(files.some((f) => f.endsWith("shell.log")) && files.some((f) => f.endsWith("core.log"))).toBe(true); // the logs were part of the search
@@ -337,7 +342,10 @@ test.describe.serial("Claude assistant: key, commands, confirmation, history, us
 
   test("account: «Войти через Anthropic» on the fake ant → the address, a wrong code is refused, the right one connects the account", async () => {
     test.setTimeout(150_000);
-    expect(JSON.parse(fs.readFileSync(BIN, "latin1").slice("BFTEST1\n".length)).kind).toBe("api_key");
+    expectSealed(BIN, "api_key", [TEST_KEY]);
+    // the store was read back after the restart of the test above (sealed or not): the core holds the key
+    expect((await coreApi<{ state: string; kind: string }>(page, "GET", "/assistant/status")).body).toMatchObject({ state: "connected", kind: "api_key" });
+    const sealedBefore = fs.readFileSync(BIN);
     const win = await openConnection(page);
     await expect(win.getByTestId("account-unavailable")).toHaveCount(0); // BF_ANT_PATH is set
     await win.getByTestId("login-start").click();
@@ -363,7 +371,8 @@ test.describe.serial("Claude assistant: key, commands, confirmation, history, us
     await expect(win.getByTestId("profile-mask")).toHaveCount(0); // an account has no key to mask
     await expect(page.getByTestId("claude-status")).toHaveText(/^Claude: аккаунт · \S+/);
     // the shell seals the account in place of the key
-    await expect.poll(() => (fs.existsSync(BIN) ? (JSON.parse(fs.readFileSync(BIN, "latin1").slice("BFTEST1\n".length)) as { kind: string }).kind : ""), { timeout: 30_000 }).toBe("account");
+    await expect.poll(() => storedKind(page, BIN, sealedBefore), { timeout: 30_000 }).toBe("account");
+    expectSealed(BIN, "account", ACCOUNT_TOKENS);
     await page.screenshot({ path: shot("assistant-7-account.png") });
     // the account works: a question goes with its token to the mock (a Bearer token of OAuth, not the key)
     await closeConnection(page);
@@ -386,7 +395,7 @@ test.describe.serial("Claude assistant: key, commands, confirmation, history, us
     expect(filesWith([userData], WRONG_KEY)).toEqual([]);
     for (const token of ACCOUNT_TOKENS) {
       const hits = filesWith([userData], token);
-      expect(hits, `${token} outside connection.bin`).toEqual(hits.filter((f) => f === BIN));
+      expect(hits, `${token} outside the test store connection.bin (a sealed one holds no token in the clear)`).toEqual(hits.filter((f) => clearHolders(BIN).includes(f)));
     }
     const files = profileFiles();
     expect(files.some((f) => f.endsWith("shell.log"))).toBe(true);

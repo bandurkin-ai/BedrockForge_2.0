@@ -244,6 +244,68 @@ export function walk(roots: string[]): string[] {
   return out;
 }
 
+// ---- the sealed store `assistant/connection.bin` (app/src/main/claude.ts) ----
+// Two formats, by the OS of the run: with no OS encryption (Linux runner, BF_E2E=1) the shell writes the test store — the mark `BFTEST1\n` and JSON
+// `{v, kind, secret}`; with it (Windows .exe: `safeStorage` = DPAPI) the file is the real ciphertext. The tests must hold for both.
+
+export const TEST_MARK = "BFTEST1\n";
+
+export type StoredFile =
+  | { format: "test"; kind: string; secret: Record<string, unknown>; size: number }
+  | { format: "sealed"; size: number; raw: Buffer };
+
+/** The store as it lies on the disk, or null when there is no (readable) file. Never throws. */
+export function readStore(file: string): StoredFile | null {
+  let raw: Buffer;
+  try {
+    raw = fs.readFileSync(file);
+  } catch {
+    return null;
+  }
+  if (raw.subarray(0, TEST_MARK.length).toString("latin1") !== TEST_MARK) return { format: "sealed", size: raw.length, raw };
+  const data = JSON.parse(raw.subarray(TEST_MARK.length).toString("utf8")) as { kind: string; secret: Record<string, unknown> };
+  return { format: "test", kind: data.kind, secret: data.secret, size: raw.length };
+}
+
+/** The files that may hold a secret in the clear: only the test store (a sealed file is searched like any other and must hold nothing). */
+export function clearHolders(file: string): string[] {
+  return readStore(file)?.format === "test" ? [file] : [];
+}
+
+/**
+ * Checks the file that was sealed after a connection: the test store shows the kind and keeps one of `secrets` (JSON of the secret); a sealed file
+ * is not empty, is not a plain JSON and shows none of `secrets` as UTF-8 / UTF-16 text. The kind of a sealed file is told by the core.
+ */
+export function expectSealed(file: string, kind: string, secrets: string[]): void {
+  const s = readStore(file);
+  expect(s, `${file} exists`).not.toBeNull();
+  if (s!.format === "test") {
+    expect(s!.kind).toBe(kind);
+    expect(secrets.some((t) => JSON.stringify(s!.secret).includes(t))).toBe(true);
+    return;
+  }
+  expect(s!.size).toBeGreaterThan(0);
+  expect(s!.raw.subarray(0, 1).toString("latin1")).not.toBe("{"); // not a plain JSON
+  expect(s!.raw.includes(Buffer.from('"secret"', "utf8"))).toBe(false);
+  for (const t of secrets) {
+    expect(s!.raw.includes(Buffer.from(t, "utf8"))).toBe(false);
+    expect(s!.raw.includes(Buffer.from(t, "utf16le"))).toBe(false);
+  }
+}
+
+/**
+ * The kind of the stored connection once the shell has sealed it, else "": the test store tells it itself; a sealed file is only known to be
+ * (re)written (not equal to `before`) and confirmed (`seal_needed` false), the kind is then the core's own.
+ */
+export async function storedKind(page: Page, file: string, before?: Buffer): Promise<string> {
+  const s = readStore(file);
+  if (!s) return "";
+  if (s.format === "test") return s.kind;
+  if (before && s.raw.equals(before)) return "";
+  const st = (await coreApi<{ kind: string | null; seal_needed: boolean }>(page, "GET", "/assistant/status")).body;
+  return st.seal_needed ? "" : (st.kind ?? "");
+}
+
 /** The files (of `roots`) that contain `secret` as text, as UTF-8 or as UTF-16 (a Windows log); a file of a gigabyte is not read whole. */
 export function filesWith(roots: string[], secret: string): string[] {
   const utf8 = Buffer.from(secret, "utf8");
