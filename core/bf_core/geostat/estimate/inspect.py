@@ -53,7 +53,7 @@ from .inspect_spot import Spot, domain_of, locate
 from .search import REASONS
 from .spec import EstimationSpec, InspectSpec
 from .spec_parts import STATUS_LABELS
-from .store_check import fp_of, freshness
+from .store_check import fp_of, freshness, with_trend
 
 WARNING = "Параметры или входы изменились"
 #: the Russian text of every code of `search.REASONS` (ТЗ Д-30); «урезана до t» and «усреднена» get their numbers
@@ -173,7 +173,8 @@ def _build(project: Any, store: BlobStore, model: Model, meta: dict[str, Any]) -
     from bf_core.blocks import restrict
     from bf_core.blocks.filters import store as fst
 
-    spec = sb.load_spec(meta)
+    with dialect.read_tx(project.engine) as conn:  # `from: trend`: the ellipsoid of the trend, as the job takes it
+        spec = with_trend(conn, sb.load_spec(meta))
     s = sm.load(project, spec, origin=_origin(meta), all_domains=True)
     rk = kn.compile_row(spec, s, rotation_deg=float(model.grid.rotation))
     with dialect.read_tx(project.engine) as conn:
@@ -320,21 +321,22 @@ def one_row(model: Model, spot: Spot, row: Any, entry: Entry, fresh: dict[str, A
 
 def _wrote(conn: sa.Connection, model: Model, model_fields: dict[str, dict[str, Any]], row: Any,
            meta: dict[str, Any]) -> bool:  # fmt: skip
-    """The row's fields (`<prefix>STATUS`) are in the model and were written by this row: the owner of the field in the
-    graph (it follows the ids of a `.bfggis` import, `source.params.estimation_ids` do not — the same function the
-    rebuild uses); a field the graph knows no owner of is judged by `source.params`, when it has them."""
+    """The row's fields (`<prefix>STATUS`) are in the model and were written by this row: it is one of the rows of the
+    field in the graph (they follow the ids of a `.bfggis` import, `source.params.estimation_ids` do not; the rows of
+    one prefix share the field, each its own domain, № 77 — every one of them wrote it, not the first alone); a field
+    the graph knows no row of is judged by `source.params`, when it has them."""
     from bf_core.lineage import Node
 
-    from .store import field_owner
+    from .store import field_rows
 
     prefix = str((meta.get("outputs") or {}).get("prefix") or "")
     name = (prefix + "STATUS").casefold()
     f = model_fields.get(name)
     if f is None:
         return False
-    owner = field_owner(conn, Node("bm_field", int(model.id), name))
-    if owner is not None:
-        return int(owner.id) == int(row.id)
+    owners = field_rows(conn, Node("bm_field", int(model.id), name))
+    if owners:
+        return int(row.id) in {int(o.id) for o in owners}
     ids = ((f.get("source") or {}).get("params") or {}).get("estimation_ids")
     return not isinstance(ids, list) or int(row.id) in [int(i) for i in ids]
 

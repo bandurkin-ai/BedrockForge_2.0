@@ -239,9 +239,11 @@ def domain_mask(model: Model, target: Any, col: np.ndarray) -> np.ndarray:
 
 @dataclass(frozen=True)
 class Domain:
-    """What the rows of the block say: `active` — the row of the plan estimates the block (in the domain and passes the
-    restrictor; a parent — when any of its rows does), `label` — the domain field of the row under the pointer (None —
-    the row has no domain field or the value is empty), `cols` — the stored values at the row `spot.row`."""
+    """What the rows of the block say: `active` — the row of the plan estimates the row under the pointer (it is in the
+    domain and passes the restrictor; with `sub: parent` the block recalculated is its parent, but a parent that holds
+    two domains gives its estimate to the rows of the domain only — the other rows are another row's or STATUS 1),
+    `label` — the domain field of the row under the pointer (None — the row has no domain field or the value is
+    empty), `cols` — the stored values at the row `spot.row`."""
 
     active: bool
     label: str | None
@@ -267,7 +269,9 @@ def domain_of(model: Model, spec: Any, restrictor: Any, spot: Spot, fields: Sequ
         label = None if value is None else (value if isinstance(value, str) else f"{value:g}")
     chunk = Chunk(a, pp, ss, ww, keep)
     mask = mask & np.asarray(restrictor.mask(chunk))
-    active = bool(mask.any()) if parent else bool(mask[0])
     at = spot.row - a
+    # the row under the pointer itself: the job gives the estimate of a parent to its rows of the domain only
+    # (`job_run.Env._row`), and the stored values compared are those of this row
+    active = bool(mask[at])
     cols = {k: float(np.asarray(v)[at]) for k, v in keep.items() if k in {str(f) for f in fields}}
     return Domain(active, label, cols)

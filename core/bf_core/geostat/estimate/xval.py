@@ -51,7 +51,7 @@ from . import store_base as sb
 from .samples import D, RowSamples
 from .spec import EstimationSpec
 from .spec_parts import ALLOWED, Outputs
-from .store_check import freshness
+from .store_check import freshness, with_trend
 
 if TYPE_CHECKING:  # numba stays out of the process of the API, which only registers the handler (№ 18.16)
     from . import kernel
@@ -384,16 +384,17 @@ def run_xval(engine: sa.Engine, folder: Any, params: dict[str, Any], tick: Tick 
                            "Восстановите таблицу, модель вариограммы или блочную модель либо удалите строку.",
                            {"param": "estimation_id"})  # fmt: skip
         spec = sb.load_spec(meta)
-    if not spec.resolved_search:
+        work = with_trend(conn, spec)  # `from: trend`: the ellipsoid of the trend as it is now, as the job takes it
+    if not work.resolved_search:
         raise ApiError(422, "search_unresolved", "Эллипсоид поиска не определён.",
                        "Откройте параметры оценки и сохраните их заново.", {"param": "search"})  # fmt: skip
     origin = meta.get("origin")
     org = np.asarray(origin, dtype=np.float64) if isinstance(origin, list) and len(origin) == 3 else None
     beat(0.0, STAGE_SAMPLES)
     project = SimpleNamespace(engine=engine, uid=f"job:{folder}", folder=folder)
-    samples = load(project, spec, origin=org, cancel=lambda: beat(None, None))
+    samples = load(project, work, origin=org, cancel=lambda: beat(None, None))
     beat(0.05, STAGE_XVAL)
-    table = cross_validate(spec, samples, by, threads=threads,
+    table = cross_validate(work, samples, by, threads=threads,
                            tick=lambda p, m: beat(None if p is None else 0.05 + 0.9 * p, m))  # fmt: skip
     beat(None, None)
     result = table.summary()

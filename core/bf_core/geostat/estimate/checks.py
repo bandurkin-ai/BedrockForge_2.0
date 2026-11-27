@@ -57,7 +57,7 @@ from . import store_base as sb
 from .job_plan import domain_mask
 from .spec import EstimationSpec
 from .spec_parts import Outputs
-from .store_check import freshness
+from .store_check import freshness, with_trend
 
 if TYPE_CHECKING:  # numba and scipy stay out of the process of the API, which only registers the handler (№ 18.16)
     from bf_core.stats.weighted import Sorted
@@ -483,7 +483,7 @@ def _row(engine: Any, params: Any) -> tuple[int, str, EstimationSpec, np.ndarray
             raise ApiError(409, "source_lost", "Источник параметров оценки удалён.",
                            "Восстановите таблицу, модель вариограммы или блочную модель либо удалите строку.",
                            {"param": "estimation_id"})  # fmt: skip
-        spec = sb.load_spec(meta)
+        spec = with_trend(conn, sb.load_spec(meta))  # `from: trend`: the ellipsoid of the trend, as the job takes it
         name = str(row.name)
     origin = meta.get("origin")
     org = np.asarray(origin, dtype=np.float64) if isinstance(origin, list) and len(origin) == 3 else None
