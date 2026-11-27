@@ -76,6 +76,12 @@ jobs:
           npm ci
           npm run build
 
+      # ant (account login of the assistant, ADR 0029 decision 37): pinned in tools/ci/ant.json; without a pinned
+      # url/sha256/licence the script warns, exits 0 and the build goes without ant (API key only, question 125)
+      - name: ant — загрузка и проверка SHA-256
+        continue-on-error: false
+        run: python tools/ci/fetch_ant.py --platform windows
+
       - name: electron-builder (NSIS + win-unpacked)
         working-directory: app
         env: { CSC_IDENTITY_AUTO_DISCOVERY: "false" }
