@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AppContext } from "../src/shell/AppContext";
 import type { App } from "../src/shell/app";
 import { dialogStore } from "../src/shell/dialogs";
+import { answerClaude, noClaudeCards } from "./claude-confirm";
 import { readFields, readUsage } from "../src/modules/blocks/fields/api";
 import { windowOfFields } from "../src/modules/blocks/fields/bind";
 import { loadBlocks } from "../src/modules/blocks/state";
@@ -381,11 +382,12 @@ describe("the command `blocks.field.delete`", () => {
 
   it("the assistant is told the same and is not shown a window", async () => {
     const run = app.registry.execute("blocks.field.delete", { model_id: IDS.model, field: "AU" }, "claude");
-    await answerDialog(true); // the confirmation of the assistant
+    await answerClaude(true); // the confirmation of the assistant: a card of the chat
     const r = await run;
     expect(r.ok).toBe(false);
     expect(r.result).toMatch(/^Поле «AU» используется/);
     expect(dialogStore.get().queue).toEqual([]);
+    noClaudeCards();
   });
 
   it("the field of the volume is not deleted until its role is taken off: the words say how", async () => {
@@ -421,7 +423,7 @@ describe("the command `blocks.field.delete`", () => {
     const r = await run;
     expect(r.result).toBe(`${F.delete_conflict.body.message} ${F.delete_conflict.body.hint} Данные модели обновлены — повторите действие.`);
     const gone = app.registry.execute("blocks.field.delete", { model_id: IDS.model, field: "NOPE" }, "claude");
-    await answerDialog(true); // the confirmation of the assistant
+    await answerClaude(true); // the confirmation of the assistant
     const missing = await gone;
     expect(missing.ok).toBe(false);
     expect(missing.result).toBe("В модели «Месторождение» нет поля «NOPE». Имена полей — во вкладке «Свойства полей» окна «Поля блочной модели».");
@@ -472,7 +474,7 @@ describe("the command `blocks.field.rebuild`", () => {
     expect(await run).toEqual({ ok: true, result: "Отменено" });
     expect(posts(/rebuild$/)).toEqual([]);
     const claude = app.registry.execute("blocks.field.rebuild", { model_id: IDS.model, field: "AU2" }, "claude");
-    await answerDialog(true); // the confirmation of the assistant
+    await answerClaude(true); // the confirmation of the assistant
     expect((await claude).ok).toBe(true);
     expect(dialogStore.get().queue).toEqual([]);
     expect(posts(/rebuild$/)).toHaveLength(1);
@@ -492,7 +494,7 @@ describe("the command `blocks.field.rebuild`", () => {
       expect(e.hint).not.toBe("");
       stub.routes.push((m, p) => (m === "POST" && p === `${BASE}/${field}/rebuild` ? json(c.body, c.status) : undefined));
       const run = app.registry.execute("blocks.field.rebuild", { model_id: IDS.model, field }, "claude");
-      await answerDialog(true);
+      await answerClaude(true);
       const r = await run;
       expect(r.ok).toBe(false);
       expect(r.result).toBe(name === "rebuild_conflict" ? `${e.message} ${e.hint} Данные модели обновлены — повторите действие.` : `${e.message} ${e.hint}`);

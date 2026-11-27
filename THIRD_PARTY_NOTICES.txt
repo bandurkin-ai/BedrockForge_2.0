@@ -1,0 +1,9 @@
+BedrockForge 2 — third-party notices
+====================================
+
+This file lists components shipped in the distribution that are not covered by the lock files
+(core/uv.lock, package-lock.json). Python and npm dependencies are listed in the SBOM of each release
+(ADR 0005).
+
+ant 2.9.0 — Anthropic; лицензия уточняется (№ 125); в дистрибутив включается только при закреплённом хеше
+(tools/ci/ant.json; без хеша и лицензии из белого списка сборка идёт без `ant`, вход — только API-ключом).

@@ -1,6 +1,9 @@
 {
   "_comment": "ТЗ 5.3 / 7.33. ci ≈ 1/10 of target volumes, checked on every PR; full — at milestones. Seconds and MB. Layout: an object or a list that fits a line of 120 characters is written on it.",
   "ci": {
+    "assistant_turn": {"params": {"holes": 48, "tools_count": 270}, "budget_s": 6.0, "budget_mb": 500, "limits": {"first_delta_s": 0.3, "two_rounds_s": 1.5, "request_kb": 400.0}, "note": "ADR 0029 решение 38 (23.18)"},
+    "assistant_store": {"params": {"dialogs": 1000, "part_mb": 2, "usage_rows": 100000}, "budget_s": 5.0, "budget_mb": 400, "limits": {"append_s": 0.1, "list_s": 0.2, "usage_s": 0.3}, "note": "ADR 0029 решение 38 (23.18)"},
+    "assistant_data": {"params": {"holes": 5000, "rows": 500000}, "budget_s": 6.0, "budget_mb": 800, "limits": {"tree_s": 0.5, "holes_s": 0.3, "stats_s": 0.5}, "note": "ADR 0029 решение 38 (23.18)"},
     "section_wireframes": {"params": {"triangles": 1000000, "sections": 100}, "budget_s": 3.0, "budget_mb": 600, "limits": {"batch_warm_s": 0.1, "batch_cached_s": 0.02, "cache_job_s": 10.0}, "note": "ADR 0016: пакет 1 млн ≤ 100 мс, из файлов ≤ 20 мс, кеш 100 разрезов ≤ 10 с"},
     "section_series": {
       "params": {"points": 1000000, "contours": 100, "vertices": 500, "shadow": 2000, "holes": 5000, "intervals": 100},
@@ -783,6 +786,9 @@
     "pit_shells_1m": {"params": {"nodes": 200000, "threads": 2, "scratch": [0, 12, 24], "ortools": true}, "budget_s": 20.0, "budget_mb": 800, "limits": {"shells_s": 8.0}, "note": "ТЗ 8.11.5 (Э21, 21.14): 25 оболочек, 200 тыс.; замер 2 потока: оболочки 1,5 с, пик 271 МБ, всего 4,3 с"}
   },
   "full": {
+    "assistant_turn": {"params": {"holes": 48, "tools_count": 270}, "budget_s": 6.0, "budget_mb": 500, "limits": {"first_delta_s": 0.3, "two_rounds_s": 1.5, "request_kb": 400.0}, "note": "ADR 0029 решение 38 (23.18)"},
+    "assistant_store": {"params": {"dialogs": 1000, "part_mb": 2, "usage_rows": 100000}, "budget_s": 5.0, "budget_mb": 400, "limits": {"append_s": 0.1, "list_s": 0.2, "usage_s": 0.3}, "note": "ADR 0029 решение 38 (23.18)"},
+    "assistant_data": {"params": {"holes": 50000, "rows": 5000000}, "budget_s": 40.0, "budget_mb": 2500, "limits": {"tree_s": 0.5, "holes_s": 0.3, "stats_s": 2.0}, "note": "ADR 0029 решение 38 (23.18)"},
     "section_wireframes": {"params": {"triangles": 10000000, "sections": 100}, "budget_s": 10.0, "budget_mb": 1500, "limits": {"batch_warm_s": 0.3, "batch_cached_s": 0.1, "cache_job_s": 60.0}, "note": "ADR 0016, ТЗ 5.3 и 8.1.5: пакет 10 млн ≤ 300 мс, кеш 100 разрезов ≤ 60 с"},
     "section_series": {
       "params": {"points": 10000000, "contours": 100, "vertices": 500, "shadow": 2000, "holes": 5000, "intervals": 100},

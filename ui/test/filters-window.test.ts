@@ -14,6 +14,7 @@ import { AppContext } from "../src/shell/AppContext";
 import { CoreError, setCoreTarget } from "../src/shell/api";
 import { createApp, type App } from "../src/shell/app";
 import { closeDialog, dialogStore } from "../src/shell/dialogs";
+import { answerClaude } from "./claude-confirm";
 import { windowStore } from "../src/shell/windows";
 import { blocksStore } from "../src/modules/blocks/state";
 import { sceneObjects } from "../src/modules/scene/objects";
@@ -155,7 +156,7 @@ describe("filter.save", () => {
 
   it("a text — `POST /filters {expr}` (the assistant is asked first); the window binds to the filter made", async () => {
     const p = app.registry.execute("filter.save", { name: "Борт", expr: "AU > 1 and DOMAIN = 2" }, "claude");
-    await answer(true);
+    await answerClaude(true);
     const r = await p;
     expect(r.ok, r.result).toBe(true);
     expect(r.result).toMatch(/^Фильтр «Борт» сохранён \(№\d+\)/);
@@ -210,7 +211,7 @@ describe("filter.save", () => {
     expect((await q).result).toBe("Фильтр «Список» перечитан из проекта");
     // the assistant gets the refusal as it is
     const c = app.registry.execute("filter.save", { ...a, expr: "Порода > 3" }, "claude");
-    await answer(true); // the confirmation of the assistant
+    await answerClaude(true); // the confirmation of the assistant
     const out = await c;
     expect(out.ok).toBe(false);
     expect(out.result).toMatch(/Фильтр изменён в другом окне/);

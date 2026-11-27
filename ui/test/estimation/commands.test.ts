@@ -8,6 +8,7 @@ import { Icon } from "../../src/shell/Icon";
 import type { App } from "../../src/shell/app";
 import { commandTools } from "../../src/shell/commands";
 import { closeDialog, dialogStore } from "../../src/shell/dialogs";
+import { answerClaude } from "../claude-confirm";
 import { windowStore } from "../../src/shell/windows";
 import { ESTIMATE_BUTTONS, CHECK_BUTTONS, SIM_BUTTONS, commands } from "../../src/modules/estimation/commands";
 import { estimableModels, wizardWindow } from "../../src/modules/estimation/bind";
@@ -183,7 +184,7 @@ describe("estimate.delete", () => {
   it("a call of the assistant is asked once, by the registry (the data changes)", async () => {
     await loadRows();
     const run = app.registry.execute("estimate.delete", { id: ID.row }, "claude");
-    await answer(true);
+    await answerClaude(true); // 23.15: a card of the chat, not a dialog
     expect((await run).ok).toBe(true);
     expect(dialogStore.get().queue).toHaveLength(0);
     expect(requests(`DELETE /geostat/estimations/${ID.row}`)).toHaveLength(1);

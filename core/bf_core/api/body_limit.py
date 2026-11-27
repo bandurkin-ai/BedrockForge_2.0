@@ -25,10 +25,14 @@ MAX_DEPTH = 64
 # (`/geostat/simulations`, `/geostat/simulate/*`; 18.36б), the graph `/lineage/*`
 LIMITED_PREFIXES = (
     "/api/v1/stats/", "/api/v1/charts", "/api/v1/geostat/estimate", "/api/v1/geostat/estimation",
-    "/api/v1/geostat/simulat", "/api/v1/lineage",
+    "/api/v1/geostat/simulat", "/api/v1/lineage", "/api/v1/assistant/",
 )  # fmt: skip
 
-_STRING = re.compile(rb'"(?:[^"\\]|\\.)*"', re.DOTALL)
+# Linear time: escapes (a backslash and the next byte) are dropped first, left to right, then the strings are the
+# plain `"…"` pairs. One regex with an alternation inside the quotes backtracks quadratically on a body such as an
+# open quote and then a backslash-quote pair 80 000 times (82 s on 160 КБ, blocking the event loop of the whole core).
+_ESCAPE = re.compile(rb"\\.", re.DOTALL)
+_STRING = re.compile(rb'"[^"]*"')
 _NOT_BRACKETS = bytes(b for b in range(256) if b not in b"[]{}")
 
 
@@ -58,7 +62,7 @@ def too_deep() -> JSONResponse:
 
 def depth_over(body: bytes, limit: int = MAX_DEPTH) -> bool:
     """Is the JSON `body` nested deeper than `limit` (brackets inside strings do not count)?"""
-    brackets = _STRING.sub(b"", body).translate(None, _NOT_BRACKETS)
+    brackets = _STRING.sub(b"", _ESCAPE.sub(b"", body)).translate(None, _NOT_BRACKETS)
     if len(brackets) <= limit:
         return False
     depth = 0

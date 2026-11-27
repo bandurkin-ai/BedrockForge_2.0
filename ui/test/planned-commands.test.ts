@@ -7,6 +7,7 @@ import type { App } from "../src/shell/app";
 import { commandTools } from "../src/shell/commands";
 import { moduleCommands } from "../src/shell/catalog";
 import { closeDialog, dialogStore } from "../src/shell/dialogs";
+import { answerClaude } from "./claude-confirm";
 import { windowStore } from "../src/shell/windows";
 import { projectStore } from "../src/modules/projects/state";
 import { commands, PLANNED_BUTTONS } from "../src/modules/drillholes/plannedCommands";
@@ -451,8 +452,8 @@ describe("planned.delete and planned.show", () => {
     expect(await answer(false)).toContain("«ПС-2 (через цель)»");
     expect(await p).toEqual({ ok: true, result: "Отменено" });
     expect(requests(`DELETE /planned_holes/${AIM.id}`)).toHaveLength(0);
-    const q = run("planned.delete", { id: AIM.id }, "claude"); // the question of the assistant's call is the registry's, not the handler's
-    await answer(true);
+    const q = run("planned.delete", { id: AIM.id }, "claude"); // the question of the assistant's call is the registry's (a card of the chat), not the handler's
+    await answerClaude(true);
     const done = await q;
     expect(done.ok).toBe(true);
     expect(done.result).toContain("удалена");
@@ -462,7 +463,7 @@ describe("planned.delete and planned.show", () => {
 
   it("a hole that is not in the list is a refusal", async () => {
     const q = run("planned.delete", { id: 555 }, "claude");
-    await answer(true);
+    await answerClaude(true);
     const r = await q;
     expect(r.ok).toBe(false);
     expect(r.result).toContain("не найдена");

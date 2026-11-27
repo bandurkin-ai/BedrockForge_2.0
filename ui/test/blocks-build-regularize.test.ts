@@ -21,6 +21,7 @@ import { cancelOp, droppedOf, REBUILDABLE } from "../src/modules/blocks/build/ru
 import { buildStore, form, isPrototype, runOf, withBlocks } from "../src/modules/blocks/build/state";
 import { commands } from "../src/modules/blocks/build/commands";
 import { A, atVersion, canon, flat, IDS, installCore, newApp, teardown, type Core, type JobCase, type RefusedCase } from "./blocks-build-harness";
+import { answerClaude } from "./claude-confirm";
 
 let app: App;
 let core: Core;
@@ -247,13 +248,11 @@ const question = (): Extract<DialogRequest, { kind: "confirm" }> => {
   if (!d || d.kind !== "confirm") throw new Error("no question");
   return d;
 };
-/** A call of the assistant: the registry asks the user first (`confirm`); the test is the user who agrees. */
+/** A call of the assistant: the registry asks the user first (`confirm`, a card of the chat); the test is the user who agrees. */
 async function asClaude(id: string, args: Record<string, unknown>) {
   const run = app.registry.execute(id, args, "claude");
-  await vi.waitFor(() => expect(dialogStore.get().queue.length).toBe(1));
-  const d = dialogStore.get().queue[0];
-  expect(d.kind).toBe("confirm");
-  answer(d, true);
+  const card = await answerClaude(true, id); // 23.15: the question of Claude is a card of the chat (`confirmStore`), not a dialog
+  expect(card.commandId).toBe(id);
   return run;
 }
 const answer = (d: DialogRequest, yes: boolean) => {

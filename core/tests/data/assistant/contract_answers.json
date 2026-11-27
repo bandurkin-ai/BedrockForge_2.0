@@ -1,0 +1,3095 @@
+{
+ "_note": "ОБРАЗЦЫ контракта ассистента Claude: ОТВЕТЫ НАСТОЯЩЕГО ЯДРА на моке Anthropic (23.11; ключи `requests` — тела запросов — написаны вручную). Перезапись: BF_REGEN_ASSISTANT=1 uv run pytest -q tests/test_assistant_contract.py. Форма = схемам bf_core/assistant/schemas*.py; потоки хода — списки событий {id, event, data}; тексты ошибок пишет errors.py; идентификаторы и время заменены стабильными (tests/assistant/regen.py). Ключа здесь нет.",
+ "status_none": {
+  "status": 200,
+  "body": {
+   "state": "none",
+   "kind": null,
+   "mask": null,
+   "organization": null,
+   "workspace": null,
+   "online": null,
+   "checked_at": null,
+   "model": "claude-opus-5-5",
+   "model_source": "default",
+   "effort": "medium",
+   "effort_source": "default",
+   "ant_available": true,
+   "secure_storage": true,
+   "seal_needed": false,
+   "subscription_note": "Подписка Claude (Pro, Max, Team) панелью не используется: нужен ключ API или вход аккаунтом Anthropic Console.",
+   "models": [
+    {
+     "id": "claude-opus-5-5",
+     "title": "Opus 5.5",
+     "default": true,
+     "note": "Самая сильная: сложные вопросы и длинные цепочки действий.",
+     "price": {
+      "input": 4.0,
+      "output": 20.0,
+      "cache_read": 0.2,
+      "cache_write": 5.0
+     },
+     "long": null
+    },
+    {
+     "id": "claude-sonnet-5-5",
+     "title": "Sonnet 5.5",
+     "default": false,
+     "note": "Быстрее и дешевле Opus: повседневные вопросы.",
+     "price": {
+      "input": 2.0,
+      "output": 10.0,
+      "cache_read": 0.1,
+      "cache_write": 2.5
+     },
+     "long": null
+    },
+    {
+     "id": "claude-haiku-5-5",
+     "title": "Haiku 5.5",
+     "default": false,
+     "note": "Самая быстрая и дешёвая: простые команды и справки.",
+     "price": {
+      "input": 0.1,
+      "output": 0.5,
+      "cache_read": 0.01,
+      "cache_write": 0.125
+     },
+     "long": {
+      "input": 0.5,
+      "output": 2.5,
+      "cache_read": 0.05,
+      "cache_write": 0.625,
+      "threshold": 100000
+     }
+    },
+    {
+     "id": "claude-fable-5-2",
+     "title": "Fable 5.2",
+     "default": false,
+     "note": "Самая дорогая: проверка и трудные случаи.",
+     "price": {
+      "input": 8.0,
+      "output": 40.0,
+      "cache_read": 0.2,
+      "cache_write": 10.0
+     },
+     "long": null
+    }
+   ],
+   "efforts": [
+    {
+     "id": "low",
+     "title": "Быстро",
+     "default": false
+    },
+    {
+     "id": "medium",
+     "title": "Обычно",
+     "default": true
+    },
+    {
+     "id": "high",
+     "title": "Тщательно",
+     "default": false
+    },
+    {
+     "id": "xhigh",
+     "title": "Очень тщательно",
+     "default": false
+    },
+    {
+     "id": "max",
+     "title": "Максимум",
+     "default": false
+    }
+   ],
+   "prices_version": "2026-11"
+  }
+ },
+ "status_key": {
+  "status": 200,
+  "body": {
+   "state": "connected",
+   "kind": "api_key",
+   "mask": "sk-ant-…a1B2",
+   "organization": {
+    "id": "org_test0000000000",
+    "name": null
+   },
+   "workspace": null,
+   "online": true,
+   "checked_at": "2026-11-26T10:00:01Z",
+   "model": "claude-opus-5-5",
+   "model_source": "prefs",
+   "effort": "high",
+   "effort_source": "prefs",
+   "ant_available": true,
+   "secure_storage": true,
+   "seal_needed": true,
+   "subscription_note": "Подписка Claude (Pro, Max, Team) панелью не используется: нужен ключ API или вход аккаунтом Anthropic Console.",
+   "models": [
+    {
+     "id": "claude-opus-5-5",
+     "title": "Opus 5.5",
+     "default": true,
+     "note": "Самая сильная: сложные вопросы и длинные цепочки действий.",
+     "price": {
+      "input": 4.0,
+      "output": 20.0,
+      "cache_read": 0.2,
+      "cache_write": 5.0
+     },
+     "long": null
+    },
+    {
+     "id": "claude-sonnet-5-5",
+     "title": "Sonnet 5.5",
+     "default": false,
+     "note": "Быстрее и дешевле Opus: повседневные вопросы.",
+     "price": {
+      "input": 2.0,
+      "output": 10.0,
+      "cache_read": 0.1,
+      "cache_write": 2.5
+     },
+     "long": null
+    },
+    {
+     "id": "claude-haiku-5-5",
+     "title": "Haiku 5.5",
+     "default": false,
+     "note": "Самая быстрая и дешёвая: простые команды и справки.",
+     "price": {
+      "input": 0.1,
+      "output": 0.5,
+      "cache_read": 0.01,
+      "cache_write": 0.125
+     },
+     "long": {
+      "input": 0.5,
+      "output": 2.5,
+      "cache_read": 0.05,
+      "cache_write": 0.625,
+      "threshold": 100000
+     }
+    },
+    {
+     "id": "claude-fable-5-2",
+     "title": "Fable 5.2",
+     "default": false,
+     "note": "Самая дорогая: проверка и трудные случаи.",
+     "price": {
+      "input": 8.0,
+      "output": 40.0,
+      "cache_read": 0.2,
+      "cache_write": 10.0
+     },
+     "long": null
+    }
+   ],
+   "efforts": [
+    {
+     "id": "low",
+     "title": "Быстро",
+     "default": false
+    },
+    {
+     "id": "medium",
+     "title": "Обычно",
+     "default": true
+    },
+    {
+     "id": "high",
+     "title": "Тщательно",
+     "default": false
+    },
+    {
+     "id": "xhigh",
+     "title": "Очень тщательно",
+     "default": false
+    },
+    {
+     "id": "max",
+     "title": "Максимум",
+     "default": false
+    }
+   ],
+   "prices_version": "2026-11"
+  }
+ },
+ "status_account": {
+  "status": 200,
+  "body": {
+   "state": "connected",
+   "kind": "account",
+   "mask": null,
+   "organization": {
+    "id": "org_test0000000000",
+    "name": null
+   },
+   "workspace": {
+    "id": "wrkspc_test00000000",
+    "name": null
+   },
+   "online": null,
+   "checked_at": null,
+   "model": "claude-opus-5-5",
+   "model_source": "prefs",
+   "effort": "medium",
+   "effort_source": "prefs",
+   "ant_available": true,
+   "secure_storage": true,
+   "seal_needed": false,
+   "subscription_note": "Подписка Claude (Pro, Max, Team) панелью не используется: нужен ключ API или вход аккаунтом Anthropic Console.",
+   "models": [
+    {
+     "id": "claude-opus-5-5",
+     "title": "Opus 5.5",
+     "default": true,
+     "note": "Самая сильная: сложные вопросы и длинные цепочки действий.",
+     "price": {
+      "input": 4.0,
+      "output": 20.0,
+      "cache_read": 0.2,
+      "cache_write": 5.0
+     },
+     "long": null
+    },
+    {
+     "id": "claude-sonnet-5-5",
+     "title": "Sonnet 5.5",
+     "default": false,
+     "note": "Быстрее и дешевле Opus: повседневные вопросы.",
+     "price": {
+      "input": 2.0,
+      "output": 10.0,
+      "cache_read": 0.1,
+      "cache_write": 2.5
+     },
+     "long": null
+    },
+    {
+     "id": "claude-haiku-5-5",
+     "title": "Haiku 5.5",
+     "default": false,
+     "note": "Самая быстрая и дешёвая: простые команды и справки.",
+     "price": {
+      "input": 0.1,
+      "output": 0.5,
+      "cache_read": 0.01,
+      "cache_write": 0.125
+     },
+     "long": {
+      "input": 0.5,
+      "output": 2.5,
+      "cache_read": 0.05,
+      "cache_write": 0.625,
+      "threshold": 100000
+     }
+    },
+    {
+     "id": "claude-fable-5-2",
+     "title": "Fable 5.2",
+     "default": false,
+     "note": "Самая дорогая: проверка и трудные случаи.",
+     "price": {
+      "input": 8.0,
+      "output": 40.0,
+      "cache_read": 0.2,
+      "cache_write": 10.0
+     },
+     "long": null
+    }
+   ],
+   "efforts": [
+    {
+     "id": "low",
+     "title": "Быстро",
+     "default": false
+    },
+    {
+     "id": "medium",
+     "title": "Обычно",
+     "default": true
+    },
+    {
+     "id": "high",
+     "title": "Тщательно",
+     "default": false
+    },
+    {
+     "id": "xhigh",
+     "title": "Очень тщательно",
+     "default": false
+    },
+    {
+     "id": "max",
+     "title": "Максимум",
+     "default": false
+    }
+   ],
+   "prices_version": "2026-11"
+  }
+ },
+ "usage": {
+  "status": 200,
+  "body": {
+   "today": {
+    "requests": 14,
+    "tokens": {
+     "input": 33600,
+     "output": 4845,
+     "cache_read": 9600,
+     "cache_write": 24000
+    },
+    "cost_usd": 0.35322,
+    "unpriced_requests": 0,
+    "by_model": [
+     {
+      "model": "claude-opus-5-5",
+      "title": "Opus 5.5",
+      "requests": 14,
+      "tokens": {
+       "input": 33600,
+       "output": 4845,
+       "cache_read": 9600,
+       "cache_write": 24000
+      },
+      "cost_usd": 0.35322,
+      "unpriced_requests": 0
+     }
+    ]
+   },
+   "days30": {
+    "requests": 15,
+    "tokens": {
+     "input": 42600,
+     "output": 5745,
+     "cache_read": 36600,
+     "cache_write": 28500
+    },
+    "cost_usd": 0.39417,
+    "unpriced_requests": 0,
+    "by_model": [
+     {
+      "model": "claude-opus-5-5",
+      "title": "Opus 5.5",
+      "requests": 14,
+      "tokens": {
+       "input": 33600,
+       "output": 4845,
+       "cache_read": 9600,
+       "cache_write": 24000
+      },
+      "cost_usd": 0.35322,
+      "unpriced_requests": 0
+     },
+     {
+      "model": "claude-sonnet-5-5",
+      "title": "Sonnet 5.5",
+      "requests": 1,
+      "tokens": {
+       "input": 9000,
+       "output": 900,
+       "cache_read": 27000,
+       "cache_write": 4500
+      },
+      "cost_usd": 0.04095,
+      "unpriced_requests": 0
+     }
+    ]
+   },
+   "all": {
+    "requests": 17,
+    "tokens": {
+     "input": 47300,
+     "output": 6215,
+     "cache_read": 50700,
+     "cache_write": 30850
+    },
+    "cost_usd": 0.39514,
+    "unpriced_requests": 1,
+    "by_model": [
+     {
+      "model": "claude-opus-5-5",
+      "title": "Opus 5.5",
+      "requests": 14,
+      "tokens": {
+       "input": 33600,
+       "output": 4845,
+       "cache_read": 9600,
+       "cache_write": 24000
+      },
+      "cost_usd": 0.35322,
+      "unpriced_requests": 0
+     },
+     {
+      "model": "claude-sonnet-5-5",
+      "title": "Sonnet 5.5",
+      "requests": 1,
+      "tokens": {
+       "input": 9000,
+       "output": 900,
+       "cache_read": 27000,
+       "cache_write": 4500
+      },
+      "cost_usd": 0.04095,
+      "unpriced_requests": 0
+     },
+     {
+      "model": "claude-haiku-5-5",
+      "title": "Haiku 5.5",
+      "requests": 1,
+      "tokens": {
+       "input": 4000,
+       "output": 400,
+       "cache_read": 12000,
+       "cache_write": 2000
+      },
+      "cost_usd": 0.00097,
+      "unpriced_requests": 0
+     },
+     {
+      "model": "claude-unknown-9",
+      "title": "claude-unknown-9",
+      "requests": 1,
+      "tokens": {
+       "input": 700,
+       "output": 70,
+       "cache_read": 2100,
+       "cache_write": 350
+      },
+      "cost_usd": null,
+      "unpriced_requests": 1
+     }
+    ]
+   },
+   "prices_version": "2026-11",
+   "since": "2026-11-26T10:00:00Z"
+  }
+ },
+ "prefs_bad": {
+  "status": 422,
+  "body": {
+   "param": "model",
+   "code": "bad_param",
+   "message": "Неверное значение параметра «модель».",
+   "hint": "Выберите модель из списка в окне «Claude: подключение»."
+  }
+ },
+ "key_bad_format": {
+  "status": 422,
+  "body": {
+   "code": "assistant_bad_key_format",
+   "message": "Ключ API имеет неверный формат.",
+   "hint": "Ключ начинается с «sk-ant-» и не содержит пробелов; скопируйте его целиком из Anthropic Console."
+  }
+ },
+ "key_bad": {
+  "status": 422,
+  "body": {
+   "code": "assistant_bad_key",
+   "message": "Ключ или вход Claude отклонён.",
+   "hint": "Проверьте ключ в окне «Claude: подключение» или войдите заново."
+  }
+ },
+ "dialogs_list": {
+  "status": 200,
+  "body": {
+   "total": 2,
+   "items": [
+    {
+     "id": "48",
+     "uid": "3f2a9c5e-1d00-4b00-8000-000000000009",
+     "title": "Сводка по проекту",
+     "created_at": "2026-11-26T10:00:08Z",
+     "last_at": "2026-11-26T10:00:13Z",
+     "questions": 4,
+     "cost_usd": 0.2143,
+     "tokens": {
+      "input": 11500,
+      "output": 4491,
+      "cache_read": 2400,
+      "cache_write": 15600
+     },
+     "models": [
+      "claude-opus-5-5"
+     ],
+     "state": "pending",
+     "temporary": false,
+     "project_uid": "a7b1c9d0-0000-4000-8000-000000000001"
+    },
+    {
+     "id": "41",
+     "uid": "3f2a9c5e-1d00-4b00-8000-000000000002",
+     "title": "Сводка по проекту",
+     "created_at": "2026-11-26T10:00:03Z",
+     "last_at": "2026-11-26T10:00:03Z",
+     "questions": 1,
+     "cost_usd": 0.0203,
+     "tokens": {
+      "input": 2400,
+      "output": 85,
+      "cache_read": 0,
+      "cache_write": 1800
+     },
+     "models": [
+      "claude-opus-5-5"
+     ],
+     "state": "idle",
+     "temporary": false,
+     "project_uid": "a7b1c9d0-0000-4000-8000-000000000001"
+    }
+   ]
+  }
+ },
+ "dialog_full_sample": {
+  "status": 200,
+  "body": {
+   "head": {
+    "id": "48",
+    "uid": "3f2a9c5e-1d00-4b00-8000-000000000009",
+    "title": "Сводка по проекту",
+    "created_at": "2026-11-26T10:00:08Z",
+    "last_at": "2026-11-26T10:00:13Z",
+    "questions": 4,
+    "cost_usd": 0.2143,
+    "tokens": {
+     "input": 11500,
+     "output": 4491,
+     "cache_read": 2400,
+     "cache_write": 15600
+    },
+    "models": [
+     "claude-opus-5-5"
+    ],
+    "state": "pending",
+    "temporary": false,
+    "project_uid": "a7b1c9d0-0000-4000-8000-000000000001"
+   },
+   "items": [
+    {
+     "kind": "user",
+     "id": "u-33",
+     "at": "2026-11-26T10:00:08Z",
+     "text": "Сводка по проекту"
+    },
+    {
+     "kind": "assistant",
+     "id": "a-34",
+     "at": "2026-11-26T10:00:08Z",
+     "model": "claude-opus-5-5",
+     "text": "В проекте «Демо» 48 скважин, 1 240 м бурения и 960 проб. Аудит не запускался: запустите его на вкладке «Данные», чтобы увидеть замечания к скважинам.",
+     "stopped": false,
+     "interrupted": false
+    },
+    {
+     "kind": "user",
+     "id": "u-25",
+     "at": "2026-11-26T10:00:09Z",
+     "text": "Опиши весь проект"
+    },
+    {
+     "kind": "assistant",
+     "id": "a-26",
+     "at": "2026-11-26T10:00:09Z",
+     "model": "claude-opus-5-5",
+     "text": "Самая длинная часть ответа, которая",
+     "stopped": false,
+     "interrupted": false
+    },
+    {
+     "kind": "notice",
+     "id": "n-27",
+     "at": "2026-11-26T10:00:09Z",
+     "code": "max_tokens",
+     "message": "Ответ обрезан: попросите продолжить."
+    },
+    {
+     "kind": "user",
+     "id": "u-35",
+     "at": "2026-11-26T10:00:10Z",
+     "text": "Ещё вопрос"
+    },
+    {
+     "kind": "error",
+     "id": "e-36",
+     "at": "2026-11-26T10:00:10Z",
+     "code": "assistant_overloaded",
+     "message": "Сервис Claude перегружен.",
+     "hint": "Повторите позже или выберите другую модель."
+    },
+    {
+     "kind": "user",
+     "id": "u-28",
+     "at": "2026-11-26T10:00:11Z",
+     "text": "Покажи скважину DH-012 на разрезе"
+    },
+    {
+     "kind": "assistant",
+     "id": "a-29",
+     "at": "2026-11-26T10:00:11Z",
+     "model": "claude-opus-5-5",
+     "text": "Выбираю скважину и строю разрез.",
+     "stopped": false,
+     "interrupted": false
+    },
+    {
+     "kind": "tool",
+     "id": "c-30",
+     "at": "2026-11-26T10:00:11Z",
+     "tool_use_id": "toolu_004",
+     "name": "ui_hole_select",
+     "side": "ui",
+     "title": "Выбрать скважину",
+     "args": {
+      "hole_id": "DH-012"
+     },
+     "status": "ok",
+     "summary": "Выбрана скважина DH-012"
+    },
+    {
+     "kind": "tool",
+     "id": "c-31",
+     "at": "2026-11-26T10:00:11Z",
+     "tool_use_id": "toolu_005",
+     "name": "ui_section_through_hole",
+     "side": "ui",
+     "title": "Разрез через скважину",
+     "args": {
+      "hole_id": "DH-012"
+     },
+     "status": "ok",
+     "summary": "Построен разрез через скважину DH-012"
+    },
+    {
+     "kind": "assistant",
+     "id": "a-32",
+     "at": "2026-11-26T10:00:12Z",
+     "model": "claude-opus-5-5",
+     "text": "Готово: скважина DH-012 выбрана и показана на разрезе.",
+     "stopped": false,
+     "interrupted": false
+    },
+    {
+     "kind": "user",
+     "id": "u-37",
+     "at": "2026-11-26T10:00:13Z",
+     "text": "Покажи скважину DH-012 на разрезе"
+    },
+    {
+     "kind": "assistant",
+     "id": "a-38",
+     "at": "2026-11-26T10:00:13Z",
+     "model": "claude-opus-5-5",
+     "text": "Выбираю скважину и строю разрез.",
+     "stopped": false,
+     "interrupted": false
+    },
+    {
+     "kind": "tool",
+     "id": "c-39",
+     "at": "2026-11-26T10:00:13Z",
+     "tool_use_id": "toolu_004",
+     "name": "ui_hole_select",
+     "side": "ui",
+     "title": "ui_hole_select",
+     "args": {
+      "hole_id": "DH-012"
+     },
+     "status": "waiting",
+     "summary": ""
+    },
+    {
+     "kind": "tool",
+     "id": "c-40",
+     "at": "2026-11-26T10:00:13Z",
+     "tool_use_id": "toolu_005",
+     "name": "ui_section_through_hole",
+     "side": "ui",
+     "title": "ui_section_through_hole",
+     "args": {
+      "hole_id": "DH-012"
+     },
+     "status": "waiting",
+     "summary": ""
+    }
+   ],
+   "pending": {
+    "id": "p-3",
+    "created_at": "2026-11-26T10:00:13Z",
+    "tools": [
+     {
+      "tool_use_id": "toolu_004",
+      "name": "ui_hole_select",
+      "command": null,
+      "args": {
+       "hole_id": "DH-012"
+      },
+      "item_id": "c-39"
+     },
+     {
+      "tool_use_id": "toolu_005",
+      "name": "ui_section_through_hole",
+      "command": null,
+      "args": {
+       "hole_id": "DH-012"
+      },
+      "item_id": "c-40"
+     }
+    ]
+   },
+   "note": null
+  }
+ },
+ "dialog_temporary": {
+  "status": 200,
+  "body": {
+   "head": {
+    "id": "t-0b6f2d4e-8c1a-4d3e-9a5b-000000000001",
+    "uid": "3f2a9c5e-1d00-4b00-8000-000000000001",
+    "title": "Сводка по проекту",
+    "created_at": "2026-11-26T10:00:02Z",
+    "last_at": "2026-11-26T10:00:02Z",
+    "questions": 1,
+    "cost_usd": 0.0203,
+    "tokens": {
+     "input": 2400,
+     "output": 85,
+     "cache_read": 0,
+     "cache_write": 1800
+    },
+    "models": [
+     "claude-opus-5-5"
+    ],
+    "state": "idle",
+    "temporary": true,
+    "project_uid": null
+   },
+   "items": [
+    {
+     "kind": "user",
+     "id": "u-1",
+     "at": "2026-11-26T10:00:02Z",
+     "text": "Сводка по проекту"
+    },
+    {
+     "kind": "notice",
+     "id": "n-2",
+     "at": "2026-11-26T10:00:02Z",
+     "code": "temporary",
+     "message": "Диалог не сохранится: проект не открыт."
+    },
+    {
+     "kind": "assistant",
+     "id": "a-3",
+     "at": "2026-11-26T10:00:02Z",
+     "model": "claude-opus-5-5",
+     "text": "В проекте «Демо» 48 скважин, 1 240 м бурения и 960 проб. Аудит не запускался: запустите его на вкладке «Данные», чтобы увидеть замечания к скважинам.",
+     "stopped": false,
+     "interrupted": false
+    }
+   ],
+   "pending": null,
+   "note": "Диалог не сохранится: проект не открыт"
+  }
+ },
+ "stream_text": [
+  {
+   "id": 1,
+   "event": "turn.start",
+   "data": {
+    "dialog": {
+     "id": "41",
+     "uid": "3f2a9c5e-1d00-4b00-8000-000000000002",
+     "title": "Сводка по проекту",
+     "created_at": "2026-11-26T10:00:03Z",
+     "last_at": "2026-11-26T10:00:03Z",
+     "questions": 0,
+     "cost_usd": null,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "cache_read": 0,
+      "cache_write": 0
+     },
+     "models": [],
+     "state": "running",
+     "temporary": false,
+     "project_uid": "a7b1c9d0-0000-4000-8000-000000000001"
+    },
+    "segment_id": "seg-2",
+    "model": "claude-opus-5-5",
+    "effort": "medium",
+    "user_item": {
+     "kind": "user",
+     "id": "u-4",
+     "at": "2026-11-26T10:00:03Z",
+     "text": "Сводка по проекту"
+    }
+   }
+  },
+  {
+   "id": 2,
+   "event": "text.delta",
+   "data": {
+    "item_id": "a-5",
+    "text": "В проекте «Д"
+   }
+  },
+  {
+   "id": 3,
+   "event": "text.delta",
+   "data": {
+    "item_id": "a-5",
+    "text": "емо» 48 скважин, 1 240 м бурения и 960 проб. Аудит не запускался: запустите его на вкладке «Данные», чтобы увидеть замечания к скважинам."
+   }
+  },
+  {
+   "id": 4,
+   "event": "usage",
+   "data": {
+    "call": {
+     "model": "claude-opus-5-5",
+     "input": 2400,
+     "output": 85,
+     "cache_read": 0,
+     "cache_write": 1800,
+     "cost_usd": 0.0203,
+     "long": false
+    },
+    "dialog": {
+     "cost_usd": 0.0203,
+     "tokens": {
+      "input": 2400,
+      "output": 85,
+      "cache_read": 0,
+      "cache_write": 1800
+     },
+     "questions": 1
+    }
+   }
+  },
+  {
+   "id": 5,
+   "event": "turn.end",
+   "data": {
+    "state": "idle",
+    "stop_reason": "end_turn",
+    "dialog": {
+     "id": "41",
+     "uid": "3f2a9c5e-1d00-4b00-8000-000000000002",
+     "title": "Сводка по проекту",
+     "created_at": "2026-11-26T10:00:03Z",
+     "last_at": "2026-11-26T10:00:03Z",
+     "questions": 1,
+     "cost_usd": 0.0203,
+     "tokens": {
+      "input": 2400,
+      "output": 85,
+      "cache_read": 0,
+      "cache_write": 1800
+     },
+     "models": [
+      "claude-opus-5-5"
+     ],
+     "state": "idle",
+     "temporary": false,
+     "project_uid": "a7b1c9d0-0000-4000-8000-000000000001"
+    }
+   }
+  }
+ ],
+ "stream_data_tools": [
+  {
+   "id": 1,
+   "event": "turn.start",
+   "data": {
+    "dialog": {
+     "id": "42",
+     "uid": "3f2a9c5e-1d00-4b00-8000-000000000003",
+     "title": "Что не так с данными?",
+     "created_at": "2026-11-26T10:00:04Z",
+     "last_at": "2026-11-26T10:00:04Z",
+     "questions": 0,
+     "cost_usd": null,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "cache_read": 0,
+      "cache_write": 0
+     },
+     "models": [],
+     "state": "running",
+     "temporary": false,
+     "project_uid": "a7b1c9d0-0000-4000-8000-000000000001"
+    },
+    "segment_id": "seg-3",
+    "model": "claude-opus-5-5",
+    "effort": "medium",
+    "user_item": {
+     "kind": "user",
+     "id": "u-6",
+     "at": "2026-11-26T10:00:04Z",
+     "text": "Что не так с данными?"
+    }
+   }
+  },
+  {
+   "id": 2,
+   "event": "text.delta",
+   "data": {
+    "item_id": "a-7",
+    "text": "Смотрю сводк"
+   }
+  },
+  {
+   "id": 3,
+   "event": "text.delta",
+   "data": {
+    "item_id": "a-7",
+    "text": "у проекта."
+   }
+  },
+  {
+   "id": 4,
+   "event": "usage",
+   "data": {
+    "call": {
+     "model": "claude-opus-5-5",
+     "input": 2400,
+     "output": 35,
+     "cache_read": 0,
+     "cache_write": 2400,
+     "cost_usd": 0.0223,
+     "long": false
+    },
+    "dialog": {
+     "cost_usd": 0.0223,
+     "tokens": {
+      "input": 2400,
+      "output": 35,
+      "cache_read": 0,
+      "cache_write": 2400
+     },
+     "questions": 1
+    }
+   }
+  },
+  {
+   "id": 5,
+   "event": "tool.start",
+   "data": {
+    "item": {
+     "kind": "tool",
+     "id": "c-8",
+     "at": "2026-11-26T10:00:04Z",
+     "tool_use_id": "toolu_001",
+     "name": "data_summary",
+     "side": "data",
+     "title": "Сводка проекта / набора",
+     "args": {},
+     "status": "waiting",
+     "summary": ""
+    }
+   }
+  },
+  {
+   "id": 6,
+   "event": "tool.end",
+   "data": {
+    "item_id": "c-8",
+    "status": "ok",
+    "summary": "Проект «Демо: участок Северный»: наборов 1"
+   }
+  },
+  {
+   "id": 7,
+   "event": "text.delta",
+   "data": {
+    "item_id": "a-9",
+    "text": "Теперь итог "
+   }
+  },
+  {
+   "id": 8,
+   "event": "text.delta",
+   "data": {
+    "item_id": "a-9",
+    "text": "аудита."
+   }
+  },
+  {
+   "id": 9,
+   "event": "usage",
+   "data": {
+    "call": {
+     "model": "claude-opus-5-5",
+     "input": 2900,
+     "output": 40,
+     "cache_read": 2400,
+     "cache_write": 0,
+     "cost_usd": 0.01288,
+     "long": false
+    },
+    "dialog": {
+     "cost_usd": 0.03518,
+     "tokens": {
+      "input": 5300,
+      "output": 75,
+      "cache_read": 2400,
+      "cache_write": 2400
+     },
+     "questions": 1
+    }
+   }
+  },
+  {
+   "id": 10,
+   "event": "tool.start",
+   "data": {
+    "item": {
+     "kind": "tool",
+     "id": "c-10",
+     "at": "2026-11-26T10:00:04Z",
+     "tool_use_id": "toolu_002",
+     "name": "data_audit",
+     "side": "data",
+     "title": "Итог аудита",
+     "args": {},
+     "status": "waiting",
+     "summary": ""
+    }
+   }
+  },
+  {
+   "id": 11,
+   "event": "tool.end",
+   "data": {
+    "item_id": "c-10",
+    "status": "ok",
+    "summary": "set_id: 1; set: Скважины 2025; table: Пробы; ran_at: 2026-11-26T10:00:00+00:00; stale: False; passed: 20"
+   }
+  },
+  {
+   "id": 12,
+   "event": "text.delta",
+   "data": {
+    "item_id": "a-11",
+    "text": "Аудит нашёл "
+   }
+  },
+  {
+   "id": 13,
+   "event": "text.delta",
+   "data": {
+    "item_id": "a-11",
+    "text": "3 ошибки и 12 предупреждений; больше всего замечаний у скважин DH-004 и DH-012."
+   }
+  },
+  {
+   "id": 14,
+   "event": "usage",
+   "data": {
+    "call": {
+     "model": "claude-opus-5-5",
+     "input": 3300,
+     "output": 70,
+     "cache_read": 2400,
+     "cache_write": 0,
+     "cost_usd": 0.01508,
+     "long": false
+    },
+    "dialog": {
+     "cost_usd": 0.05026,
+     "tokens": {
+      "input": 8600,
+      "output": 145,
+      "cache_read": 4800,
+      "cache_write": 2400
+     },
+     "questions": 1
+    }
+   }
+  },
+  {
+   "id": 15,
+   "event": "turn.end",
+   "data": {
+    "state": "idle",
+    "stop_reason": "end_turn",
+    "dialog": {
+     "id": "42",
+     "uid": "3f2a9c5e-1d00-4b00-8000-000000000003",
+     "title": "Что не так с данными?",
+     "created_at": "2026-11-26T10:00:04Z",
+     "last_at": "2026-11-26T10:00:04Z",
+     "questions": 1,
+     "cost_usd": 0.05026,
+     "tokens": {
+      "input": 8600,
+      "output": 145,
+      "cache_read": 4800,
+      "cache_write": 2400
+     },
+     "models": [
+      "claude-opus-5-5"
+     ],
+     "state": "idle",
+     "temporary": false,
+     "project_uid": "a7b1c9d0-0000-4000-8000-000000000001"
+    }
+   }
+  }
+ ],
+ "stream_pending": [
+  {
+   "id": 1,
+   "event": "turn.start",
+   "data": {
+    "dialog": {
+     "id": "48",
+     "uid": "3f2a9c5e-1d00-4b00-8000-000000000009",
+     "title": "Сводка по проекту",
+     "created_at": "2026-11-26T10:00:08Z",
+     "last_at": "2026-11-26T10:00:09Z",
+     "questions": 2,
+     "cost_usd": 0.15202,
+     "tokens": {
+      "input": 3600,
+      "output": 4181,
+      "cache_read": 0,
+      "cache_write": 10800
+     },
+     "models": [
+      "claude-opus-5-5"
+     ],
+     "state": "running",
+     "temporary": false,
+     "project_uid": "a7b1c9d0-0000-4000-8000-000000000001"
+    },
+    "segment_id": "seg-11",
+    "model": "claude-opus-5-5",
+    "effort": "medium",
+    "user_item": {
+     "kind": "user",
+     "id": "u-28",
+     "at": "2026-11-26T10:00:11Z",
+     "text": "Покажи скважину DH-012 на разрезе"
+    }
+   }
+  },
+  {
+   "id": 2,
+   "event": "thinking",
+   "data": {
+    "state": "start"
+   }
+  },
+  {
+   "id": 3,
+   "event": "thinking",
+   "data": {
+    "state": "end"
+   }
+  },
+  {
+   "id": 4,
+   "event": "text.delta",
+   "data": {
+    "item_id": "a-29",
+    "text": "Выбираю сква"
+   }
+  },
+  {
+   "id": 5,
+   "event": "text.delta",
+   "data": {
+    "item_id": "a-29",
+    "text": "жину и строю разрез."
+   }
+  },
+  {
+   "id": 6,
+   "event": "usage",
+   "data": {
+    "call": {
+     "model": "claude-opus-5-5",
+     "input": 2500,
+     "output": 140,
+     "cache_read": 0,
+     "cache_write": 2400,
+     "cost_usd": 0.0248,
+     "long": false
+    },
+    "dialog": {
+     "cost_usd": 0.17682,
+     "tokens": {
+      "input": 6100,
+      "output": 4321,
+      "cache_read": 0,
+      "cache_write": 13200
+     },
+     "questions": 3
+    }
+   }
+  },
+  {
+   "id": 7,
+   "event": "pending",
+   "data": {
+    "id": "p-2",
+    "created_at": "2026-11-26T10:00:11Z",
+    "tools": [
+     {
+      "tool_use_id": "toolu_004",
+      "name": "ui_hole_select",
+      "command": null,
+      "args": {
+       "hole_id": "DH-012"
+      },
+      "item_id": "c-30"
+     },
+     {
+      "tool_use_id": "toolu_005",
+      "name": "ui_section_through_hole",
+      "command": null,
+      "args": {
+       "hole_id": "DH-012"
+      },
+      "item_id": "c-31"
+     }
+    ]
+   }
+  },
+  {
+   "id": 8,
+   "event": "turn.end",
+   "data": {
+    "state": "pending",
+    "stop_reason": "tool_use",
+    "dialog": {
+     "id": "48",
+     "uid": "3f2a9c5e-1d00-4b00-8000-000000000009",
+     "title": "Сводка по проекту",
+     "created_at": "2026-11-26T10:00:08Z",
+     "last_at": "2026-11-26T10:00:11Z",
+     "questions": 3,
+     "cost_usd": 0.17682,
+     "tokens": {
+      "input": 6100,
+      "output": 4321,
+      "cache_read": 0,
+      "cache_write": 13200
+     },
+     "models": [
+      "claude-opus-5-5"
+     ],
+     "state": "pending",
+     "temporary": false,
+     "project_uid": "a7b1c9d0-0000-4000-8000-000000000001"
+    }
+   }
+  }
+ ],
+ "stream_after_results": [
+  {
+   "id": 1,
+   "event": "turn.start",
+   "data": {
+    "dialog": {
+     "id": "48",
+     "uid": "3f2a9c5e-1d00-4b00-8000-000000000009",
+     "title": "Сводка по проекту",
+     "created_at": "2026-11-26T10:00:08Z",
+     "last_at": "2026-11-26T10:00:11Z",
+     "questions": 3,
+     "cost_usd": 0.17682,
+     "tokens": {
+      "input": 6100,
+      "output": 4321,
+      "cache_read": 0,
+      "cache_write": 13200
+     },
+     "models": [
+      "claude-opus-5-5"
+     ],
+     "state": "running",
+     "temporary": false,
+     "project_uid": "a7b1c9d0-0000-4000-8000-000000000001"
+    },
+    "segment_id": "seg-12",
+    "model": "claude-opus-5-5",
+    "effort": "medium"
+   }
+  },
+  {
+   "id": 2,
+   "event": "text.delta",
+   "data": {
+    "item_id": "a-32",
+    "text": "Готово: сква"
+   }
+  },
+  {
+   "id": 3,
+   "event": "text.delta",
+   "data": {
+    "item_id": "a-32",
+    "text": "жина DH-012 выбрана и показана на разрезе."
+   }
+  },
+  {
+   "id": 4,
+   "event": "usage",
+   "data": {
+    "call": {
+     "model": "claude-opus-5-5",
+     "input": 2900,
+     "output": 30,
+     "cache_read": 2400,
+     "cache_write": 0,
+     "cost_usd": 0.01268,
+     "long": false
+    },
+    "dialog": {
+     "cost_usd": 0.1895,
+     "tokens": {
+      "input": 9000,
+      "output": 4351,
+      "cache_read": 2400,
+      "cache_write": 13200
+     },
+     "questions": 3
+    }
+   }
+  },
+  {
+   "id": 5,
+   "event": "turn.end",
+   "data": {
+    "state": "idle",
+    "stop_reason": "end_turn",
+    "dialog": {
+     "id": "48",
+     "uid": "3f2a9c5e-1d00-4b00-8000-000000000009",
+     "title": "Сводка по проекту",
+     "created_at": "2026-11-26T10:00:08Z",
+     "last_at": "2026-11-26T10:00:11Z",
+     "questions": 3,
+     "cost_usd": 0.1895,
+     "tokens": {
+      "input": 9000,
+      "output": 4351,
+      "cache_read": 2400,
+      "cache_write": 13200
+     },
+     "models": [
+      "claude-opus-5-5"
+     ],
+     "state": "idle",
+     "temporary": false,
+     "project_uid": "a7b1c9d0-0000-4000-8000-000000000001"
+    }
+   }
+  }
+ ],
+ "stream_confirm": [
+  {
+   "id": 1,
+   "event": "turn.start",
+   "data": {
+    "dialog": {
+     "id": "43",
+     "uid": "3f2a9c5e-1d00-4b00-8000-000000000004",
+     "title": "Удали проект",
+     "created_at": "2026-11-26T10:00:05Z",
+     "last_at": "2026-11-26T10:00:05Z",
+     "questions": 0,
+     "cost_usd": null,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "cache_read": 0,
+      "cache_write": 0
+     },
+     "models": [],
+     "state": "running",
+     "temporary": false,
+     "project_uid": "a7b1c9d0-0000-4000-8000-000000000001"
+    },
+    "segment_id": "seg-4",
+    "model": "claude-opus-5-5",
+    "effort": "medium",
+    "user_item": {
+     "kind": "user",
+     "id": "u-12",
+     "at": "2026-11-26T10:00:05Z",
+     "text": "Удали проект"
+    }
+   }
+  },
+  {
+   "id": 2,
+   "event": "text.delta",
+   "data": {
+    "item_id": "a-13",
+    "text": "Удаляю проек"
+   }
+  },
+  {
+   "id": 3,
+   "event": "text.delta",
+   "data": {
+    "item_id": "a-13",
+    "text": "т."
+   }
+  },
+  {
+   "id": 4,
+   "event": "usage",
+   "data": {
+    "call": {
+     "model": "claude-opus-5-5",
+     "input": 2400,
+     "output": 25,
+     "cache_read": 0,
+     "cache_write": 2400,
+     "cost_usd": 0.0221,
+     "long": false
+    },
+    "dialog": {
+     "cost_usd": 0.0221,
+     "tokens": {
+      "input": 2400,
+      "output": 25,
+      "cache_read": 0,
+      "cache_write": 2400
+     },
+     "questions": 1
+    }
+   }
+  },
+  {
+   "id": 5,
+   "event": "pending",
+   "data": {
+    "id": "p-1",
+    "created_at": "2026-11-26T10:00:05Z",
+    "tools": [
+     {
+      "tool_use_id": "toolu_003",
+      "name": "ui_project_delete",
+      "command": null,
+      "args": {},
+      "item_id": "c-14"
+     }
+    ]
+   }
+  },
+  {
+   "id": 6,
+   "event": "turn.end",
+   "data": {
+    "state": "pending",
+    "stop_reason": "tool_use",
+    "dialog": {
+     "id": "43",
+     "uid": "3f2a9c5e-1d00-4b00-8000-000000000004",
+     "title": "Удали проект",
+     "created_at": "2026-11-26T10:00:05Z",
+     "last_at": "2026-11-26T10:00:05Z",
+     "questions": 1,
+     "cost_usd": 0.0221,
+     "tokens": {
+      "input": 2400,
+      "output": 25,
+      "cache_read": 0,
+      "cache_write": 2400
+     },
+     "models": [
+      "claude-opus-5-5"
+     ],
+     "state": "pending",
+     "temporary": false,
+     "project_uid": "a7b1c9d0-0000-4000-8000-000000000001"
+    }
+   }
+  }
+ ],
+ "stream_declined": [
+  {
+   "id": 1,
+   "event": "turn.start",
+   "data": {
+    "dialog": {
+     "id": "43",
+     "uid": "3f2a9c5e-1d00-4b00-8000-000000000004",
+     "title": "Удали проект",
+     "created_at": "2026-11-26T10:00:05Z",
+     "last_at": "2026-11-26T10:00:05Z",
+     "questions": 1,
+     "cost_usd": 0.0221,
+     "tokens": {
+      "input": 2400,
+      "output": 25,
+      "cache_read": 0,
+      "cache_write": 2400
+     },
+     "models": [
+      "claude-opus-5-5"
+     ],
+     "state": "running",
+     "temporary": false,
+     "project_uid": "a7b1c9d0-0000-4000-8000-000000000001"
+    },
+    "segment_id": "seg-5",
+    "model": "claude-opus-5-5",
+    "effort": "medium"
+   }
+  },
+  {
+   "id": 2,
+   "event": "text.delta",
+   "data": {
+    "item_id": "a-15",
+    "text": "Хорошо, прое"
+   }
+  },
+  {
+   "id": 3,
+   "event": "text.delta",
+   "data": {
+    "item_id": "a-15",
+    "text": "кт не удалён."
+   }
+  },
+  {
+   "id": 4,
+   "event": "usage",
+   "data": {
+    "call": {
+     "model": "claude-opus-5-5",
+     "input": 2700,
+     "output": 12,
+     "cache_read": 2400,
+     "cache_write": 0,
+     "cost_usd": 0.01152,
+     "long": false
+    },
+    "dialog": {
+     "cost_usd": 0.03362,
+     "tokens": {
+      "input": 5100,
+      "output": 37,
+      "cache_read": 2400,
+      "cache_write": 2400
+     },
+     "questions": 1
+    }
+   }
+  },
+  {
+   "id": 5,
+   "event": "turn.end",
+   "data": {
+    "state": "idle",
+    "stop_reason": "end_turn",
+    "dialog": {
+     "id": "43",
+     "uid": "3f2a9c5e-1d00-4b00-8000-000000000004",
+     "title": "Удали проект",
+     "created_at": "2026-11-26T10:00:05Z",
+     "last_at": "2026-11-26T10:00:05Z",
+     "questions": 1,
+     "cost_usd": 0.03362,
+     "tokens": {
+      "input": 5100,
+      "output": 37,
+      "cache_read": 2400,
+      "cache_write": 2400
+     },
+     "models": [
+      "claude-opus-5-5"
+     ],
+     "state": "idle",
+     "temporary": false,
+     "project_uid": "a7b1c9d0-0000-4000-8000-000000000001"
+    }
+   }
+  }
+ ],
+ "stream_offline": [
+  {
+   "id": 1,
+   "event": "turn.start",
+   "data": {
+    "dialog": {
+     "id": "46",
+     "uid": "3f2a9c5e-1d00-4b00-8000-000000000007",
+     "title": "Привет",
+     "created_at": "2026-11-26T10:00:06Z",
+     "last_at": "2026-11-26T10:00:06Z",
+     "questions": 0,
+     "cost_usd": null,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "cache_read": 0,
+      "cache_write": 0
+     },
+     "models": [],
+     "state": "running",
+     "temporary": false,
+     "project_uid": "a7b1c9d0-0000-4000-8000-000000000001"
+    },
+    "segment_id": "seg-8",
+    "model": "claude-opus-5-5",
+    "effort": "medium",
+    "user_item": {
+     "kind": "user",
+     "id": "u-21",
+     "at": "2026-11-26T10:00:06Z",
+     "text": "Привет"
+    }
+   }
+  },
+  {
+   "id": 2,
+   "event": "error",
+   "data": {
+    "item": {
+     "kind": "error",
+     "id": "e-22",
+     "at": "2026-11-26T10:00:07Z",
+     "code": "assistant_offline",
+     "message": "Ассистент недоступен без интернета.",
+     "hint": "Проверьте подключение к интернету или прокси; история диалогов доступна."
+    }
+   }
+  },
+  {
+   "id": 3,
+   "event": "turn.end",
+   "data": {
+    "state": "error",
+    "stop_reason": null,
+    "dialog": {
+     "id": "46",
+     "uid": "3f2a9c5e-1d00-4b00-8000-000000000007",
+     "title": "Привет",
+     "created_at": "2026-11-26T10:00:06Z",
+     "last_at": "2026-11-26T10:00:06Z",
+     "questions": 0,
+     "cost_usd": null,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "cache_read": 0,
+      "cache_write": 0
+     },
+     "models": [],
+     "state": "error",
+     "temporary": false,
+     "project_uid": "a7b1c9d0-0000-4000-8000-000000000001"
+    }
+   }
+  }
+ ],
+ "stream_cancelled": [
+  {
+   "id": 1,
+   "event": "turn.start",
+   "data": {
+    "dialog": {
+     "id": "47",
+     "uid": "3f2a9c5e-1d00-4b00-8000-000000000008",
+     "title": "Расскажи подробно",
+     "created_at": "2026-11-26T10:00:07Z",
+     "last_at": "2026-11-26T10:00:07Z",
+     "questions": 0,
+     "cost_usd": null,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "cache_read": 0,
+      "cache_write": 0
+     },
+     "models": [],
+     "state": "running",
+     "temporary": false,
+     "project_uid": "a7b1c9d0-0000-4000-8000-000000000001"
+    },
+    "segment_id": "seg-9",
+    "model": "claude-opus-5-5",
+    "effort": "medium",
+    "user_item": {
+     "kind": "user",
+     "id": "u-23",
+     "at": "2026-11-26T10:00:07Z",
+     "text": "Расскажи подробно"
+    }
+   }
+  },
+  {
+   "id": 2,
+   "event": "text.delta",
+   "data": {
+    "item_id": "a-24",
+    "text": "Медл"
+   }
+  },
+  {
+   "id": 3,
+   "event": "text.delta",
+   "data": {
+    "item_id": "a-24",
+    "text": "енный от"
+   }
+  },
+  {
+   "id": 4,
+   "event": "text.delta",
+   "data": {
+    "item_id": "a-24",
+    "text": "вет Медл"
+   }
+  },
+  {
+   "id": 5,
+   "event": "usage",
+   "data": {
+    "call": {
+     "model": "claude-opus-5-5",
+     "input": 1200,
+     "output": 1,
+     "cache_read": 0,
+     "cache_write": 0,
+     "cost_usd": 0.00482,
+     "long": false
+    },
+    "dialog": {
+     "cost_usd": 0.00482,
+     "tokens": {
+      "input": 1200,
+      "output": 1,
+      "cache_read": 0,
+      "cache_write": 0
+     },
+     "questions": 1
+    }
+   }
+  },
+  {
+   "id": 6,
+   "event": "turn.end",
+   "data": {
+    "state": "cancelled",
+    "stop_reason": null,
+    "dialog": {
+     "id": "47",
+     "uid": "3f2a9c5e-1d00-4b00-8000-000000000008",
+     "title": "Расскажи подробно",
+     "created_at": "2026-11-26T10:00:07Z",
+     "last_at": "2026-11-26T10:00:07Z",
+     "questions": 1,
+     "cost_usd": 0.00482,
+     "tokens": {
+      "input": 1200,
+      "output": 1,
+      "cache_read": 0,
+      "cache_write": 0
+     },
+     "models": [
+      "claude-opus-5-5"
+     ],
+     "state": "idle",
+     "temporary": false,
+     "project_uid": "a7b1c9d0-0000-4000-8000-000000000001"
+    }
+   }
+  }
+ ],
+ "stream_notice": [
+  {
+   "id": 1,
+   "event": "turn.start",
+   "data": {
+    "dialog": {
+     "id": "48",
+     "uid": "3f2a9c5e-1d00-4b00-8000-000000000009",
+     "title": "Сводка по проекту",
+     "created_at": "2026-11-26T10:00:08Z",
+     "last_at": "2026-11-26T10:00:08Z",
+     "questions": 1,
+     "cost_usd": 0.0203,
+     "tokens": {
+      "input": 2400,
+      "output": 85,
+      "cache_read": 0,
+      "cache_write": 1800
+     },
+     "models": [
+      "claude-opus-5-5"
+     ],
+     "state": "running",
+     "temporary": false,
+     "project_uid": "a7b1c9d0-0000-4000-8000-000000000001"
+    },
+    "segment_id": "seg-10",
+    "model": "claude-opus-5-5",
+    "effort": "medium",
+    "user_item": {
+     "kind": "user",
+     "id": "u-25",
+     "at": "2026-11-26T10:00:09Z",
+     "text": "Опиши весь проект"
+    }
+   }
+  },
+  {
+   "id": 2,
+   "event": "text.delta",
+   "data": {
+    "item_id": "a-26",
+    "text": "Самая длинна"
+   }
+  },
+  {
+   "id": 3,
+   "event": "text.delta",
+   "data": {
+    "item_id": "a-26",
+    "text": "я часть ответа, которая"
+   }
+  },
+  {
+   "id": 4,
+   "event": "usage",
+   "data": {
+    "call": {
+     "model": "claude-opus-5-5",
+     "input": 1200,
+     "output": 4096,
+     "cache_read": 0,
+     "cache_write": 9000,
+     "cost_usd": 0.13172,
+     "long": false
+    },
+    "dialog": {
+     "cost_usd": 0.15202,
+     "tokens": {
+      "input": 3600,
+      "output": 4181,
+      "cache_read": 0,
+      "cache_write": 10800
+     },
+     "questions": 2
+    }
+   }
+  },
+  {
+   "id": 5,
+   "event": "notice",
+   "data": {
+    "item": {
+     "kind": "notice",
+     "id": "n-27",
+     "at": "2026-11-26T10:00:09Z",
+     "code": "max_tokens",
+     "message": "Ответ обрезан: попросите продолжить."
+    }
+   }
+  },
+  {
+   "id": 6,
+   "event": "turn.end",
+   "data": {
+    "state": "idle",
+    "stop_reason": "max_tokens",
+    "dialog": {
+     "id": "48",
+     "uid": "3f2a9c5e-1d00-4b00-8000-000000000009",
+     "title": "Сводка по проекту",
+     "created_at": "2026-11-26T10:00:08Z",
+     "last_at": "2026-11-26T10:00:09Z",
+     "questions": 2,
+     "cost_usd": 0.15202,
+     "tokens": {
+      "input": 3600,
+      "output": 4181,
+      "cache_read": 0,
+      "cache_write": 10800
+     },
+     "models": [
+      "claude-opus-5-5"
+     ],
+     "state": "idle",
+     "temporary": false,
+     "project_uid": "a7b1c9d0-0000-4000-8000-000000000001"
+    }
+   }
+  }
+ ],
+ "stream_temporary": [
+  {
+   "id": 1,
+   "event": "turn.start",
+   "data": {
+    "dialog": {
+     "id": "t-0b6f2d4e-8c1a-4d3e-9a5b-000000000001",
+     "uid": "3f2a9c5e-1d00-4b00-8000-000000000001",
+     "title": "Сводка по проекту",
+     "created_at": "2026-11-26T10:00:02Z",
+     "last_at": "2026-11-26T10:00:02Z",
+     "questions": 0,
+     "cost_usd": null,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "cache_read": 0,
+      "cache_write": 0
+     },
+     "models": [],
+     "state": "running",
+     "temporary": true,
+     "project_uid": null
+    },
+    "segment_id": "seg-1",
+    "model": "claude-opus-5-5",
+    "effort": "medium",
+    "user_item": {
+     "kind": "user",
+     "id": "u-1",
+     "at": "2026-11-26T10:00:02Z",
+     "text": "Сводка по проекту"
+    }
+   }
+  },
+  {
+   "id": 2,
+   "event": "notice",
+   "data": {
+    "item": {
+     "kind": "notice",
+     "id": "n-2",
+     "at": "2026-11-26T10:00:02Z",
+     "code": "temporary",
+     "message": "Диалог не сохранится: проект не открыт."
+    }
+   }
+  },
+  {
+   "id": 3,
+   "event": "text.delta",
+   "data": {
+    "item_id": "a-3",
+    "text": "В проекте «Д"
+   }
+  },
+  {
+   "id": 4,
+   "event": "text.delta",
+   "data": {
+    "item_id": "a-3",
+    "text": "емо» 48 скважин, 1 240 м бурения и 960 проб. Аудит не запускался: запустите его на вкладке «Данные», чтобы увидеть замечания к скважинам."
+   }
+  },
+  {
+   "id": 5,
+   "event": "usage",
+   "data": {
+    "call": {
+     "model": "claude-opus-5-5",
+     "input": 2400,
+     "output": 85,
+     "cache_read": 0,
+     "cache_write": 1800,
+     "cost_usd": 0.0203,
+     "long": false
+    },
+    "dialog": {
+     "cost_usd": 0.0203,
+     "tokens": {
+      "input": 2400,
+      "output": 85,
+      "cache_read": 0,
+      "cache_write": 1800
+     },
+     "questions": 1
+    }
+   }
+  },
+  {
+   "id": 6,
+   "event": "turn.end",
+   "data": {
+    "state": "idle",
+    "stop_reason": "end_turn",
+    "dialog": {
+     "id": "t-0b6f2d4e-8c1a-4d3e-9a5b-000000000001",
+     "uid": "3f2a9c5e-1d00-4b00-8000-000000000001",
+     "title": "Сводка по проекту",
+     "created_at": "2026-11-26T10:00:02Z",
+     "last_at": "2026-11-26T10:00:02Z",
+     "questions": 1,
+     "cost_usd": 0.0203,
+     "tokens": {
+      "input": 2400,
+      "output": 85,
+      "cache_read": 0,
+      "cache_write": 1800
+     },
+     "models": [
+      "claude-opus-5-5"
+     ],
+     "state": "idle",
+     "temporary": true,
+     "project_uid": null
+    }
+   }
+  }
+ ],
+ "stream_interrupted": [
+  {
+   "id": 1,
+   "event": "turn.start",
+   "data": {
+    "dialog": {
+     "id": "44",
+     "uid": "3f2a9c5e-1d00-4b00-8000-000000000005",
+     "title": "Расскажи подробно про бурение",
+     "created_at": "2026-11-26T10:00:06Z",
+     "last_at": "2026-11-26T10:00:06Z",
+     "questions": 0,
+     "cost_usd": null,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "cache_read": 0,
+      "cache_write": 0
+     },
+     "models": [],
+     "state": "running",
+     "temporary": false,
+     "project_uid": "a7b1c9d0-0000-4000-8000-000000000001"
+    },
+    "segment_id": "seg-6",
+    "model": "claude-opus-5-5",
+    "effort": "medium",
+    "user_item": {
+     "kind": "user",
+     "id": "u-16",
+     "at": "2026-11-26T10:00:06Z",
+     "text": "Расскажи подробно про бурение"
+    }
+   }
+  },
+  {
+   "id": 2,
+   "event": "text.delta",
+   "data": {
+    "item_id": "a-17",
+    "text": "Бурение ведё"
+   }
+  },
+  {
+   "id": 3,
+   "event": "usage",
+   "data": {
+    "call": {
+     "model": "claude-opus-5-5",
+     "input": 2400,
+     "output": 1,
+     "cache_read": 0,
+     "cache_write": 0,
+     "cost_usd": 0.00962,
+     "long": false
+    },
+    "dialog": {
+     "cost_usd": 0.00962,
+     "tokens": {
+      "input": 2400,
+      "output": 1,
+      "cache_read": 0,
+      "cache_write": 0
+     },
+     "questions": 1
+    }
+   }
+  },
+  {
+   "id": 4,
+   "event": "error",
+   "data": {
+    "item": {
+     "kind": "error",
+     "id": "e-18",
+     "at": "2026-11-26T10:00:06Z",
+     "code": "assistant_interrupted",
+     "message": "Связь прервалась.",
+     "hint": "Нажмите «Повторить»; частичный ответ сохранён."
+    }
+   }
+  },
+  {
+   "id": 5,
+   "event": "turn.end",
+   "data": {
+    "state": "error",
+    "stop_reason": null,
+    "dialog": {
+     "id": "44",
+     "uid": "3f2a9c5e-1d00-4b00-8000-000000000005",
+     "title": "Расскажи подробно про бурение",
+     "created_at": "2026-11-26T10:00:06Z",
+     "last_at": "2026-11-26T10:00:06Z",
+     "questions": 0,
+     "cost_usd": 0.00962,
+     "tokens": {
+      "input": 2400,
+      "output": 1,
+      "cache_read": 0,
+      "cache_write": 0
+     },
+     "models": [
+      "claude-opus-5-5"
+     ],
+     "state": "error",
+     "temporary": false,
+     "project_uid": "a7b1c9d0-0000-4000-8000-000000000001"
+    }
+   }
+  }
+ ],
+ "stream_unauthorized": [
+  {
+   "id": 1,
+   "event": "turn.start",
+   "data": {
+    "dialog": {
+     "id": "45",
+     "uid": "3f2a9c5e-1d00-4b00-8000-000000000006",
+     "title": "Привет",
+     "created_at": "2026-11-26T10:00:06Z",
+     "last_at": "2026-11-26T10:00:06Z",
+     "questions": 0,
+     "cost_usd": null,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "cache_read": 0,
+      "cache_write": 0
+     },
+     "models": [],
+     "state": "running",
+     "temporary": false,
+     "project_uid": "a7b1c9d0-0000-4000-8000-000000000001"
+    },
+    "segment_id": "seg-7",
+    "model": "claude-opus-5-5",
+    "effort": "medium",
+    "user_item": {
+     "kind": "user",
+     "id": "u-19",
+     "at": "2026-11-26T10:00:06Z",
+     "text": "Привет"
+    }
+   }
+  },
+  {
+   "id": 2,
+   "event": "error",
+   "data": {
+    "item": {
+     "kind": "error",
+     "id": "e-20",
+     "at": "2026-11-26T10:00:06Z",
+     "code": "assistant_bad_key",
+     "message": "Ключ или вход Claude отклонён.",
+     "hint": "Проверьте ключ в окне «Claude: подключение» или войдите заново."
+    }
+   }
+  },
+  {
+   "id": 3,
+   "event": "turn.end",
+   "data": {
+    "state": "error",
+    "stop_reason": null,
+    "dialog": {
+     "id": "45",
+     "uid": "3f2a9c5e-1d00-4b00-8000-000000000006",
+     "title": "Привет",
+     "created_at": "2026-11-26T10:00:06Z",
+     "last_at": "2026-11-26T10:00:06Z",
+     "questions": 0,
+     "cost_usd": null,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "cache_read": 0,
+      "cache_write": 0
+     },
+     "models": [],
+     "state": "error",
+     "temporary": false,
+     "project_uid": "a7b1c9d0-0000-4000-8000-000000000001"
+    }
+   }
+  }
+ ],
+ "data_tools": [
+  {
+   "name": "data_tree",
+   "title": "Дерево проекта",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "offset": {
+      "type": "integer",
+      "description": "Смещение для следующей страницы (next_offset предыдущего ответа)."
+     }
+    },
+    "required": [],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "data_summary",
+   "title": "Сводка проекта / набора",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "set_id": {
+      "type": "integer",
+      "description": "Номер набора скважин; по умолчанию — активный набор."
+     }
+    },
+    "required": [],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "data_holes",
+   "title": "Список скважин",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "set_id": {
+      "type": "integer",
+      "description": "Номер набора скважин; по умолчанию — активный набор."
+     },
+     "search": {
+      "type": "string",
+      "description": "Часть имени скважины."
+     },
+     "with_findings": {
+      "type": "boolean",
+      "description": "Только скважины с находками аудита."
+     },
+     "offset": {
+      "type": "integer",
+      "description": "Смещение для следующей страницы (next_offset предыдущего ответа)."
+     },
+     "limit": {
+      "type": "integer",
+      "description": "Размер страницы, не больше 200."
+     }
+    },
+    "required": [],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "data_hole",
+   "title": "Карточка скважины",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "hole_id": {
+      "type": "string",
+      "description": "Имя скважины."
+     },
+     "set_id": {
+      "type": "integer",
+      "description": "Номер набора скважин; по умолчанию — активный набор."
+     }
+    },
+    "required": [
+     "hole_id"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "data_history",
+   "title": "История объекта",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "description": "Вид объекта: набор, каркас, линия и т. д."
+     },
+     "id": {
+      "type": "integer",
+      "description": "Номер объекта."
+     }
+    },
+    "required": [
+     "kind",
+     "id"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "data_audit",
+   "title": "Итог аудита",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "set_id": {
+      "type": "integer",
+      "description": "Набор скважин; без него — активный."
+     }
+    },
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "data_findings",
+   "title": "Находки аудита",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "set_id": {
+      "type": "integer",
+      "description": "Набор скважин; без него — активный."
+     },
+     "rule": {
+      "type": "string",
+      "description": "Код правила аудита, например COLLAR_MISSING_COORDS."
+     },
+     "severity": {
+      "type": "string",
+      "enum": [
+       "E",
+       "W",
+       "I"
+      ],
+      "description": "E критично, W предупреждение, I информация."
+     },
+     "hole_id": {
+      "type": "string",
+      "description": "Имя скважины."
+     },
+     "offset": {
+      "type": "integer",
+      "description": "Сколько находок пропустить."
+     },
+     "limit": {
+      "type": "integer",
+      "description": "Находок на странице, до 200."
+     }
+    },
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "data_table",
+   "title": "Таблица набора",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "set_id": {
+      "type": "integer",
+      "description": "Набор скважин; без него — активный."
+     },
+     "table": {
+      "type": "string",
+      "description": "Имя таблицы: «Устья», «Инклинометрия» или таблица набора."
+     },
+     "hole_id": {
+      "type": "string",
+      "description": "Имя скважины: только её строки."
+     },
+     "columns": {
+      "type": "string",
+      "description": "Имена столбцов через запятую; без них — первые 24."
+     },
+     "offset": {
+      "type": "integer",
+      "description": "Сколько строк пропустить."
+     },
+     "limit": {
+      "type": "integer",
+      "description": "Строк на странице, до 200."
+     }
+    },
+    "required": [
+     "table"
+    ],
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "data_stats",
+   "title": "Статистика компонента",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "set_id": {
+      "type": "integer",
+      "description": "Набор скважин; без него — активный."
+     },
+     "table": {
+      "type": "string",
+      "description": "Таблица проб или интервалов."
+     },
+     "field": {
+      "type": "string",
+      "description": "Числовое поле (компонент)."
+     },
+     "domain": {
+      "type": "string",
+      "description": "Текстовое поле той же таблицы: статистика по доменам."
+     }
+    },
+    "required": [
+     "table",
+     "field"
+    ],
+    "additionalProperties": false
+   }
+  }
+ ],
+ "errors": {
+  "shell_only": {
+   "status": 403,
+   "body": {
+    "code": "shell_only",
+    "message": "Маршрут доступен только оболочке приложения.",
+    "hint": "Секреты передаёт главный процесс приложения; из окна этот маршрут не вызывается."
+   }
+  },
+  "no_project": {
+   "status": 409,
+   "body": {
+    "code": "no_project",
+    "message": "Проект не открыт.",
+    "hint": "Откройте проект: диалог сохраняется в проекте."
+   }
+  },
+  "assistant_dialog_not_found": {
+   "status": 404,
+   "body": {
+    "code": "assistant_dialog_not_found",
+    "message": "Диалог не найден.",
+    "hint": "Возможно, он удалён или относится к другому проекту. Откройте историю диалогов."
+   }
+  },
+  "assistant_login_gone": {
+   "status": 404,
+   "body": {
+    "code": "assistant_login_gone",
+    "message": "Сеанс входа истёк или не найден.",
+    "hint": "Нажмите «Войти аккаунтом» ещё раз и введите новый код."
+   }
+  },
+  "assistant_not_connected": {
+   "status": 409,
+   "body": {
+    "code": "assistant_not_connected",
+    "message": "Claude не подключён.",
+    "hint": "Откройте «Claude: подключение» и введите ключ API или войдите аккаунтом."
+   }
+  },
+  "assistant_busy": {
+   "status": 409,
+   "body": {
+    "code": "assistant_busy",
+    "message": "Ассистент отвечает на предыдущий вопрос.",
+    "hint": "Дождитесь конца ответа или нажмите «Стоп»."
+   }
+  },
+  "assistant_no_pending": {
+   "status": 409,
+   "body": {
+    "code": "assistant_no_pending",
+    "message": "Диалог не ждёт результатов команд.",
+    "hint": "Откройте диалог заново: возможно, он уже продолжен."
+   }
+  },
+  "assistant_login_busy": {
+   "status": 409,
+   "body": {
+    "code": "assistant_login_busy",
+    "message": "Вход аккаунтом уже выполняется.",
+    "hint": "Дождитесь окончания входа или отмените его и начните заново."
+   }
+  },
+  "assistant_dialog_broken": {
+   "status": 409,
+   "body": {
+    "code": "assistant_dialog_broken",
+    "message": "Часть диалога не читается: файл повреждён или удалён.",
+    "hint": "Начните новый диалог; этот можно удалить из истории."
+   }
+  },
+  "assistant_pending_mismatch": {
+   "status": 409,
+   "body": {
+    "code": "assistant_pending_mismatch",
+    "message": "Результаты не совпадают с ожидаемыми командами.",
+    "hint": "Передайте результат каждой команды, которую просил выполнить ассистент, и только их."
+   }
+  },
+  "bad_param": {
+   "status": 422,
+   "body": {
+    "code": "bad_param",
+    "message": "Неверное значение параметра.",
+    "hint": "Проверьте значение и повторите."
+   }
+  },
+  "assistant_bad_key_format": {
+   "status": 422,
+   "body": {
+    "code": "assistant_bad_key_format",
+    "message": "Ключ API имеет неверный формат.",
+    "hint": "Ключ начинается с «sk-ant-» и не содержит пробелов; скопируйте его целиком из Anthropic Console."
+   }
+  },
+  "assistant_bad_key": {
+   "status": 422,
+   "body": {
+    "code": "assistant_bad_key",
+    "message": "Ключ или вход Claude отклонён.",
+    "hint": "Проверьте ключ в окне «Claude: подключение» или войдите заново."
+   }
+  },
+  "assistant_bad_tools": {
+   "status": 422,
+   "body": {
+    "code": "assistant_bad_tools",
+    "message": "Список инструментов не принят.",
+    "hint": "Обновите приложение; если ошибка повторяется — сообщите разработчику."
+   }
+  },
+  "assistant_login_code": {
+   "status": 422,
+   "body": {
+    "code": "assistant_login_code",
+    "message": "Код входа не принят.",
+    "hint": "Скопируйте код со страницы Anthropic целиком или начните вход заново."
+   }
+  },
+  "assistant_dialog_full": {
+   "status": 422,
+   "body": {
+    "code": "assistant_dialog_full",
+    "message": "Диалог слишком длинный.",
+    "hint": "Начните новый диалог."
+   }
+  },
+  "assistant_no_ant": {
+   "status": 501,
+   "body": {
+    "code": "assistant_no_ant",
+    "message": "Вход аккаунтом недоступен в этой сборке.",
+    "hint": "Введите ключ API в окне «Claude: подключение» или задайте переменную ANTHROPIC_API_KEY."
+   }
+  },
+  "assistant_login_failed": {
+   "status": 502,
+   "body": {
+    "code": "assistant_login_failed",
+    "message": "Не удалось начать вход аккаунтом.",
+    "hint": "Повторите попытку или введите ключ API в окне «Claude: подключение»."
+   }
+  },
+  "assistant_offline": {
+   "status": 503,
+   "body": {
+    "code": "assistant_offline",
+    "message": "Ассистент недоступен без интернета.",
+    "hint": "Проверьте подключение к интернету или прокси; история диалогов доступна."
+   }
+  },
+  "assistant_model_unavailable": {
+   "status": 422,
+   "body": {
+    "code": "assistant_model_unavailable",
+    "message": "Модель недоступна для вашей организации.",
+    "hint": "Выберите другую модель в окне «Claude: подключение»."
+   }
+  },
+  "assistant_rate_limited": {
+   "status": 429,
+   "body": {
+    "code": "assistant_rate_limited",
+    "message": "Превышен лимит запросов Claude.",
+    "hint": "Подождите минуту и повторите."
+   }
+  },
+  "assistant_overloaded": {
+   "status": 503,
+   "body": {
+    "code": "assistant_overloaded",
+    "message": "Сервис Claude перегружен.",
+    "hint": "Повторите позже или выберите другую модель."
+   }
+  },
+  "assistant_api_error": {
+   "status": 502,
+   "body": {
+    "code": "assistant_api_error",
+    "message": "Claude API отклонил запрос.",
+    "hint": "Сообщите разработчику: текст ошибки в журнале ядра."
+   }
+  },
+  "assistant_interrupted": {
+   "status": 502,
+   "body": {
+    "code": "assistant_interrupted",
+    "message": "Связь прервалась.",
+    "hint": "Нажмите «Повторить»; частичный ответ сохранён."
+   }
+  },
+  "internal": {
+   "status": 500,
+   "body": {
+    "code": "internal",
+    "message": "Внутренняя ошибка ассистента.",
+    "hint": "Скопируйте журнал ядра и отправьте разработчику."
+   }
+  }
+ },
+ "requests": {
+  "prefs": {
+   "model": "claude-sonnet-5-5",
+   "effort": "high"
+  },
+  "turn": {
+   "dialog_id": null,
+   "text": "Покажи скважину DH-012 на разрезе",
+   "context": {
+    "project": {
+     "uid": "a7b1c9d0-0000-4000-8000-000000000001",
+     "name": "Демо"
+    },
+    "set": {
+     "id": 3,
+     "name": "Демо",
+     "holes": 48
+    },
+    "hole": {
+     "id": "DH-012",
+     "set_id": 3
+    },
+    "panels": [
+     "дерево",
+     "Claude",
+     "нижняя (Журнал)"
+    ],
+    "windows": [
+     "Гистограмма · Демо"
+    ],
+    "view": {
+     "mode": "iso",
+     "perspective": true,
+     "vexag": 1.0
+    },
+    "section": {
+     "x0": 1000.0,
+     "y0": 2000.0,
+     "az": 45.0,
+     "length": 500.0,
+     "towards": 25.0,
+     "away": 25.0
+    },
+    "selection": {
+     "kind": "wireframe",
+     "id": 12,
+     "name": "Рудное тело"
+    },
+    "audit": "Аудит: 3 / 12 / 40"
+   },
+   "tools": [
+    {
+     "name": "ui_hole_select",
+     "description": "Выбрать скважину. Выделяет скважину в сцене.",
+     "input_schema": {
+      "type": "object",
+      "properties": {
+       "hole_id": {
+        "type": "string",
+        "description": "Имя скважины."
+       }
+      },
+      "required": [
+       "hole_id"
+      ],
+      "additionalProperties": false
+     }
+    },
+    {
+     "name": "ui_project_delete",
+     "description": "Удалить проект. Меняет данные: выполняется после подтверждения пользователем.",
+     "input_schema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+     }
+    },
+    {
+     "name": "ui_section_through_hole",
+     "description": "Разрез через скважину.",
+     "input_schema": {
+      "type": "object",
+      "properties": {
+       "hole_id": {
+        "type": "string"
+       },
+       "length": {
+        "type": [
+         "number",
+         "null"
+        ]
+       }
+      },
+      "required": [
+       "hole_id"
+      ],
+      "additionalProperties": false
+     }
+    }
+   ]
+  },
+  "turn_continue": {
+   "dialog_id": "42",
+   "text": "А теперь рядом",
+   "context": {
+    "project": {
+     "uid": "a7b1c9d0-0000-4000-8000-000000000001",
+     "name": "Демо"
+    },
+    "set": {
+     "id": 3,
+     "name": "Демо",
+     "holes": 48
+    },
+    "hole": {
+     "id": "DH-012",
+     "set_id": 3
+    },
+    "panels": [
+     "дерево",
+     "Claude",
+     "нижняя (Журнал)"
+    ],
+    "windows": [
+     "Гистограмма · Демо"
+    ],
+    "view": {
+     "mode": "iso",
+     "perspective": true,
+     "vexag": 1.0
+    },
+    "section": {
+     "x0": 1000.0,
+     "y0": 2000.0,
+     "az": 45.0,
+     "length": 500.0,
+     "towards": 25.0,
+     "away": 25.0
+    },
+    "selection": {
+     "kind": "wireframe",
+     "id": 12,
+     "name": "Рудное тело"
+    },
+    "audit": "Аудит: 3 / 12 / 40"
+   },
+   "tools": [
+    {
+     "name": "ui_hole_select",
+     "description": "Выбрать скважину. Выделяет скважину в сцене.",
+     "input_schema": {
+      "type": "object",
+      "properties": {
+       "hole_id": {
+        "type": "string",
+        "description": "Имя скважины."
+       }
+      },
+      "required": [
+       "hole_id"
+      ],
+      "additionalProperties": false
+     }
+    },
+    {
+     "name": "ui_project_delete",
+     "description": "Удалить проект. Меняет данные: выполняется после подтверждения пользователем.",
+     "input_schema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+     }
+    },
+    {
+     "name": "ui_section_through_hole",
+     "description": "Разрез через скважину.",
+     "input_schema": {
+      "type": "object",
+      "properties": {
+       "hole_id": {
+        "type": "string"
+       },
+       "length": {
+        "type": [
+         "number",
+         "null"
+        ]
+       }
+      },
+      "required": [
+       "hole_id"
+      ],
+      "additionalProperties": false
+     }
+    }
+   ]
+  },
+  "tool_results": {
+   "pending_id": "p-7f3a",
+   "results": [
+    {
+     "tool_use_id": "toolu_01Bb",
+     "ok": true,
+     "text": "Выбрана скважина DH-012",
+     "title": "Выбрать скважину"
+    },
+    {
+     "tool_use_id": "toolu_01Cc",
+     "ok": true,
+     "text": "Разрез построен",
+     "title": "Разрез через скважину"
+    }
+   ],
+   "context": {
+    "project": {
+     "uid": "a7b1c9d0-0000-4000-8000-000000000001",
+     "name": "Демо"
+    },
+    "set": {
+     "id": 3,
+     "name": "Демо",
+     "holes": 48
+    },
+    "hole": {
+     "id": "DH-012",
+     "set_id": 3
+    },
+    "panels": [
+     "дерево",
+     "Claude",
+     "нижняя (Журнал)"
+    ],
+    "windows": [
+     "Гистограмма · Демо"
+    ],
+    "view": {
+     "mode": "iso",
+     "perspective": true,
+     "vexag": 1.0
+    },
+    "section": {
+     "x0": 1000.0,
+     "y0": 2000.0,
+     "az": 45.0,
+     "length": 500.0,
+     "towards": 25.0,
+     "away": 25.0
+    },
+    "selection": {
+     "kind": "wireframe",
+     "id": 12,
+     "name": "Рудное тело"
+    },
+    "audit": "Аудит: 3 / 12 / 40"
+   },
+   "tools": [
+    {
+     "name": "ui_hole_select",
+     "description": "Выбрать скважину. Выделяет скважину в сцене.",
+     "input_schema": {
+      "type": "object",
+      "properties": {
+       "hole_id": {
+        "type": "string",
+        "description": "Имя скважины."
+       }
+      },
+      "required": [
+       "hole_id"
+      ],
+      "additionalProperties": false
+     }
+    },
+    {
+     "name": "ui_project_delete",
+     "description": "Удалить проект. Меняет данные: выполняется после подтверждения пользователем.",
+     "input_schema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+     }
+    },
+    {
+     "name": "ui_section_through_hole",
+     "description": "Разрез через скважину.",
+     "input_schema": {
+      "type": "object",
+      "properties": {
+       "hole_id": {
+        "type": "string"
+       },
+       "length": {
+        "type": [
+         "number",
+         "null"
+        ]
+       }
+      },
+      "required": [
+       "hole_id"
+      ],
+      "additionalProperties": false
+     }
+    }
+   ]
+  },
+  "tool_results_declined": {
+   "pending_id": "p-9c21",
+   "results": [
+    {
+     "tool_use_id": "toolu_01Ee",
+     "ok": false,
+     "text": "Пользователь отклонил действие",
+     "title": "Удалить проект"
+    }
+   ],
+   "context": {
+    "project": {
+     "uid": "a7b1c9d0-0000-4000-8000-000000000001",
+     "name": "Демо"
+    },
+    "set": {
+     "id": 3,
+     "name": "Демо",
+     "holes": 48
+    },
+    "hole": {
+     "id": "DH-012",
+     "set_id": 3
+    },
+    "panels": [
+     "дерево",
+     "Claude",
+     "нижняя (Журнал)"
+    ],
+    "windows": [
+     "Гистограмма · Демо"
+    ],
+    "view": {
+     "mode": "iso",
+     "perspective": true,
+     "vexag": 1.0
+    },
+    "section": {
+     "x0": 1000.0,
+     "y0": 2000.0,
+     "az": 45.0,
+     "length": 500.0,
+     "towards": 25.0,
+     "away": 25.0
+    },
+    "selection": {
+     "kind": "wireframe",
+     "id": 12,
+     "name": "Рудное тело"
+    },
+    "audit": "Аудит: 3 / 12 / 40"
+   },
+   "tools": [
+    {
+     "name": "ui_hole_select",
+     "description": "Выбрать скважину. Выделяет скважину в сцене.",
+     "input_schema": {
+      "type": "object",
+      "properties": {
+       "hole_id": {
+        "type": "string",
+        "description": "Имя скважины."
+       }
+      },
+      "required": [
+       "hole_id"
+      ],
+      "additionalProperties": false
+     }
+    },
+    {
+     "name": "ui_project_delete",
+     "description": "Удалить проект. Меняет данные: выполняется после подтверждения пользователем.",
+     "input_schema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+     }
+    },
+    {
+     "name": "ui_section_through_hole",
+     "description": "Разрез через скважину.",
+     "input_schema": {
+      "type": "object",
+      "properties": {
+       "hole_id": {
+        "type": "string"
+       },
+       "length": {
+        "type": [
+         "number",
+         "null"
+        ]
+       }
+      },
+      "required": [
+       "hole_id"
+      ],
+      "additionalProperties": false
+     }
+    }
+   ]
+  },
+  "rename": {
+   "title": "Разрез DH-012"
+  },
+  "login_finish": {
+   "code": "ant-code-0000"
+  },
+  "sealed": {
+   "revision": 3
+  }
+ }
+}

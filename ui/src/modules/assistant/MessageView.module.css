@@ -1,0 +1,36 @@
+/* The messages of the panel «Claude» (ТЗ 7.32; ADR 0029 решение 33): the brand tokens of the theme (docs/brand, ADR 0006). */
+.user { align-self: flex-end; max-width: 92%; background: var(--bg-active); color: var(--text); border-radius: var(--radius); padding: 6px 10px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
+.assistant { align-self: stretch; min-width: 0; line-height: 1.5; }
+.who { font-family: var(--font-brand); font-weight: 600; font-size: 11px; color: var(--text-dim); margin-bottom: 2px; letter-spacing: 0.02em; }
+.md { min-width: 0; overflow-wrap: anywhere; }
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.p { margin: 0 0 8px; }
+.h { font-family: var(--font-brand); font-weight: 600; margin: 10px 0 4px; }
+.h1 { font-size: 15px; }
+.h2 { font-size: 14px; }
+.h3 { font-size: 13px; color: var(--text-dim); }
+.inlineCode { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 0.92em; background: var(--bg-input); border: 1px solid var(--border); border-radius: 3px; padding: 0 4px; }
+.codeBox { position: relative; margin: 0 0 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-input); }
+.codeBox[data-open="true"] { border-style: dashed; }
+.lang { position: absolute; top: 2px; right: 6px; font-size: 10px; color: var(--text-faint); pointer-events: none; }
+.pre { margin: 0; padding: 6px 8px; overflow-x: auto; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12px; line-height: 1.4; }
+.list { margin: 0 0 8px; padding-left: 20px; }
+.li { margin: 2px 0; }
+.li > .list { margin: 2px 0 0; }
+.tableWrap { overflow-x: auto; margin: 0 0 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); }
+.table { border-collapse: collapse; min-width: 100%; font-variant-numeric: tabular-nums; font-size: 12px; }
+.table th { background: var(--bg-hover); color: var(--text-dim); font-family: var(--font-brand); font-weight: 600; padding: 3px 8px; border-bottom: 1px solid var(--border-strong); text-align: left; white-space: nowrap; }
+.table td { padding: 3px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.table tbody tr:last-child td { border-bottom: 0; }
+.quote { margin: 0 0 8px; padding: 2px 10px; border-left: 3px solid var(--border-strong); color: var(--text-dim); }
+.hr { border: 0; border-top: 1px solid var(--border); margin: 8px 0; }
+.link { color: var(--accent); text-decoration: underline; }
+.link:hover { text-decoration: none; }
+.caret { display: inline-block; width: 7px; height: 14px; margin-left: 2px; vertical-align: text-bottom; background: var(--highlight); animation: blink 1s steps(2, start) infinite; }
+@keyframes blink { to { visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) { .caret { animation: none; } }
+.mark { margin-top: 4px; font-size: 11px; color: var(--text-faint); font-style: italic; }
+.notice { align-self: stretch; font-size: 12px; color: var(--text-dim); border-left: 3px solid var(--warn); padding: 2px 8px; }
+.error { align-self: stretch; font-size: 12px; color: var(--danger); border: 1px solid var(--danger); border-radius: var(--radius); padding: 6px 8px; background: var(--bg-elev); }
+.hint { margin-top: 2px; color: var(--text-dim); }

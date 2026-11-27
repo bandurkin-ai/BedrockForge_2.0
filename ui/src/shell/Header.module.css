@@ -11,7 +11,6 @@
 .search kbd { margin-left: auto; font: inherit; font-size: 11px; color: var(--text-faint); }
 .icon { border: 0; background: transparent; color: var(--text-dim); cursor: pointer; padding: 5px; border-radius: var(--radius); display: flex; }
 .icon:hover { background: var(--bg-hover); color: var(--text); }
-.account { width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); }
 /* «О производителе» (ТЗ 7.35 Д-12): a plate under ⓘ, brand palette and fonts in both themes (ADR 0006) */
 .aboutAnchor { position: relative; display: flex; }
 .about { position: absolute; top: calc(100% + 6px); right: -40px; z-index: 50; width: 340px; padding: 14px 16px; background: var(--bg-panel); border: 1px solid var(--border-strong); border-top: 3px solid var(--brand-orange); border-radius: 6px; box-shadow: var(--shadow); color: var(--text); outline: none; user-select: text; }

@@ -17,6 +17,7 @@ export const commands: Command[] = [
       "Меняет данные: выполняется после подтверждения пользователем в окне со списком имён удаляемых объектов. Отменить удаление нельзя.",
     params: { ids: { type: "string", description: "номера объектов через запятую" } },
     required: ["ids"],
+    confirm: true, // S10 (ТЗ 5): a deletion asked by Claude is confirmed in the chat first (23.15)
     stage: "Э11",
   },
 ];

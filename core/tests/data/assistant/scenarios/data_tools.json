@@ -1,0 +1,79 @@
+{
+  "steps": [
+    {
+      "match": {
+        "tool_result_for": "data_audit"
+      },
+      "reply": {
+        "stream": true,
+        "content": [
+          {
+            "type": "text",
+            "text": "Аудит нашёл 3 ошибки и 12 предупреждений; больше всего замечаний у скважин DH-004 и DH-012."
+          }
+        ],
+        "stop_reason": "end_turn",
+        "usage": {
+          "input_tokens": 3300,
+          "output_tokens": 70,
+          "cache_read_input_tokens": 2400,
+          "cache_creation_input_tokens": 0
+        }
+      }
+    },
+    {
+      "match": {
+        "tool_result_for": "data_summary"
+      },
+      "reply": {
+        "stream": true,
+        "content": [
+          {
+            "type": "text",
+            "text": "Теперь итог аудита."
+          },
+          {
+            "type": "tool_use",
+            "id": "toolu_mock_audit",
+            "name": "data_audit",
+            "input": {}
+          }
+        ],
+        "stop_reason": "tool_use",
+        "usage": {
+          "input_tokens": 2900,
+          "output_tokens": 40,
+          "cache_read_input_tokens": 2400,
+          "cache_creation_input_tokens": 0
+        }
+      }
+    },
+    {
+      "match": {
+        "last_user_text": "Что не так с данными"
+      },
+      "reply": {
+        "stream": true,
+        "content": [
+          {
+            "type": "text",
+            "text": "Смотрю сводку проекта."
+          },
+          {
+            "type": "tool_use",
+            "id": "toolu_mock_summary",
+            "name": "data_summary",
+            "input": {}
+          }
+        ],
+        "stop_reason": "tool_use",
+        "usage": {
+          "input_tokens": 2400,
+          "output_tokens": 35,
+          "cache_read_input_tokens": 0,
+          "cache_creation_input_tokens": 2400
+        }
+      }
+    }
+  ]
+}

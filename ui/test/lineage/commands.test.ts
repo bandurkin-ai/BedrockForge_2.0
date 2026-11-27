@@ -7,6 +7,7 @@ import { CoreError } from "../../src/shell/api";
 import type { App } from "../../src/shell/app";
 import { commandTools } from "../../src/shell/commands";
 import { dialogStore } from "../../src/shell/dialogs";
+import { answerClaude } from "../claude-confirm";
 import { moduleCommands } from "../../src/shell/catalog";
 import { closeWindow, windowStore } from "../../src/shell/windows";
 import { abandonAsk, askImpact, IMPACT_WINDOW, isAsking, settleAsk } from "../../src/modules/lineage/impactAsk";
@@ -277,9 +278,9 @@ describe("lineage.rebuild", () => {
   });
   it("the registry asks the user before the assistant changes data (`confirm`): «отклонил» starts nothing", async () => {
     const run = execute("lineage.rebuild", head, "claude");
-    await waitFor(() => dialogStore.get().queue.length > 0);
-    answerDialog(false);
+    await answerClaude(false, "lineage.rebuild"); // 23.15: «Отклонить» on the card of the chat
     expect((await run).ok).toBe(false);
+    expect(dialogStore.get().queue).toHaveLength(0);
     expect(rebuilds()).toHaveLength(0);
   });
 });

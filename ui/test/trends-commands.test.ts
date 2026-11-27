@@ -21,6 +21,7 @@ import { viewStore } from "../src/modules/scene/bind";
 import { setCoreTarget } from "../src/shell/api";
 import { createApp, type App } from "../src/shell/app";
 import { closeDialog, dialogStore } from "../src/shell/dialogs";
+import { answerClaude } from "./claude-confirm";
 import { windowStore } from "../src/shell/windows";
 
 const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status, headers: { "Content-Type": "application/json" } });
@@ -140,7 +141,7 @@ describe("trend.save", () => {
 
   it("with angles — `POST /trends` with the body of the contract; the assistant is asked first", async () => {
     const p = app.registry.execute("trend.save", { name: "СВ", ang1: 45, ang2: -10, ratios: "0,5; 0,2", size: 80, centre: "1000; 2000; 300" }, "claude");
-    await answer(true);
+    await answerClaude(true);
     const r = await p;
     expect(r.ok).toBe(true);
     expect(r.result).toMatch(/^Тренд «СВ» сохранён \(№10\)/);
@@ -253,7 +254,7 @@ describe("the window «Тренд»", () => {
     expect(editOf(win)).toMatchObject({ trendId: rows.at(-1)!.id, dirty: false });
     // the assistant: the refusal of the core, no window
     const asked = app.registry.execute("trend.save", { trend_id: 5, ang1: 1, expected_version: 1 }, "claude");
-    await answer(true); // `confirm`: the assistant's command is asked first
+    await answerClaude(true); // `confirm`: the assistant's command is asked first
     const r = await asked;
     expect(r.ok).toBe(false);
     expect(r.result).toMatch(/Тренд изменён в другом окне/);
@@ -272,7 +273,7 @@ describe("trend.delete, trend.show, trend.usage", () => {
   it("the assistant: the registry asks; 409 `in_use` of the core comes back in Russian", async () => {
     rows[0].used = true;
     const p = app.registry.execute("trend.delete", { trend_id: 4 }, "claude");
-    await answer(true);
+    await answerClaude(true);
     expect((await p).result).toMatch(/Тренд используется: «Оценка AU»/);
   });
 

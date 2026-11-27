@@ -27,6 +27,8 @@ export interface CoreOptions {
   dataDir: string;
   /** Folder of projects (ТЗ 6.5), read at every start: «Настройка» may change it. */
   projectsDir?: () => string;
+  /** Extra environment of the core (BF_ANT_PATH of the assistant, ADR 0029); the caller's own values stay. */
+  env?: () => Record<string, string>;
   logFile: string;
   readyTimeoutMs?: number;
   healthIntervalMs?: number;
@@ -105,7 +107,7 @@ export class CoreProcess extends EventEmitter {
     this.log(`start ${file} ${args.join(" ")} (cwd ${cwd})`);
     const child = spawn(file, fullArgs, {
       cwd,
-      env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
+      env: { ...process.env, ...this.opts.env?.(), PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
     });

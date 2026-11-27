@@ -216,6 +216,14 @@ def check_ortools() -> dict[str, Any]:
     return {"ortools": ortools.__version__, "flow": int(mf.optimal_flow())}
 
 
+def check_assistant() -> dict[str, Any]:
+    """The chain of the assistant's SDK (anthropic, httpx2, jiter, truststore, opentelemetry-api + its metadata),
+    AES-GCM and a stream of the Messages API parsed without the network (ADR 0029 решение 37)."""
+    from bf_core.assistant.selfcheck import run_checks
+
+    return run_checks()
+
+
 CHECKS: dict[str, Callable[[], dict[str, Any]]] = {
     "pyproj": check_pyproj,
     "worker": check_worker,
@@ -229,6 +237,7 @@ CHECKS: dict[str, Callable[[], dict[str, Any]]] = {
     "pyfqmr_skimage": check_pyfqmr,
     "duckdb_pyarrow": check_duckdb_arrow,
     "ortools": check_ortools,
+    "assistant": check_assistant,
 }
 
 

@@ -1,8 +1,9 @@
 // BedrockForge 2 main process: splash, bf-core lifecycle, app:// protocol, one main window.
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, protocol, screen, session, shell, type WebContents } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, protocol, safeStorage, screen, session, shell, type WebContents } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { ClaudeLink, antEnv } from "./claude";
 import { CoreProcess, type CoreInfo } from "./core";
 import { coreCommand, uiRoot } from "./paths";
 import { contentSecurityPolicy, isAllowedExternal, mimeOf, ORIGIN, staticFile } from "./protocol";
@@ -81,7 +82,20 @@ const core = new CoreProcess({
   command: coreCommand(app.isPackaged, process.resourcesPath, path.join(__dirname, "..")),
   dataDir: app.getPath("userData"),
   projectsDir,
+  env: () => antEnv(process.resourcesPath),
   logFile: path.join(LOG_DIR, "core.log"),
+});
+
+// Assistant «Claude» (ADR 0029): the key is kept encrypted by safeStorage and handed to the core after BF-READY.
+const claude = new ClaudeLink({
+  storage: safeStorage,
+  file: path.join(app.getPath("userData"), "assistant", "connection.bin"),
+  core: () => {
+    const c = core.current();
+    return c ? { port: c.port, token: c.token } : null;
+  },
+  e2e: process.env.BF_E2E === "1",
+  log,
 });
 
 let splash: BrowserWindow | null = null;
@@ -256,6 +270,11 @@ function registerIpc(): void {
   });
   ipcMain.on("bf:app-version", (e) => (e.returnValue = app.getVersion()));
   const fromMain = (sender: WebContents) => mainWin !== null && sender === mainWin.webContents;
+  ipcMain.handle("bf:claude-seal", (e) => (fromMain(e.sender) ? claude.seal() : { ok: false, message: "Недоступно" }));
+  ipcMain.handle("bf:claude-forget", async (e) => {
+    if (fromMain(e.sender)) await claude.forget();
+  });
+  ipcMain.on("bf:claude-storage", (e) => (e.returnValue = fromMain(e.sender) ? claude.storage() : { secure: false, backend: "none" }));
   ipcMain.on("bf:settings-load", (e) => {
     const s = fromMain(e.sender) ? readSettings(SETTINGS_FILE()) : null;
     // The window placement belongs to the main process; the interface gets the rest.
@@ -475,11 +494,13 @@ async function boot(): Promise<void> {
     splashState(`Вычислительное ядро не запускается: ${e instanceof Error ? e.message : String(e)}. Журнал: ${LOG_DIR}`, true);
     return;
   }
+  void claude.onCoreReady();
   core.on("state", (status: "online" | "offline") => {
     mainWin?.webContents.send("bf:core-state", { status, info: status === "online" ? publicInfo(core.current()) : null });
   });
   core.on("restarted", (info: CoreInfo, portChanged: boolean) => {
     log(`core restarted on port ${info.port}${portChanged ? " (new port: reloading the window)" : ""}`);
+    void claude.onCoreReady(); // the secret lives in the memory of the core: hand it over again
     if (portChanged) mainWin?.webContents.reload(); // CSP of the page names the old port
     else mainWin?.webContents.send("bf:core-state", { status: "online", info: publicInfo(info), message: "Вычислительное ядро перезапущено" });
   });
@@ -504,7 +525,11 @@ if (!app.requestSingleInstanceLock()) {
     if (quitting) return;
     e.preventDefault();
     quitting = true;
-    void core.stop().finally(() => app.exit(0));
+    // the last rotated token of the account is sealed before the core goes (at most 2 s)
+    void claude
+      .closing(2000)
+      .then(() => core.stop())
+      .finally(() => app.exit(0));
   });
   void app.whenReady().then(boot);
 }

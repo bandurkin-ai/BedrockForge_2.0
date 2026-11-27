@@ -1,0 +1,9 @@
+{
+  "_comment": "Pins of the `ant` CLI shipped for account login (ADR 0029 decision 37, question 125). Never fill url/sha256/license/archive_name from memory: pin them from a build log (`fetch_ant.py --print-hash --url <url>`) in a separate commit. While url or sha256 is null the build goes without `ant` (API key only).",
+  "version": "2.9.0",
+  "url": null,
+  "verified": false,
+  "sha256": null,
+  "license": null,
+  "archive_name": null
+}

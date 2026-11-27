@@ -41,6 +41,11 @@ jobs:
       - run: uv run pyinstaller --noconfirm --clean bf-core.spec
         working-directory: core
       - run: npm ci && npm run build
+      # ant: pinned in tools/ci/ant.json (without a sha256 the script exits 0 and the release goes without ant;
+      # with a sha256 but no url / allowed licence, --strict fails the release)
+      - name: ant — загрузка и проверка SHA-256
+        continue-on-error: false
+        run: python tools/ci/fetch_ant.py --platform windows --strict
       - run: npx electron-builder --win nsis dir --x64 --publish never
         working-directory: app
         env: { CSC_IDENTITY_AUTO_DISCOVERY: "false" }

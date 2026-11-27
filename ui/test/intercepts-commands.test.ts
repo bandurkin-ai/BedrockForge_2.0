@@ -14,6 +14,7 @@ import { RUN_TOOL, TT_TOOL } from "../src/modules/intercepts/params";
 import { setCoreTarget } from "../src/shell/api";
 import { createApp, type App } from "../src/shell/app";
 import { closeDialog, dialogStore } from "../src/shell/dialogs";
+import { answerClaude } from "./claude-confirm";
 import { searchPalette } from "../src/shell/paletteSearch";
 import { flattenRibbon, type RibbonTab } from "../src/shell/ribbonConfig";
 import { windowStore } from "../src/shell/windows";
@@ -110,10 +111,7 @@ describe("registry", () => {
 describe("window or job", () => {
   it("without the required arguments opens the window with what is given", async () => {
     const run = app.registry.execute("intercept.tt", { set_id: 3, eps: 0.2 }, "claude");
-    await vi.waitFor(() => expect(dialogStore.get().queue).toHaveLength(1)); // `confirm`: the assistant asks first
-    const d = dialogStore.get().queue[0];
-    if (d.kind === "confirm") d.resolve(true);
-    closeDialog(d.id);
+    await answerClaude(true, "intercept.tt"); // `confirm`: the assistant asks first (a card of the chat)
     const r = await run;
     expect(r.ok).toBe(true);
     expect(r.result).toContain("Открыто окно «Истинная мощность»: заданы не все обязательные параметры — set_id, table, source");

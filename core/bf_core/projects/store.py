@@ -53,6 +53,7 @@ OBJECT_KIND_KEYS = {
     "raster": "rasters",
     "block_model": "block_models",
     "chart": "charts",
+    "assistant_dialog": "chats",
 }
 COUNTERS: dict[str, Callable[[sa.Connection], int]] = {}
 

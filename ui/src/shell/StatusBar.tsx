@@ -7,6 +7,7 @@ import { viewStore } from "../modules/scene/bind";
 import { currentSection, seriesStatus, seriesStore } from "../modules/section/seriesState";
 import { useStore } from "./useStore";
 import css from "./StatusBar.module.css";
+import { StatusLink } from "../modules/assistant/StatusLink";
 
 const CORE_TEXT = { starting: "Запуск ядра…", online: "Ядро работает", offline: "Нет связи с ядром" } as const;
 
@@ -49,9 +50,7 @@ export function StatusBar() {
     <footer className={css.bar}>
       {parts.flatMap((p, i) => (i ? [<span key={`s${i}`} className={css.sep}>·</span>, p] : [p]))}
       <span className={css.right}>
-        <button type="button" className={css.link} onClick={() => void app.run("panel.set", { panel: "assistant", open: true })}>
-          Claude: не подключён
-        </button>
+        <StatusLink onOpen={() => void app.run("assistant.connect")} />
         <span className={css.sep}>·</span>
         <button type="button" className={css.link} onClick={() => void app.run("panel.set", { panel: "bottom", tab: "audit", open: true })}>
           {statusText(audit)}

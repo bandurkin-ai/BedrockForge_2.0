@@ -4,6 +4,7 @@ import { Icon } from "./Icon";
 import { useStore } from "./useStore";
 import logoMark from "../assets/logo-mark.png";
 import css from "./Header.module.css";
+import { AccountBadge } from "../modules/assistant/AccountBadge";
 
 /** Title bar of the window (ТЗ 7.0.3): logo, project, command search, theme, «О производителе» (Д-12), Claude. */
 export function Header() {
@@ -42,7 +43,7 @@ export function Header() {
       <button type="button" className={css.icon} title="Claude (Ctrl+J)" aria-label="Claude" onClick={() => void app.run("panel.set", { panel: "assistant" })}>
         <Icon name="spark" size={16} />
       </button>
-      <span className={css.account} title="Claude: не подключён" />
+      <AccountBadge onOpen={() => void app.run("assistant.connect")} />
     </header>
   );
 }
