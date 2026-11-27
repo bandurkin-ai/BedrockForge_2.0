@@ -34,8 +34,9 @@ from bf_core.projects.service import projects_of
 from bf_core.stats import blocks_cache as bc
 from bf_core.storage.blobs import BlobStore
 from bf_core.viz import binary
+from tests import golden
 from tests.test_blocks_layer_fixture import encode as layer_encode
-from tests.test_blocks_layer_fixture import grid_of, split_model
+from tests.test_blocks_layer_fixture import grid_of, same_bfa1, split_model
 
 API = "/api/v1"
 VIZ = API + "/viz/blocks"
@@ -131,11 +132,12 @@ def refused(r: Any, status: int, code: str, param: str | None = None) -> dict[st
 def same_faces(
     a: tuple[dict[str, Any], dict[str, np.ndarray]], b: tuple[dict[str, Any], dict[str, np.ndarray]]
 ) -> None:
-    """Header (but the id and the version of the model and the warnings) and the arrays are equal."""
+    """Header (but the id and the version of the model and the warnings) and the arrays are equal (floats to the
+    tolerance of `tests/golden.py`: the processor rounds the float64 of the rotation in its way)."""
     skip = ("model", "version", "warnings", "arrays")
-    assert {k: v for k, v in a[0].items() if k not in skip} == {k: v for k, v in b[0].items() if k not in skip}
-    for name in ("c", "h", "a", "k"):
-        assert np.array_equal(a[1][name], b[1][name]), name
+    head_a = {k: v for k, v in a[0].items() if k not in skip}
+    golden.assert_same(head_a, {k: v for k, v in b[0].items() if k not in skip})
+    golden.same_arrays({n: a[1][n] for n in ("c", "h", "a", "k")}, {n: b[1][n] for n in ("c", "h", "a", "k")})
 
 
 # --- BFA1 `blocks`: the same as the kernels and as the fixture of the layer -----------------------
@@ -601,8 +603,10 @@ def test_the_answers_kept_for_the_interface_are_the_answers_of_the_routes(vc) ->
     assert [c["name"] for c in kept["cases"]] == [c["name"] for c in fresh["cases"]]
     for a, b in zip(kept["cases"], fresh["cases"], strict=True):
         assert a["request"] == b["request"] and a["status"] == b["status"], a["name"]
-        assert a.get("bfa1") == b.get("bfa1"), a["name"]  # the bytes the interface was read against
-        assert a.get("json") == b.get("json"), a["name"]
+        assert (a.get("bfa1") is None) == (b.get("bfa1") is None), a["name"]
+        if a.get("bfa1") is not None:  # the bytes the interface was read against (or the same to the last float32)
+            same_bfa1(a["bfa1"], b["bfa1"], a["name"])
+        golden.assert_same(a.get("json"), b.get("json"), f"({a['name']})")
 
 
 def test_the_faces_of_the_fixture_of_the_layer_have_the_form_of_the_route(vc) -> None:  # type: ignore[no-untyped-def]
