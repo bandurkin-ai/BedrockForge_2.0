@@ -281,6 +281,7 @@ test.describe.serial("Claude assistant: key, commands, confirmation, history, us
     await expect(SELECTOR(page)).toContainText("Демо");
     const log = await showLog(page);
     const before = (await mock.messages()).length;
+    const errorsBefore = await chat(page).getByTestId("msg-error").count();
 
     await ask(page, "Удали проект");
     const card = chat(page).getByTestId("confirm-card");
@@ -320,13 +321,14 @@ test.describe.serial("Claude assistant: key, commands, confirmation, history, us
     const cards = chat(page).getByTestId("tool-card").filter({ hasText: "Удалить проект" });
     await expect(cards.last()).toContainText("Проект «Демо: участок Северный» удалён");
     expect(await cards.last().getAttribute("data-status")).toBe("ok");
-    // The result of the tool goes back to Claude by `POST /dialogs/{id}/tool_results`, but the dialog lived in the project that is gone. The expected end is the text
-    // «Проект удалён.» of the mock; the interface shows «Диалог не найден» instead (a defect for the review, see the report of 23.20) — noted, not hidden.
-    const last = chat(page).getByTestId("msg-assistant").last();
-    if (!(await last.filter({ hasText: "Проект удалён." }).count())) {
-      const err = chat(page).getByTestId("msg-error");
-      test.info().annotations.push({ type: "defect", description: `after project.delete the answer of Claude is lost: msg-error ${await err.last().getAttribute("data-code")}` });
-    }
+    // The dialog lived in the project that is gone (ADR 0029 решение 32), so the result of the tool is not sent: the chat says so instead of a raw «Диалог не найден».
+    const notice = chat(page).getByTestId("msg-notice").last();
+    await expect(notice).toHaveText("Диалог закрыт вместе с проектом: ответ Claude получить нельзя.");
+    expect(await notice.getAttribute("data-code")).toBe("dialog_closed");
+    await expect(chat(page).getByTestId("msg-error")).toHaveCount(errorsBefore); // no new error (the one of the offline test stays in the feed)
+    expect(await chat(page).getByTestId("msg-error").evaluateAll((els) => els.map((e) => e.getAttribute("data-code")))).not.toContain("assistant_dialog_not_found");
+    await expect(chat(page).getByTestId("msg-assistant").filter({ hasText: "Проект удалён." })).toHaveCount(0); // the mock's answer to the result never comes
+    expect((await mock.messages()).slice(before + 2)).toHaveLength(1); // the allowed request reached Claude once; its result was not sent back
     await page.screenshot({ path: shot("assistant-6-deleted.png") });
   });
 

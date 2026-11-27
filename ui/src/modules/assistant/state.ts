@@ -17,7 +17,7 @@ import { Store } from "../../shell/store";
 import { cancelTurn, getDialog, getStatus, getUsage, listDialogs } from "./api";
 import { addLocalUser, applyEvents, dropPending, EMPTY_CHAT, fromDialog, setToolResult, type ChatState, type ReduceOptions } from "./reduce";
 import { continueTurn, resumeTurn, startTurn, type SegmentResult, type TurnStream } from "./stream";
-import type { AssistantStatus, DialogHead, Pending, ToolDefinition, ToolResultIn, ToolStatus, TurnContext, TurnEnvelope, UsageReport } from "./wireTypes";
+import type { AssistantStatus, DialogHead, Item, Pending, ToolDefinition, ToolResultIn, ToolStatus, TurnContext, TurnEnvelope, UsageReport } from "./wireTypes";
 
 export const chatStore = new Store<ChatState>(EMPTY_CHAT);
 export const statusStore = new Store<{ status: AssistantStatus | null; error: string | null }>({ status: null, error: null });
@@ -80,12 +80,34 @@ function onEvents(mine: number) {
 
 export type AskResult = { ok: true } | { ok: false; message: string; hint: string };
 
-function follow(stream: TurnStream, mine: number, live: boolean, depth = 0): Promise<SegmentResult> {
+/** Why a turn is closed without the answer of the model: the project of the dialog was deleted by this turn, or another project is open now. */
+export type CloseReason = "deleted" | "changed";
+const CLOSE_NOTICES: Record<CloseReason, { code: string; message: string }> = {
+  deleted: { code: "dialog_closed", message: "Диалог закрыт вместе с проектом: ответ Claude получить нельзя." },
+  changed: { code: "project_changed", message: "Проект сменился: этот диалог остался в прежнем проекте, продолжите его там." },
+};
+
+/**
+ * The results of the commands cannot go back to the core (the dialog lives in the project that is gone or not open): the cards stay as they are, the feed gets
+ * a notice, the chat is idle and empty of a dialog (the next question starts a new one), the list of dialogs is read again.
+ */
+export function closeTurn(reason: CloseReason): void {
+  const s = dropPending(chatStore.get());
+  const n = CLOSE_NOTICES[reason];
+  const notice: Item = { kind: "notice", id: `local-notice-${++localSeq}`, at: new Date().toISOString(), code: n.code, message: n.message };
+  chatStore.set({ ...s, items: [...s.items, notice], dialog: null, status: "idle", thinking: false, lastEventId: 0 });
+  void refreshDialogs();
+}
+
+/** `continued` — the segment goes on a dialog after the results of the window: a dialog the core does not have in the open project closes the turn (`closeTurn`). */
+function follow(stream: TurnStream, mine: number, live: boolean, depth = 0, continued = false): Promise<SegmentResult> {
   current = stream;
   return stream.done.then(async (res) => {
     if (mine !== epoch) return res;
     if (current === stream) current = null;
-    if (res.kind === "refused") {
+    if (res.kind === "refused" && continued && res.error.code === "assistant_dialog_not_found") {
+      closeTurn("changed");
+    } else if (res.kind === "refused") {
       const e = res.error;
       showError(e.code, e.message, e.hint);
       const s = chatStore.get();
@@ -146,7 +168,7 @@ export function submitResults(results: ToolResultIn[]): Promise<SegmentResult> |
   const mine = ++epoch;
   chatStore.set({ status: "running", thinking: false, lastEventId: 0 });
   const stream = continueTurn(s.dialog.id, { pending_id: s.pending.id, results, context: env.context(), tools: env.tools() }, { onEvents: onEvents(mine) });
-  return follow(stream, mine, true);
+  return follow(stream, mine, true, 0, true);
 }
 
 /** A card of a command of the window changes (it ran, was declined or refused). */
