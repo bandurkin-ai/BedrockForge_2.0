@@ -214,6 +214,7 @@ class Built:
     job_id: int | None = None
     prints: Mapping[Any, str] | None = None  # `store_graph.input_prints` before the pass; None — not checked
     on_write: Callable[[sa.Connection, int], None] | None = None  # in the transaction: the fields PIT / ORE, the graph
+    keep_draft: bool = False  # «Перестроить»: the run took the parameters of the result, the edited ones still wait
 
 
 def template_summary(doc: Mapping[str, Any] | None) -> dict[str, Any] | None:
@@ -268,6 +269,9 @@ def write_result(conn: sa.Connection, store: BlobStore, scenario_id: int, built:
         raise sg.inputs_changed()  # before any file is put: nothing is left without an owner (21.21б-2)
     old = dict(row.meta or {})
     meta = _meta(built, {k: old[k] for k in ("uid",) if k in old}, str(old.get("created_at") or ""))
+    draft = old.get("draft")
+    if built.keep_draft and isinstance(draft, Mapping) and draft.get("hash") != meta["params_hash"]:
+        meta["draft"] = dict(draft)  # not the parameters this result was made with: «параметры изменены» stays
     _put_all(conn, store, scenario_id, built.staged)
     if built.on_write is not None:
         built.on_write(conn, scenario_id)
