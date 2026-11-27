@@ -278,8 +278,7 @@ def capped(model: str, effort: str) -> str:
 
 
 def resolved(conn: Connection) -> prefs.Resolved:
-    environ = getattr(conn, "_environ", None)
-    return prefs.resolve(conn.data_dir, environ() if callable(environ) else None)
+    return conn.resolved()
 
 
 def tools_of(ui_tools: list[Any]) -> tuple[list[dict[str, Any]], frozenset[str]]:

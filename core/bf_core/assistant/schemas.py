@@ -230,6 +230,7 @@ class ModelUsage(Out):
     requests: Count
     tokens: Tokens
     cost_usd: float | None  # null - the model has no price; never 0
+    unpriced_requests: Count = 0  # calls of this model that have no price (usage.py gives it to every row)
 
 
 class Period(Out):

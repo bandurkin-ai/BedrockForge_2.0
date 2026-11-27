@@ -1,7 +1,7 @@
 # Э23 — контракт ассистента Claude (подшаг 23.0, контракт первым)
 
-**Состояние: контракт предложен (23.0); образцы ответов — `core/tests/data/assistant/contract_answers.json` (23.1 — образцы, 23.11 — настоящие,
-`BF_REGEN_ASSISTANT=1 uv run pytest -q tests/test_assistant_contract.py`).** Источник истины — ADR 0029 (решения 1–40, вопросы № 125–139), ТЗ 7.32,
+**Состояние: контракт принят; образцы ответов — `core/tests/data/assistant/contract_answers.json` — ответы НАСТОЯЩЕГО ядра на моке (23.11:
+`core/tests/assistant/regen.py`; перезапись — `BF_REGEN_ASSISTANT=1 uv run pytest -q tests/test_assistant_contract.py`).** Источник истины — ADR 0029 (решения 1–40, вопросы № 125–139), ТЗ 7.32,
 6.9–6.10, 7.2, 7.0.3–7.0.5, 5.6. Изменение формы — только через оркестратора. Пути: `A/` = `core/bf_core/assistant/`, `U/` = `ui/src/modules/assistant/`.
 Префикс маршрутов — `/api/v1/assistant` (роутер `A/router.py`: `routes.py`; регистрация `"assistant"` в `api/modules.py` — оркестратор).
 
@@ -53,7 +53,7 @@
 | `POST /connection/test` | окно | `{}` → `{ok, latency_ms, model, model_available, effort_supported: [..] | null, organization_id | null, message}` | «Проверить связь»: `models.retrieve(model)`; нет подключения — 409 `assistant_not_connected` |
 | `DELETE /connection` | окно | → `status` | «Выйти»: секрет из памяти — прочь; остаётся `ANTHROPIC_API_KEY` окружения, если задан (`kind: "env"`); окно затем зовёт `bf.claudeForget()` |
 | `PUT /connection/secret` | **shell** | `{kind: "api_key" | "account", secret: {…}, secure_storage}` → `{ok, kind, mask}` | старт оболочки и перезапуск ядра; `api_key`: `{key}`; `account`: `{access_token, expires_at, refresh_token, client_id, organization_id, workspace_id, base_url?}`; без проверки связи (офлайн-старт) |
-| `GET /connection/secret` | **shell** | → `{kind, secret, revision}` или 204 (нечего хранить) | главный процесс шифрует (`safeStorage`) и пишет `assistant/connection.bin`; затем `POST /connection/sealed {revision}` → `seal_needed: false` |
+| `GET /connection/secret` | **shell** | → `{kind, secret, revision}` или 204 (нечего хранить) | главный процесс шифрует (`safeStorage`) и пишет `assistant/connection.bin`; затем `POST /connection/sealed {revision}` (**shell**) → `status` (`seal_needed: false`) |
 
 Оболочка (`app/src/main/claude.ts`, preload `window.bf`): `claudeSeal(): Promise<{ok, message?}>`, `claudeForget(): Promise<void>`,
 `claudeStorage(): {secure: boolean, backend: string}` (sync). `secure: false` (Linux `basic_text`, нет DPAPI) — `claudeSeal` отвечает
@@ -75,7 +75,7 @@ Period = {"requests": 12, "tokens": {"input": 1200, "output": 800, "cache_read":
           "by_model": [{"model": "claude-opus-5-5", "title": "Opus 5.5", "requests": 10, "tokens": {…}, "cost_usd": 0.40 | null}]}
 ```
 «Сегодня» — местные сутки машины; «30 дней» — последние 30 местных суток с сегодняшними. `cost_usd` периода — сумма известных; есть вызовы
-неизвестной модели — `unpriced_requests` в периоде. Строка `usage.jsonl`: `{"at", "model", "input", "output", "cache_read", "cache_write",
+неизвестной модели — `unpriced_requests` в периоде и в строке модели (`by_model[]`). Строка `usage.jsonl`: `{"at", "model", "input", "output", "cache_read", "cache_write",
 "cost_usd", "long", "dialog_uid", "project_uid", "prices_version"}`.
 
 ## 5. Инструменты
@@ -214,17 +214,20 @@ Pending = {"id": "p-…", "created_at": "…Z",
 |---|---|---|
 | 403 | `shell_only` | секретный маршрут с `Origin` |
 | 404 | `assistant_dialog_not_found`, `assistant_login_gone` | — |
-| 409 | `no_project` (только `PATCH`/`DELETE` сохранённого), `assistant_not_connected`, `assistant_busy`, `assistant_no_pending`, `assistant_pending_mismatch` | — |
+| 409 | `no_project` (только `PATCH`/`DELETE` сохранённого), `assistant_not_connected`, `assistant_busy`, `assistant_no_pending`, `assistant_pending_mismatch {expected}`, `assistant_login_busy` (вход уже выполняется), `assistant_dialog_broken` (часть диалога не читается: файл повреждён или удалён) | — |
 | 422 | `bad_param {param}`, `assistant_bad_key_format`, `assistant_bad_key`, `assistant_bad_tools {detail}`, `assistant_login_code`, `assistant_dialog_full` | — |
 | 501 | `assistant_no_ant` | нет `ant` в сборке |
 | 502 | `assistant_login_failed {detail}` | `ant` не выдал адрес / завершился с ошибкой |
 | 503 | `assistant_offline` | синхронная проверка ключа или связи без сети |
 
 ## 15. Образцы и мок
-`contract_answers.json` (ключи): `status_none`, `status_key`, `status_account`, `usage`, `prefs_bad`, `key_bad_format`, `key_bad`, `dialogs_list`,
-`dialog_full_sample` (с `pending`), `stream_text` (события «Сводка по проекту» — только текст), `stream_data_tools` (два `data_*` + текст),
-`stream_pending` («Покажи скважину DH-012 на разрезе» → `pending` из `ui_hole_select`, `ui_section_through_hole`), `stream_after_results`,
-`stream_confirm` (`ui_project_delete`), `stream_offline`, `stream_cancelled`, `data_tools` (схемы), `errors`. Сценарии мока —
+`contract_answers.json` (ключи; настоящие ответы ядра, `{status, body}` или список событий потока): `status_none`, `status_key`, `status_account`,
+`usage`, `prefs_bad`, `key_bad_format`, `key_bad`, `dialogs_list`, `dialog_full_sample` (с `pending`, элементами всех видов), `dialog_temporary`,
+`stream_text` («Сводка по проекту» — только текст), `stream_data_tools` (два `data_*` на демо-проекте + текст), `stream_pending` («Покажи скважину DH-012
+на разрезе» → `pending` из `ui_hole_select`, `ui_section_through_hole`), `stream_after_results`, `stream_confirm` (`ui_project_delete`),
+`stream_declined` (отказ), `stream_offline`, `stream_cancelled`, `stream_notice` (`max_tokens`), `stream_temporary` (диалог без проекта),
+`stream_interrupted` (обрыв), `stream_unauthorized` (401), `data_tools` (все 9 из реестра), `errors`, `requests` (тела запросов, вручную).
+Идентификаторы и время в образцах заменены стабильными; `command` в `pending` — `null` (ядро не знает команд окна). Сценарии мока —
 `core/tests/data/assistant/scenarios/<имя>.json`: `{"steps": [{"match": {"last_user_text"?: "…", "tool_result_for"?: "ui_hole_select"},
 "reply": {"stream": true, "content": [{"type": "text", "text": "…"} | {"type": "tool_use", "name": "…", "input": {…}}], "stop_reason": "…",
 "usage": {…}} | {"status": 401 | 429 | 529} | {"drop_after_events": 3}}]}`; `GET /__requests` — принятые запросы (без заголовков авторизации).
