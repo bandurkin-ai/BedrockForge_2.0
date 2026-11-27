@@ -8,11 +8,12 @@ against the project — everything the job decides before the first block is est
     plan.groups    Group — the rows that write one prefix: one set of fields, each row its own blocks (§2.2)
     plan.names     the output fields in the order they are written (STATUS first in each group)
 
-Siblings (№ 77): the rows of the same prefix that share a plan with a row of the run but are not in it. A repeat of
-one row rewrites the blocks of its domain only; the blocks of the domain of a sibling keep the values the current
-fields have (they are carried into the new file), STATUS 1 is written for the blocks that belong to no known domain.
-Nothing to carry (the fields are new) — those blocks get STATUS 1 and no values, as before the first run of the
-sibling.
+Siblings (№ 77): the rows of the same prefix that share a plan with a row of the run but are not in it, and the rows
+that wrote the fields the model has now (the graph of the lineage, `store.field_rows`: two rows of one prefix need no
+common plan, В5 Fable, group 2, № 1). A repeat of one row rewrites the blocks of its domain only; the blocks of the
+domain of a sibling keep the values the current fields have (they are carried into the new file), STATUS 1 is written
+for the blocks that belong to no known domain. Nothing to carry (the fields are new) — those blocks get STATUS 1 and
+no values, as before the first run of the sibling.
 
 Nothing heavy at import: numpy only. The errors name the row («Строка «…»: …») when the plan has more than one.
 """
@@ -81,6 +82,7 @@ class Sibling:
     id: int
     field: str | None  # the stored name of the field of its domain; None — every block
     label: str | None
+    name: str = ""  # the name of the row (the question «Заменить поля?» and the log name it)
 
 
 @dataclass
@@ -184,35 +186,50 @@ def _row(conn: sa.Connection, model: Model, mmeta: Mapping[str, Any], store: Blo
                   work.outputs.prefix, work.columns())  # fmt: skip
 
 
+def _sibling(conn: sa.Connection, model: Model, ident: int, prefix: str) -> Sibling | None:
+    """The row `ident` as a sibling of the prefix: None — it is gone, of another prefix or model, or covers no block."""
+    got = conn.execute(sa.select(objects.c.name, objects.c.meta).where(
+        objects.c.id == ident, objects.c.kind == sb.KIND)).first()  # fmt: skip
+    if got is None:
+        return None
+    try:
+        sp = sb.load_spec(got.meta or {})
+    except ApiError:
+        return None
+    if sp.outputs.prefix != prefix or sp.model_id != model.id:
+        return None
+    t = sp.target
+    name = stored_field(model, t.domain_field)
+    if t.domain_field is not None and name is None:
+        return None  # the field of its domain is gone: it covers no block
+    return Sibling(ident, name, None if t.label is None else str(t.label), str(got.name))
+
+
 def _siblings(conn: sa.Connection, model: Model, rows: list[RowRun]) -> dict[str, list[Sibling]]:
-    """The rows of the plans of the run that are not in it, by the prefix (module docstring)."""
+    """The rows of the run's prefixes that are not in the run, by the prefix (module docstring): those of the plans
+    that hold a row of the run, and those that wrote the fields of the prefix the model has now."""
+    from bf_core.lineage import Node
+
+    from .store import field_rows
+
     plans = plans_with(conn)
     run_ids = {r.id for r in rows}
+    have = {str(f["name"]).casefold() for f in model.fields}
     out: dict[str, list[Sibling]] = {}
     for prefix in dict.fromkeys(r.prefix for r in rows):
         pids = sorted({p for r in rows if r.prefix == prefix for p in plans.get(r.id, [])})
+        idents = [int(i) for pid in pids for i in (sb.stored(conn, sb.PLAN, pid).meta or {}).get("items") or []]
+        for c in next(r for r in rows if r.prefix == prefix).columns:  # the rows of the graph: who wrote the fields
+            if c["name"].casefold() in have:
+                idents += [n.id for n in field_rows(conn, Node("bm_field", model.id, c["name"].casefold()))]
         seen: set[int] = set()
-        for pid in pids:
-            for item in (sb.stored(conn, sb.PLAN, pid).meta or {}).get("items") or []:
-                ident = int(item)
-                if ident in run_ids or ident in seen:
-                    continue
-                seen.add(ident)
-                got = conn.execute(sa.select(objects.c.meta).where(
-                    objects.c.id == ident, objects.c.kind == sb.KIND)).first()  # fmt: skip
-                if got is None:
-                    continue
-                try:
-                    sp = sb.load_spec(got.meta or {})
-                except ApiError:
-                    continue
-                if sp.outputs.prefix != prefix or sp.model_id != model.id:
-                    continue
-                t = sp.target
-                name = stored_field(model, t.domain_field)
-                if t.domain_field is not None and name is None:
-                    continue  # the field of its domain is gone: it covers no block
-                out.setdefault(prefix, []).append(Sibling(ident, name, None if t.label is None else str(t.label)))
+        for ident in idents:
+            if ident in run_ids or ident in seen:
+                continue
+            seen.add(ident)
+            sib = _sibling(conn, model, ident, prefix)
+            if sib is not None:
+                out.setdefault(prefix, []).append(sib)
     return out
 
 
@@ -230,6 +247,10 @@ def _groups(model: Model, rows: list[RowRun], sibs: Mapping[str, list[Sibling]])
     return list(groups.values())
 
 
+def _quoted(names: list[str]) -> str:
+    return ", ".join(f"«{n}»" for n in names)
+
+
 def _check_names(model: Model, groups: list[Group], replace_fields: bool) -> list[str]:
     have = {str(f["name"]).casefold(): str(f["name"]) for f in model.fields}
     seen: dict[str, str] = {}
@@ -243,8 +264,14 @@ def _check_names(model: Model, groups: list[Group], replace_fields: bool) -> lis
             seen[key] = g.prefix
             names.append(c["name"])
             if key in have and not replace_fields:
-                raise ApiError(409, "field_exists", f"Поле «{have[key]}» в модели уже есть.",
-                               "Задайте другой префикс или замените поля.", {"field": have[key]})  # fmt: skip
+                kept = [s.name for s in g.siblings] if g.carry else []
+                replaced = [r.name for r in g.rows]
+                said = f" Заменятся блоки строк: {_quoted(replaced)}."
+                if kept:
+                    said += f" Значения других доменов — строк {_quoted(kept)} — сохранятся."
+                raise ApiError(409, "field_exists", f"Поле «{have[key]}» в модели уже есть.{said}",
+                               "Задайте другой префикс или замените поля.",
+                               {"field": have[key], "kept": kept, "replaced": replaced})  # fmt: skip
     return names
 
 
