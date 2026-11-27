@@ -345,7 +345,7 @@ class TempDialogs:
         """(the dialog, the ids pushed out)."""
         with self._lock:
             self._counter += 1
-            item = TempDialog(TEMP_PREFIX + uuid.uuid4().hex, title, meta, list(parts), self._counter)
+            item = TempDialog(TEMP_PREFIX + str(uuid.uuid4()), title, meta, list(parts), self._counter)
             self._items[item.id] = item
             gone: list[str] = []
             while len(self._items) > self.limit:
