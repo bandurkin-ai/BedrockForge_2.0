@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from bf_core.blocks.filters.schema import normalize_rules
+from bf_core.blocks.schemes import MAX_PREFIX, PREFIX_RE  # one rule of a field prefix, as in the categories
 from bf_core.geostat.variogram.spec import (  # the common helpers of the geostat bodies
     LEN_MAX,
     Range,
@@ -74,8 +75,7 @@ POWER = 2.0
 THRESHOLDS_MAX = 20
 DOMAIN_VALUES_MAX = 1000
 NAME_MAX = 200
-PREFIX_MAX = 40  # + the longest key (6) ≤ 100 — the limit of a field name of a block model
-_PREFIX = re.compile(r"\w{1,40}")
+PREFIX_MAX = MAX_PREFIX  # 40 (+ the longest key (6) ≤ 100 — the limit of a field name of a block model)
 _HEX = re.compile(r"[0-9a-f]{64}")
 
 #: 8.8.2, Д-29: key → range (the angles — those of the variography)
@@ -541,7 +541,7 @@ def parse_outputs(raw: Any, kind: str, field: str, *, hy: bool = False, param: s
     o = obj(raw, "Выходные поля", param)
     prefix = text_of(o.get("prefix"), "Префикс полей", f"{param}.prefix", PREFIX_MAX, required=False)
     prefix = default_prefix(field, kind) if prefix is None else prefix
-    if not _PREFIX.fullmatch(prefix):
+    if not PREFIX_RE.fullmatch(prefix):
         raise bad("bad_param", "Префикс полей: допустимы буквы, цифры и «_».", "Например, AU_OK_.", f"{param}.prefix")
     allowed = ALLOWED[kind]
     if o.get("fields") is None:

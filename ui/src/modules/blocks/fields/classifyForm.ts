@@ -16,7 +16,8 @@ export const MAX_LABEL = 100;
 export const MAX_SCHEME_NAME = 100;
 export const SCHEME_ID = /^[A-Za-z0-9_-]{1,40}$/;
 export const MAX_PREFIX = 40;
-export const PREFIX_RE = /^[A-Za-z0-9_]{1,40}$/;
+/** The same rule as the prefix of an estimate (core `schemes.PREFIX_RE`): letters of any alphabet, digits, «_» — «Золото» gives «ЗОЛОТО_OK_». */
+export const PREFIX_RE = /^[\p{L}\p{N}_]{1,40}$/u;
 /** The fields an estimate writes (`docs/progress/e18-api.md` §2.1): a scheme names them without a prefix. */
 const ESTIMATE_NAME = /^(?:STATUS|EST|KV|NS|NH|NHY|AD|DMIN|PASS|SLOPE|KE|LAGR|SNW|NOCT|ETYPE|P\d{1,2})$/i;
 const NAME_TOKEN = /'(?:[^']|'')*'|\[([^\]]*)\]|[\p{L}_][\p{L}\p{N}_]*/gu;
@@ -90,7 +91,7 @@ export function pickScheme(f: ClassifyForm, schemes: readonly Scheme[], id: stri
 function prefixIssue(raw: string): Issue | null {
   const p = raw.trim();
   if (!p || PREFIX_RE.test(p)) return null;
-  return issue("classify", "prefix", `Префикс полей оценки — до ${MAX_PREFIX} знаков: латинские буквы, цифры и «_».`, "Например: EST_ или AU_OK_. Пусто — поля без префикса.", "prefix");
+  return issue("classify", "prefix", `Префикс полей оценки — до ${MAX_PREFIX} знаков: буквы, цифры и «_».`, "Например: EST_ или ЗОЛОТО_OK_. Пусто — поля без префикса.", "prefix");
 }
 
 /** The arguments of `blocks.classify` from the form: the scheme when the table is the scheme's, else the rules themselves. */
