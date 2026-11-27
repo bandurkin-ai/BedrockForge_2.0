@@ -73,8 +73,10 @@ def check(n: int) -> int:
 
 def update_weights(head: Path) -> None:
     sc = json.loads(head.read_text(encoding="utf-8"))["scenarios"]
-    out = {"_comment": "seconds per scenario (median of a head.json of bench.run --profile ci); balances shards only",
-           "seconds": {k: round(v["seconds"], 2) for k, v in sc.items()}}
+    out = {
+        "_comment": "seconds per scenario (median of a head.json of bench.run --profile ci); balances shards only",
+        "seconds": {k: round(v["seconds"], 2) for k, v in sc.items()},
+    }
     WEIGHTS.write_text(json.dumps(out, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     print(f"{WEIGHTS}: {len(sc)} scenarios")
 
