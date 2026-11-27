@@ -169,8 +169,8 @@
 `control` на верхний уровень ответа.
 
 **Warnings** (`code`): `unit_unknown {param}` (металла нет), `sum_mismatch`, `no_density` (есть блоки без плотности),
-`wireframe_volume`, `template_other` (подписи схемы вне шаблона — в «Прочие»), `balance_missing` (форма ГКЗ без `balance`),
-`rows_truncated`; у сравнения — `grids_differ`, `keys_differ`, `cutoff_field_differs`, `grade_units_differ`, `density_differs`, `stale` (§9).
+`wireframe_volume`, `rows_truncated`; предупреждения формы — тексты в `form.warnings` (подписи схемы вне шаблона — в «Прочие»; форма
+ГКЗ без `balance` — столбцы пусты, §4), кода у них нет; у сравнения — `grids_differ`, `keys_differ`, `cutoff_field_differs`, `grade_units_differ`, `density_differs`, `stale` (§9).
 
 ## 4. Форма и шаблоны (решения 17–19; `R/templates.py`, `R/forms.py`)
 
@@ -194,7 +194,8 @@
   `[a-z][a-z0-9_]{0,19}`); `section` — роль внешнего ключа (например `domain`) — по разделу на подпись, `null` — один раздел
   (совпадать с `key` не может); `columns` — метрики по порядку из `tonnes`, `volume`, `grade`, `metal` (без повторов; по умолчанию
   `tonnes, grade, metal`); `balance` — **bool**: `true` — столбцы «Балансовые» / «Забалансовые» (строки `balance`, `offbalance`; нет
-  `params.balance` — предупреждение `balance_missing`); `decimals` — знаков 0…6 для `tonnes`, `volume`, `grade`, `metal`.
+  `params.balance` или его забалансового борта — ячейки этих столбцов пусты (`value: null`, не 0) и в `warnings` формы текст «В отчёте
+  не задан балансовый / забалансовый борт…»); `decimals` — знаков 0…6 для `tonnes`, `volume`, `grade`, `metal`.
 - `units`: `tonnes` — `t` / `kt` / `mt` («т», «тыс. т», «млн т»); `volume` — `m3` / `km3` («м³», «тыс. м³»); `metal` — по основе
   элемента: `{g: g|kg|t|koz, t: g|kg|t|koz}` (или текст для обеих основ); `g` → граммы (г/т, ppm, ppb), `t` → тонны (%); `koz` — «тыс. унц».
 - Умолчания (№ 105, 106): **JORC** — «Измеренные», «Выявленные», подытог «Изм. + Выяв.», «Предполагаемые», «Итого»; тыс. т (`kt`), знаков 0;
@@ -226,7 +227,7 @@ XLSX, Т8.10-5). Настоящая форма (`preview_result.form`):
 `cutoff {kind, value}` — борт формы (`value` null — «без борта»; у шаблона с `balance` — по `balance`/`offbalance`, столбцы с `part` и
 `group` «Балансовые» / «Забалансовые»); `cutoffs` — борта отчёта. Тип строки (`type`): `group`, `subtotal` (с `members`), `other` («Прочие» —
 подписи схемы вне шаблона), `total`; при `section` — несколько разделов (`title` — подпись; последним — раздел «Все разделы» с итогом).
-`warnings` формы — тексты (не объекты); те же предупреждения попадают в `warnings` результата с кодом. Ячейка `{value, text}`: `value` —
+`warnings` формы — тексты (не объекты); в `warnings` результата они не повторяются (интерфейс показывает оба списка). Ячейка `{value, text}`: `value` —
 число в единице шаблона **без округления** (`null` — нет значения), `text` — показ: знаки шаблона, округление «от нуля» по десятичной записи
 (как показывает Excel), десятичная запятая, неразрывный пробел между тысячами; пусто — пустая строка (интерфейс показывает «—»).
 Интерфейс показывает `text` как есть; XLSX пишет `value` с форматом тех же знаков. Подытог: T, Σ t·g, M — суммы строк (`math.fsum`), ḡ = Σ t·g /
