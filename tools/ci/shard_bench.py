@@ -34,37 +34,23 @@ def scenarios(profile: str = "ci") -> dict[str, float]:
     return {k: float(v["budget_s"]) for k, v in data.items() if not k.startswith("_")}
 
 
+def warmed(name: str) -> bool:
+    """A scenario gets one unmeasured warm-up run before the measured repeats (numba cache). `*_compile` scenarios
+    measure the cold compile themselves and are not warmed."""
+    return not name.endswith("_compile")
+
+
 def weights(profile: str = "ci") -> dict[str, float]:
     known = json.loads(WEIGHTS.read_text(encoding="utf-8"))["seconds"] if WEIGHTS.is_file() else {}
     return {
-        name: REPEAT * float(known.get(name, 0.6 * budget)) + OVERHEAD_S for name, budget in scenarios(profile).items()
+        name: (REPEAT + (1 if warmed(name) else 0)) * float(known.get(name, 0.6 * budget)) + OVERHEAD_S
+        for name, budget in scenarios(profile).items()
     }
-
-
-def families(profile: str = "ci") -> list[list[str]]:
-    """Scenarios grouped by the first word of the name (estimate_*, implicit_*, ...), each group in the order of
-    budgets.json. Scenarios of one family share numba kernels: a shard that has `estimate_preview` without the
-    scenarios that compile its kernels measures the cold-compile peak (378 MB instead of 220 MB on a runner), which
-    the budgets (set in the full, warm order) do not allow. A family heavier than a shard is cut into contiguous
-    parts in the same order."""
-    groups: dict[str, list[str]] = {}
-    for name in scenarios(profile):
-        groups.setdefault(name.split("_")[0], []).append(name)
-    return list(groups.values())
 
 
 def plan(n: int, profile: str = "ci") -> tuple[list[list[str]], dict[str, float]]:
     w = weights(profile)
-    cap = sum(w.values()) / n  # a shard if the load were equal
-    units: dict[str, list[str]] = {}
-    for g in families(profile):
-        parts = max(1, round(sum(w[k] for k in g) / cap)) if sum(w[k] for k in g) > cap else 1
-        size = -(-len(g) // parts)  # ceil: contiguous parts of an equal count
-        for i in range(0, len(g), size):
-            units[f"{g[0].split('_')[0]}#{i // size}"] = g[i : i + size]
-    shards = shardlib.split({u: sum(w[k] for k in names) for u, names in units.items()}, n)
-    order = {name: i for i, name in enumerate(scenarios(profile))}
-    return [sorted((k for u in sh for k in units[u]), key=order.__getitem__) for sh in shards], w
+    return shardlib.split(w, n), w
 
 
 def check(n: int) -> int:
@@ -87,10 +73,8 @@ def check(n: int) -> int:
 
 def update_weights(head: Path) -> None:
     sc = json.loads(head.read_text(encoding="utf-8"))["scenarios"]
-    out = {
-        "_comment": "seconds per scenario (median of a head.json of bench.run --profile ci); balances shards only",
-        "seconds": {k: round(v["seconds"], 2) for k, v in sc.items()},
-    }
+    out = {"_comment": "seconds per scenario (median of a head.json of bench.run --profile ci); balances shards only",
+           "seconds": {k: round(v["seconds"], 2) for k, v in sc.items()}}
     WEIGHTS.write_text(json.dumps(out, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     print(f"{WEIGHTS}: {len(sc)} scenarios")
 
@@ -101,6 +85,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--shard", type=int)
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--summary", action="store_true")
+    ap.add_argument("--warm", action="store_true", help="with --shard: only the scenarios that are warmed up")
     ap.add_argument("--update-weights", type=Path, metavar="HEAD_JSON")
     a = ap.parse_args(argv)
     if a.update_weights:
@@ -117,7 +102,8 @@ def main(argv: list[str] | None = None) -> int:
     if a.shard:
         if not 1 <= a.shard <= a.of:
             ap.error("--shard must be in 1..--of")
-        print(" ".join(shards[a.shard - 1]))
+        names = shards[a.shard - 1]
+        print(" ".join(n for n in names if warmed(n)) if a.warm else " ".join(names))
         return 0
     ap.error("give --shard, --check, --summary or --update-weights")
     return 2

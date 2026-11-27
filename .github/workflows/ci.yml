@@ -177,7 +177,17 @@ jobs:
         working-directory: core
       - name: Сценарии шарда
         id: scn
-        run: echo "names=$(python3 tools/ci/shard_bench.py --shard "${{ matrix.shard }}" --of "$BENCH_SHARDS")" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "names=$(python3 tools/ci/shard_bench.py --shard "${{ matrix.shard }}" --of "$BENCH_SHARDS")" >> "$GITHUB_OUTPUT"
+          echo "warm=$(python3 tools/ci/shard_bench.py --shard "${{ matrix.shard }}" --of "$BENCH_SHARDS" --warm)" >> "$GITHUB_OUTPUT"
+      - name: Прогрев кеша numba ветки (замеры не учитываются)
+        env: { WARM: "${{ steps.scn.outputs.warm }}" }
+        run: |
+          # The budgets of the memory were set in one full run, where an earlier scenario had compiled the kernels of a
+          # later one; in a shard a scenario would be the first to compile them (+ 100-500 MB peak). So every scenario
+          # (except *_compile, which measure the cold compile) runs once unmeasured before the measured repeats.
+          # shellcheck disable=SC2086  # WARM is a space-separated list for --only
+          uv run --project core python -m bench.run --profile ci --repeat 1 --only $WARM --out bench/out/warm.json
       - name: Замер ветки
         env: { NAMES: "${{ steps.scn.outputs.names }}" }
         run: |
@@ -207,11 +217,18 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           NAMES: "${{ steps.scn.outputs.names }}"
+          WARM: "${{ steps.scn.outputs.warm }}"
+          CACHE_HIT: "${{ steps.numba-base.outputs.cache-hit }}"
           NUMBA_CACHE_DIR: ${{ runner.temp }}/numba-base
         run: |
-          # shellcheck disable=SC2086  # NAMES is a space-separated list for --only
+          # shellcheck disable=SC2086  # NAMES and WARM are space-separated lists for --only
           if [ -f ../base/bench/run.py ]; then
-            (cd ../base/core && uv sync --locked --no-dev) && (cd ../base && uv run --project core python -m bench.run --profile ci --repeat 3 --only $NAMES --out ../BedrockForge_base.json)
+            (cd ../base/core && uv sync --locked --no-dev)
+            # the cache of the base is warm when restored; otherwise the same unmeasured warm-up as for the head
+            if [ "$CACHE_HIT" != "true" ]; then
+              (cd ../base && uv run --project core python -m bench.run --profile ci --repeat 1 --only $WARM --out ../BedrockForge_base_warm.json)
+            fi
+            (cd ../base && uv run --project core python -m bench.run --profile ci --repeat 3 --only $NAMES --out ../BedrockForge_base.json)
             cp ../BedrockForge_base.json bench/out/base.json
           else
             echo "В базовой ветке замеров нет"
