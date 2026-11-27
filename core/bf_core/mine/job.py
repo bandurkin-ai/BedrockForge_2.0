@@ -323,7 +323,7 @@ def _run(engine: sa.Engine, folder: Path, p: dict[str, Any], tick: Tick, sid: in
         built = st.Built(canon, {"id": model.id, "name": model.name, "grid": grid_meta}, names, staged, meta_shells,
                          totals, None, float(res.q), float(res.error),
                          {"fields": [pit_name, ore_name], "wireframes": []}, res.solver, dict(sec), _versions(),
-                         warnings, job_id, prints, on_write)  # fmt: skip
+                         warnings, job_id, prints, on_write, keep_draft=bool(p.get("rebuild")))  # fmt: skip
         tick(0.97, f"{S_WRITE}: запись в проект")
         t3 = time.perf_counter()
         with dialect.write_tx(engine) as conn:

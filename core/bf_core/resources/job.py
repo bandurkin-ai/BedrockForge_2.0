@@ -205,7 +205,12 @@ def _run(engine: sa.Engine, folder: Path, p: dict[str, Any], tick: Tick, report_
         plan = rr.core_from_spec(model, spec)
         tree = calc_job.rules_tree(conn, spec.filter_id, spec.restrict)
         restrictor = restrict.prepare(model, tree, conn=conn, store=store)
-        template = None if spec.template_id is None else templates.get(conn, spec.template_id)
+        template, notes = None, []
+        if spec.template_id is not None and report_id is None:
+            template = templates.get(conn, spec.template_id)  # 404 `template_not_found`
+        elif spec.template_id is not None:  # «Перестроить»: a template deleted since does not keep the report stale
+            template = templates.saved_with(conn, spec.template_id)
+            notes = [] if template is not None else [templates.gone(spec.template_id)]
         statuses = ct.status_fields(model, plan)
         canon = spec.canonical()
         prints = None  # what the report is made of, as the graph sees it now; the write compares (`store._record`)
@@ -235,7 +240,7 @@ def _run(engine: sa.Engine, folder: Path, p: dict[str, Any], tick: Tick, report_
     mjson = view.model_json(model)
     common: dict[str, Any] = {"model": mjson, "rows": res.rows, "rows_total": res.rows_total,
                               "totals": res.totals, "curve": view.plain(res.curve), "control": ctl,
-                              "excluded": excluded, "form": form, "warnings": warnings}  # fmt: skip
+                              "excluded": excluded, "form": form, "warnings": [*warnings, *notes]}  # fmt: skip
     if not save:
         tick(1.0, f"{S_CALC}: готово")
         seconds["total"] = round(time.perf_counter() - t0, 4)

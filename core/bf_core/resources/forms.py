@@ -259,6 +259,7 @@ class _Table:
         self.aggs: dict[tuple[str, str], _Agg] = {}
         self.totals = _Agg(names)  # the rows of the total of the result — used when there are no group rows
         self.has_groups = False
+        self.missing = False  # the result has no row of this table (no balance cut-off): its cells are empty, not 0
 
     def total(self, sec: str | None) -> _Agg:
         if not self.has_groups:
@@ -313,6 +314,11 @@ def build(
         else:
             cut_info[part] = used
         table = _Table(names)
+        if part is not None and not picked:  # the report was made without this cut-off: nothing was counted
+            table.missing = True
+            what = "балансовый" if part == "balance" else "забалансовый"
+            warnings.append(f"В отчёте не задан {what} борт: столбцы «{_group}» пусты. Задайте его в окне отчёта и "
+                            "постройте отчёт заново.")  # fmt: skip
         for r in picked:
             if r.get("g1") is None:  # a row of the total
                 table.totals.add(r)
@@ -344,6 +350,9 @@ def build(
         """One row over every table; `keys` the folded labels it sums, None — the total."""
         cells: dict[str, dict[str, Any]] = {}
         for (part, _g), t in zip(parts, tables, strict=True):
+            if t.missing:
+                cells.update({c["key"]: _cell(None, c["decimals"]) for c in columns if c["part"] == part})
+                continue
             cells.update(_cells(t.total(sec) if keys is None else t.of(keys, sec), columns, template, bases, part))
         out: dict[str, Any] = {"label": label, "type": typ, "cells": cells}
         if members is not None:
