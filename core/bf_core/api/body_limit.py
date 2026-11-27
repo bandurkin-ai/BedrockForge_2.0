@@ -25,7 +25,7 @@ MAX_DEPTH = 64
 # (`/geostat/simulations`, `/geostat/simulate/*`; 18.36б), the graph `/lineage/*`
 LIMITED_PREFIXES = (
     "/api/v1/stats/", "/api/v1/charts", "/api/v1/geostat/estimate", "/api/v1/geostat/estimation",
-    "/api/v1/geostat/simulat", "/api/v1/lineage",
+    "/api/v1/geostat/simulat", "/api/v1/lineage", "/api/v1/assistant/",
 )  # fmt: skip
 
 _STRING = re.compile(rb'"(?:[^"\\]|\\.)*"', re.DOTALL)

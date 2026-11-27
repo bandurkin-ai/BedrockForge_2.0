@@ -406,6 +406,8 @@ def _compute(path: Path, start_today: str, start30: str) -> dict[str, Any]:
 def _scan_duckdb(path: Path, fold_cut: str, start_today: str, start30: str, acc: _Acc) -> str | None:
     """Fast engine: DuckDB reads the file (10^5 lines in ~0.1 s against ~0.3 s of `json`). `None` — the engine is
     not usable for this file (missing, unreadable lines, odd `at`): the Python engine counts it, `acc` untouched."""
+    if not path.exists():
+        return None  # no journal yet: nothing to read, nothing to log
     try:
         import duckdb
 
