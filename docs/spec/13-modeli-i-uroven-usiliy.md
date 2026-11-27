@@ -68,4 +68,5 @@
 | Э17–Э21  | Opus / high        | Субблоки, кригинг, RBF, LG — Fable / xhigh                    | Каждый этап — Fable / xhigh                                         |
 | Э22–Э23  | Opus / high        | —                                                             | Макеты печати — Fable / high                                        |
 | Э24–Э25  | Opus / high        | —                                                             | Лицензия, сервер — Fable / xhigh; ревью безопасности — Fable / high |
+| Э25а     | Opus / high        | Перенос между проектами, порядок фиксации — Fable / xhigh     | Безопасность IPC и ядра — Fable / high                              |
 | Э26      | Opus / high        | —                                                             | —                                                                   |

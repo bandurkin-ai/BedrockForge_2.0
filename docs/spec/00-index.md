@@ -43,6 +43,7 @@ ADR 0008–0010 (проекты).
 | Э23 | Ассистент Claude | 07-32, 06 (6.10) |
 | Э24 | Упаковка, обновление, лицензия | 05 (5.6, 5.7), 16 (16.5) |
 | Э25 | Сервер ЛВС | 06 (6.11), 05 (5.6) |
+| Э25а | BedrockExplorer 0.5.0 (после Э25, перед Э26) | 07-36, 06 (6.11), 07-03, 07-04, 07-06 |
 | Э26 | Финальная приёмка | 07-33, 07-34, 08-13, 11 |
 
 Номер = префикс имени файла (`07-13` → `07-13-glavnoe-3d-okno.md`, `09` → `09-formaty-faylov.md`).
@@ -94,6 +95,7 @@ ADR 0008–0010 (проекты).
 | [07-33-zamery-skorosti.md](07-33-zamery-skorosti.md) | 7.33. Замеры скорости [Э0, Э26] |
 | [07-34-svodka-chto-bylo-ne-realizovano.md](07-34-svodka-chto-bylo-ne-realizovano.md) | 7.34. Сводка «Что было не реализовано в BF» |
 | [07-35-dorabotki-vladeltsa-produkta.md](07-35-dorabotki-vladeltsa-produkta.md) | 7.35. Доработки владельца продукта [Э6.1, Э7, Э7.1, Э8, Э11, Э12, Э13, Э16, Э17, Э18, Э19, Э20, Э21, Э22] (до ТЗ v1.1) |
+| [07-36-bedrockexplorer.md](07-36-bedrockexplorer.md) | 7.36. BedrockExplorer 0.5.0 [Э25а] |
 | [08-00-intro-novye-moduli.md](08-00-intro-novye-moduli.md) | 8. Новые модули |
 | [08-01-serii-razrezov.md](08-01-serii-razrezov.md) | 8.1. Серии разрезов [Э10] |
 | [08-02-kompozitirovanie-i-podgotovka-prob.md](08-02-kompozitirovanie-i-podgotovka-prob.md) | 8.2. Композитирование и подготовка проб [Э12] |
