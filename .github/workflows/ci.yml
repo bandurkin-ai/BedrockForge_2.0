@@ -51,6 +51,7 @@ jobs:
     defaults: { run: { working-directory: core } }
     steps:
       - name: Число шардов совпадает с CORE_SHARDS
+        working-directory: .
         run: '[ "${{ strategy.job-total }}" = "$CORE_SHARDS" ]'
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
