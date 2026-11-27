@@ -10,6 +10,7 @@ import { runBuild } from "../../src/modules/implicit/run";
 import { implicitStore, loadDetails, loadRows } from "../../src/modules/implicit/state";
 import { EMPTY_FORM } from "../../src/modules/implicit/form";
 import { putForm, saveWizard } from "../../src/modules/implicit/wizardState";
+import { answerClaude } from "../claude-confirm";
 import { ID, installCore, json, newApp, teardown, waitFor, type Core } from "./harness";
 
 let app: App;
@@ -169,7 +170,10 @@ describe("a second start", () => {
   it("«Обновить» of a model that is being run is refused with the words, the first run goes on", async () => {
     await loadRows();
     const first = app.registry.execute("implicit.update", { model_id: ID.model }, "claude");
-    const second = await app.registry.execute("implicit.update", { model_id: ID.model }, "claude");
+    await answerClaude(true, "implicit.update"); // 23.15: a card of the chat for each start
+    const secondRun = app.registry.execute("implicit.update", { model_id: ID.model }, "claude");
+    await answerClaude(true, "implicit.update");
+    const second = await secondRun;
     expect(second.ok).toBe(false);
     expect(second.result).toContain("уже строится");
     expect((await first).ok).toBe(true);

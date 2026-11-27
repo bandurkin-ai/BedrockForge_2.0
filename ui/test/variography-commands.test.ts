@@ -118,9 +118,9 @@ async function answer(ok: boolean): Promise<string> {
 }
 
 describe("registry", () => {
-  it("has the ten commands `variography.*` of ADR 0022 §13 and «Перестроить» (16.25): confirm — the delete, uiOnly — the models", () => {
+  it("has the ten commands `variography.*` of ADR 0022 §13 and «Перестроить» (16.25): confirm — the delete and the rebuild, uiOnly — the models", () => {
     expect(commands.map((c) => c.id)).toEqual(["variography.open", "variography.models", "variography.calc", "variography.fit", "variography.ellipsoid", "variography.show", "variography.save", "variography.delete", "variography.rebuild", "variography.export", "variography.import"]);
-    expect(commands.filter((c) => c.confirm).map((c) => c.id)).toEqual(["variography.delete"]);
+    expect(commands.filter((c) => c.confirm).map((c) => c.id)).toEqual(["variography.delete", "variography.rebuild"]);
     expect(commands.filter((c) => c.uiOnly).map((c) => c.id)).toEqual(["variography.models"]);
     for (const c of commands) {
       expect(app.registry.get(c.id), c.id).toBeDefined();
