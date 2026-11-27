@@ -176,6 +176,8 @@ class FieldPlan:
     key: str
     labels: _Labels | None = None
     emptied: int = 0
+    lo: float = np.inf  # the least and the greatest value read (a field with the role `frac` only)
+    hi: float = -np.inf
 
     def spec(self, source: Mapping[str, Any]) -> dict[str, Any]:
         dtype = "cat" if self.kind == "category" else "f8"
@@ -204,6 +206,23 @@ def plan_fields(res: Resolved, kinds: Mapping[str, str], opts: BlockOptions) -> 
         labels = _Labels(name) if kind == "category" else None
         plans.append(FieldPlan(column, name, kind, text, unit, role, f"f{i}", labels))
     return plans
+
+
+FRAC_TOP = 1.0 + 1e-9  # as `blocks.fields_ops._check_role`: a share of the volume lies in 0…1
+
+
+def drop_wrong_fractions(plans: Sequence[FieldPlan]) -> list[str]:
+    """A field named as the share of the volume (FRAC) whose values are not shares — percents 0…100, a code of «пусто»
+    left as a number (−99) — would multiply the volume and the tonnage of every block by them. It stays a plain
+    number, the volume of a block is its size; the lines tell the user (the role is refused on an edit the same way)."""
+    notes: list[str] = []
+    for p in plans:
+        if p.role == "frac" and (p.lo < 0.0 or p.hi > FRAC_TOP):
+            p.role = None
+            notes.append(f"Поле «{p.name}» не принято за долю объёма блока: его значения ({p.lo:g} … {p.hi:g}) выходят "
+                         "за 0…1. Объём блоков взят по их размерам; если это доля — исправьте значения (например, "
+                         "укажите код пустого) и загрузите модель заново.")  # fmt: skip
+    return notes
 
 
 # --- the spool ---------------------------------------------------------------------------------------------------

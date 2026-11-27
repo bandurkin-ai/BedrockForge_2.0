@@ -467,6 +467,34 @@ def test_the_density_and_the_fraction_roles_are_given_once(project) -> None:  # 
     assert got["info"]["checks"]["constant"] == ["DENSITY"] and got["info"]["checks"]["volume"] is not None
 
 
+def test_a_fraction_that_is_not_a_share_does_not_scale_the_volume(project) -> None:  # type: ignore[no-untyped-def]
+    """«FRAC» in percents (or with a code of «пусто» left as a number) is not the share of the volume: the volume of
+    the model stays the volume of its blocks, the field stays a number, the journal says why."""
+    m = regular()
+    head = "X;Y;Z;DX;DY;DZ;FRAC;AU"
+
+    def write(name: str, frac: Any) -> Path:
+        rows = [f"{m.centre[r, 0]};{m.centre[r, 1]};{m.centre[r, 2]};10;20;5;{frac(r)};{r}" for r in range(len(m.p))]
+        path = project.tmp / name
+        path.write_text("\n".join([head, *rows]) + "\n", encoding="utf-8")
+        return path
+
+    whole = len(m.p) * 10.0 * 20.0 * 5.0
+    for name, frac in (("percent.csv", lambda r: 50 if r % 2 else 100), ("code.csv", lambda r: -99 if r == 3 else 1)):
+        res = run(project, write(name, frac), name=name)
+        got = load(project, res)
+        field = {f["name"]: f for f in got["info"]["fields"]}["FRAC"]
+        assert field["role"] is None and field["kind"] == "number"
+        assert got["info"]["checks"]["volume"] == whole
+        assert any("FRAC" in w and "0…1" in w for w in res.warnings), res.warnings
+    # the code of «пусто» named in the wizard: the field is a share again, its empty block is out of the volume
+    res = run(project, write("named.csv", lambda r: -99 if r == 3 else 0.5), {"empty": [-99]}, name="named")
+    got = load(project, res)
+    assert {f["name"]: f for f in got["info"]["fields"]}["FRAC"]["role"] == "frac"
+    assert got["info"]["checks"]["volume"] == (len(m.p) - 1) * 10.0 * 20.0 * 5.0 * 0.5
+    assert not any("0…1" in w for w in res.warnings)
+
+
 # --- portions, cancel, the job -----------------------------------------------------------------------------------
 
 

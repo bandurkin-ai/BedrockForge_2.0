@@ -58,6 +58,7 @@ from .blockfile_parts import (
     _err,
     _n,
     busy,
+    drop_wrong_fractions,
     plan_fields,
     resolve,
 )
@@ -124,6 +125,10 @@ def _read(source: BlockSource, res: Resolved, plans: list[FieldPlan], opts: Any,
             values = chunk.numbers[p.column]
             p.emptied += empty_to_nan(values, opts.empty)
             if p.kind == "number":
+                if p.role == "frac":
+                    known = values[np.isfinite(values)]
+                    if len(known):
+                        p.lo, p.hi = min(p.lo, float(known.min())), max(p.hi, float(known.max()))
                 spool.put(p.key, values)
                 continue
             ok = np.isfinite(values)  # a number field taken as a code or a class: its labels are the numbers
@@ -283,7 +288,7 @@ def import_model(
         rows = _read(source, res, plans, opts, spool, scan, tick, notes)
         spool.flush()
         inferred = scan.finish()
-        notes = [*inferred.warnings, *notes]
+        notes = [*inferred.warnings, *notes, *drop_wrong_fractions(plans)]
         cells = _cells(inferred, spool, rows, res, tick)
         if not cells.check3.ok:
             notes.append(f"Центры трёх блоков (строки {', '.join(str(r + 1) for r in cells.check3.rows)}) расходятся "
