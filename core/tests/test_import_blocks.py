@@ -463,8 +463,26 @@ def test_the_density_and_the_fraction_roles_are_given_once(project) -> None:  # 
     roles = {f["name"]: f["role"] for f in info["fields"]}
     assert roles["SG"] == "density" and roles["FRAC"] == "frac"
     assert roles["DENSITY"] is None  # a constant «DENSITY» is no density
-    got = load(project, run(project, path))
+    res = run(project, path)
+    got = load(project, res)
     assert got["info"]["checks"]["constant"] == ["DENSITY"] and got["info"]["checks"]["volume"] is not None
+    stored = {f["name"]: f["role"] for f in got["info"]["fields"]}
+    assert stored == roles  # the model keeps the roles the wizard showed: a constant field has none
+    # a constant «DENSITY» before a varying «SG»: it is not the density of the model either (ТЗ 7.31)
+    first = project.tmp / "constant-first.csv"
+    first.write_text("\n".join([
+        "X;Y;Z;DX;DY;DZ;DENSITY;SG;AU",
+        *[f"{m.centre[r, 0]};{m.centre[r, 1]};{m.centre[r, 2]};10;20;5;2.6;{2.5 + r / 100};{r}"
+          for r in range(len(m.p))],
+    ]) + "\n", encoding="utf-8")
+    assert {f["name"]: f["role"] for f in obf.inspect_blockfile(first)["fields"]}["DENSITY"] is None
+    res = run(project, first, name="Постоянная плотность")
+    got = {f["name"]: f["role"] for f in load(project, res)["info"]["fields"]}
+    assert (got["DENSITY"], got["SG"]) == (None, "density")
+    assert any("DENSITY" in w and "постоянное" in w for w in res.warnings), res.warnings
+    # the role the user named himself stands, constant or not
+    named = run(project, first, {"fields": {"DENSITY": {"role": "density"}}}, name="Своя роль")
+    assert {f["name"]: f["role"] for f in load(project, named)["info"]["fields"]}["DENSITY"] == "density"
 
 
 def test_a_fraction_that_is_not_a_share_does_not_scale_the_volume(project) -> None:  # type: ignore[no-untyped-def]

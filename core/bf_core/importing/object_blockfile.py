@@ -49,8 +49,8 @@ from bf_core.formats.blocks_text import CHUNK_ROWS, BlockSource, TextColumn, emp
 from bf_core.formats.errors import FormatError
 from bf_core.jobs.context import JobError
 
-from .blockfile_parts import BlockOptions as BlockOptions  # re-exported: the answers of the wizard
 from .blockfile_parts import (
+    WATCHED,
     FieldPlan,
     Resolved,
     Spool,
@@ -58,10 +58,11 @@ from .blockfile_parts import (
     _err,
     _n,
     busy,
-    drop_wrong_fractions,
+    check_roles,
     plan_fields,
     resolve,
 )
+from .blockfile_parts import BlockOptions as BlockOptions  # re-exported: the answers of the wizard
 from .object_blocks import Blocks
 
 __all__ = [
@@ -125,7 +126,7 @@ def _read(source: BlockSource, res: Resolved, plans: list[FieldPlan], opts: Any,
             values = chunk.numbers[p.column]
             p.emptied += empty_to_nan(values, opts.empty)
             if p.kind == "number":
-                if p.role == "frac":
+                if p.guess in WATCHED:
                     known = values[np.isfinite(values)]
                     if len(known):
                         p.lo, p.hi = min(p.lo, float(known.min())), max(p.hi, float(known.max()))
@@ -288,7 +289,7 @@ def import_model(
         rows = _read(source, res, plans, opts, spool, scan, tick, notes)
         spool.flush()
         inferred = scan.finish()
-        notes = [*inferred.warnings, *notes, *drop_wrong_fractions(plans)]
+        notes = [*inferred.warnings, *notes, *check_roles(plans, opts.fields)]
         cells = _cells(inferred, spool, rows, res, tick)
         if not cells.check3.ok:
             notes.append(f"Центры трёх блоков (строки {', '.join(str(r + 1) for r in cells.check3.rows)}) расходятся "
@@ -580,12 +581,15 @@ def _inspect(source: BlockSource, opts: BlockOptions, tick: Tick | None, sample:
     if lost.invalid:
         notes.append(f"Строк без центра или с размером ≤ 0: {_n(lost.invalid)} — будут пропущены.")
     out["empty_candidates"] = sorted({c for st in stats.values() for c in st.empty})
+    for p in plans:  # the roles the sample refuses: the same rule as the import (`check_roles`)
+        stat = stats.get(p.column)
+        if stat is not None:
+            p.lo, p.hi = stat.lo, stat.hi
+    notes.extend(check_roles(plans, opts.fields))
     for p in plans:
         stat = stats.get(p.column)
         varying = stat is None or stat.lo != stat.hi
         role = p.role if p.role in ("grade", "density", "frac", "code", "class") else None
-        if stat is not None and not varying and role in ("density", "grade"):
-            role = None  # a constant «DENSITY» is no density
         out["fields"].append({"name": p.name, "column": p.column, "kind": p.kind, "unit": p.unit, "role": role,
                               "constant": not varying, "empty": sorted(stat.empty) if stat else []})  # fmt: skip
         if p.unit:
