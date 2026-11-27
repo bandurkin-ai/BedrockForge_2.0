@@ -3,11 +3,16 @@
 * A row whose search is `from: trend` reads back with the search not resolved (the ellipsoid is that of the trend as
   it is now): the cross-validation, the global check, KNA, the preview and the inspector of a block take it from the
   trend, as the job does, and are not refused with «Эллипсоид поиска не определён».
+* The rows of one prefix share the fields (№ 77): the inspector of a block finds the row of EVERY domain, not the
+  first row of the field alone.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
+
+import numpy as np
 
 from bf_core.blocks.model import Model
 from bf_core.db import dialect
@@ -15,7 +20,10 @@ from bf_core.geostat.estimate import checks, kna, xval
 from bf_core.geostat.estimate import inspect as ins
 from bf_core.geostat.estimate import preview as pv
 from bf_core.geostat.estimate import store_base as sb
+from bf_core.geostat.estimate.spec import parse_inspect
+from tests import estjob_util as u
 from tests.estutil import W, get, make, w  # noqa: F401
+from tests.test_estimate_job import cols, pair, run
 
 # --- `from: trend` ---------------------------------------------------------------------------------------------------
 
@@ -65,3 +73,24 @@ def test_a_manual_row_is_left_as_it_is(w: W) -> None:  # noqa: F811
     spec = sb.load_spec(get(w, int(make(w)["id"]))["meta"])  # the search by the variogram model
     with dialect.read_tx(w.project.engine) as conn:
         assert with_trend(conn, spec) is spec
+
+
+# --- the rows of one prefix ------------------------------------------------------------------------------------------
+
+
+def test_the_inspector_finds_the_row_of_every_domain_of_a_shared_prefix(tmp_path: Path) -> None:
+    jw = u.world(tmp_path)
+    try:
+        a, b, plan = pair(jw)  # «руда» and «порода» write the fields AU_OK_*
+        out = run(jw, plan_id=plan)
+        assert out["merged"] == [{"prefix": "AU_OK_", "estimation_ids": [a, b]}]
+        c = cols(jw, ["DOM", "AU_OK_STATUS"])
+        for code, ident in ((0, a), (1, b)):
+            rows = np.flatnonzero((c["DOM"] == code) & (c["AU_OK_STATUS"] == 0))
+            assert rows.size
+            got = ins.run(jw.project, parse_inspect({"model_id": jw.model, "row": int(rows[0])}))
+            assert [(x["estimation_id"], x["status"], x["same"]) for x in got["results"]] == [(ident, 0, True)]
+            assert got["warnings"] == []
+    finally:
+        ins.forget()
+        jw.project.engine.dispose()

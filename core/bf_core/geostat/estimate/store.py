@@ -204,6 +204,14 @@ def field_owner(conn: sa.Connection, node: Any) -> Any | None:
     """The row that fills a field of an estimation (`node` — `bm_field`: the model and the casefolded name): of the
     rows the graph records as its inputs (they follow the ids of a `.bfggis` import, `source.params` do not), the one
     whose prefix starts the name of the field; None — the field is not one of an estimation or the row is gone."""
+    rows = field_rows(conn, node)
+    return rows[0] if rows else None
+
+
+def field_rows(conn: sa.Connection, node: Any) -> list[Any]:
+    """Every row that fills a field of an estimation, in the order of the graph: the rows of one prefix share the
+    field, each its own domain (№ 77), so a field of a plan has several (`field_owner` is the first of them: one job
+    to rebuild the field). Empty — the field is not one of an estimation or the rows are gone."""
     from bf_core.blocks import schema as bs
     from bf_core.lineage import store as ls
 
@@ -211,7 +219,8 @@ def field_owner(conn: sa.Connection, node: Any) -> Any | None:
         objects.c.kind == bs.KIND, objects.c.id == node.id)).scalar()  # fmt: skip
     field = next((f for f in (meta or {}).get("fields") or [] if str(f.get("name", "")).casefold() == node.sub), None)
     if ((field or {}).get("source") or {}).get("op") != "estimate":
-        return None
+        return []
+    out = []
     for ref in ls.inputs_of(conn, [node]).get(node, []):
         if ref.node.kind != LINEAGE_KIND:
             continue
@@ -219,8 +228,8 @@ def field_owner(conn: sa.Connection, node: Any) -> Any | None:
             objects.c.id == ref.node.id, objects.c.kind == sb.KIND)).scalar()  # fmt: skip
         prefix = str(((got or {}).get("outputs") or {}).get("prefix") or "").casefold()
         if got is not None and prefix and node.sub.startswith(prefix):
-            return ref.node
-    return None
+            out.append(ref.node)
+    return out
 
 
 # --- reading ----------------------------------------------------------------------------------------------------------
