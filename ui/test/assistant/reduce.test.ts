@@ -274,8 +274,10 @@ describe("idempotence", () => {
 
   it("a batch gives the same state as the events one by one", () => {
     const evs = seg(start(user("Q")), delta("a1", "а"), ev("tool.start", { item: dataTool("t1", "data_tree", "Дерево") }), ev("tool.end", { item_id: "t1", status: "ok", summary: "ok" }), delta("a2", "б"), end("idle"));
-    const one = evs.reduce((s, e) => applyEvents(s, [e]), EMPTY_CHAT);
-    expect(applyEvents(EMPTY_CHAT, evs)).toEqual(one);
+    // a fixed clock: the reducer stamps items with `now`, and the wall clock may cross a millisecond in between
+    const now = () => T0;
+    const one = evs.reduce((s, e) => applyEvents(s, [e], { now }), EMPTY_CHAT);
+    expect(applyEvents(EMPTY_CHAT, evs, { now })).toEqual(one);
   });
 
   it("the state it was given is not changed", () => {
