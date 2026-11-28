@@ -5,7 +5,7 @@
  * form (`POST /crm/read`, nothing is written). «Сохранить» runs `qaqc.crm {rows, remove}`. Pages of 200 rows.
  */
 import { useState } from "react";
-import { bridge } from "../../../bridge";
+import { pickFilesIn } from "../../../shell/lastFolder";
 import { errorText } from "../../../shell/props";
 import css from "../../../shell/PropsParts.module.css";
 import { readCrmFile, type CrmProblem } from "../setupApi";
@@ -56,7 +56,7 @@ export function CrmTab({ onDirty }: { onDirty: (on: boolean) => void }) {
   const shown = rows.slice(at * CRM_PAGE, (at + 1) * CRM_PAGE);
   const patch = (i: number, p: Partial<CrmText>) => f.setForm(rows.map((r, j) => (j === i ? { ...r, ...p } : r)));
   const load = async () => {
-    const [file] = (await bridge()?.pickFiles("tables", false)) ?? [];
+    const [file] = await pickFilesIn("tables", false);
     if (!file) return;
     try {
       const read = await readCrmFile(file);

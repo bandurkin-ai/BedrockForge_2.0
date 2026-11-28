@@ -2,7 +2,8 @@
  * a later stage), the composition tells every element — what it becomes or why it will not load, with the hint of
  * the core — and the block models; an OMF 2 is refused in the card of its file with the code and the hint;
  * `omf.import` and `import.files {kind: "omf", folder}` open the wizard, the folder goes with the job. */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetLastFolders } from "../src/shell/lastFolder";
 import { setCoreTarget } from "../src/shell/api";
 import { createApp } from "../src/shell/app";
 import { closeWindow, windowStore } from "../src/shell/windows";
@@ -136,6 +137,7 @@ describe("the wizard with an OMF file", () => {
 });
 
 describe("omf.import and import.files {kind: omf, folder}", () => {
+  beforeEach(resetLastFolders); // the folder of a file chosen earlier is not offered to the next test
   const open = (picked: string[]) => {
     const pickFiles = vi.fn(async () => picked);
     vi.unstubAllGlobals();

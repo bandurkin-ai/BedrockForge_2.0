@@ -1,5 +1,6 @@
 import { MARKER_TITLES, type MarkerShape } from "../../charts/striplog/model";
 import type { CollarStyle } from "../../viz/holes/collarStyle";
+import { ColorField } from "../../shell/PropsParts";
 import css from "./StyleForms.module.css";
 
 const FONTS: [CollarStyle["fontFamily"], string][] = [["sans-serif", "Без засечек"], ["serif", "С засечками"], ["monospace", "Моноширинный"]];
@@ -23,7 +24,7 @@ export function CollarStyleForm({ style, onChange }: { style: CollarStyle; onCha
           </label>
         </div>
         <label className={css.check}><input type="checkbox" checked={byAudit} onChange={(e) => set({ color: e.target.checked ? "audit" : "#3fa56b" })} /> цвет по результатам аудита</label>
-        {!byAudit && <label className={css.check}>Цвет<input type="color" value={style.color} aria-label="Цвет значка устья" onChange={(e) => set({ color: e.target.value })} /></label>}
+        {!byAudit && <label className={css.check}>Цвет<ColorField value={style.color} label="Цвет значка устья" onCommit={(color) => set({ color })} /></label>}
       </fieldset>
       <fieldset>
         <legend>Подпись (номер скважины)</legend>
@@ -40,7 +41,7 @@ export function CollarStyleForm({ style, onChange }: { style: CollarStyle; onCha
         </div>
         <div className={css.pair}>
           <label className={css.check}><input type="checkbox" checked={style.bold} disabled={!style.label} onChange={(e) => set({ bold: e.target.checked })} /> жирный</label>
-          <label className={css.check}>Цвет<input type="color" value={style.labelColor} disabled={!style.label} aria-label="Цвет подписи" onChange={(e) => set({ labelColor: e.target.value })} /></label>
+          <label className={css.check}>Цвет<ColorField value={style.labelColor} disabled={!style.label} label="Цвет подписи" onCommit={(labelColor) => set({ labelColor })} /></label>
         </div>
       </fieldset>
       <p className={css.muted}>Применяется сразу и запоминается для набора.</p>

@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import type { DownholeData } from "../../viz/downhole/types";
 import { categoryColors, MARKER_TITLES, type MarkerShape, type Track } from "../../charts/striplog/model";
 import { GRADIENTS, gradientCss, rampColors, rgbToHex } from "../../viz/downhole/gradients";
-import { MenuItem, openCsvText, Popover, saveCsv } from "./ui";
+import { ColorField, MenuItem, openCsvText, Popover, saveCsv } from "./ui";
 import { MARKER_ICONS } from "./sections/ViewSection";
 
 const ROW = 26;
@@ -98,7 +98,7 @@ export function CategoryEditor({ data, track, patch, markers }: {
         <input className="grow" value={query} placeholder={`поиск среди ${cats.length}`} aria-label="Поиск значения" onChange={(e) => { setQuery(e.target.value); setScroll(0); }} />
         {picked.size > 0 && (
           <label className="dh-color" title={`Один цвет для выбранных (${picked.size})`}>
-            <input type="color" aria-label="Цвет выбранных значений" onChange={(e) => setColors(Object.fromEntries([...picked].map((k) => [k, e.target.value])), "catmany")} />
+            <ColorField value="" label="Цвет выбранных значений" onChange={(color) => setColors(Object.fromEntries([...picked].map((k) => [k, color])), "catmany")} />
           </label>
         )}
         <Popover label="Действия с цветами" title="Цвета для многих значений, импорт и экспорт" className="small-btn" button="Цвета ▾" align="right">
@@ -146,7 +146,7 @@ export function CategoryEditor({ data, track, patch, markers }: {
                 <span className="dh-handle" title="Перетащите, чтобы изменить порядок в легенде" aria-hidden>⠿</span>
                 <button type="button" className="icon dh-eye" aria-pressed={!off} title={off ? "Скрыто в сцене: показать" : "Скрыть в сцене"} aria-label={`${off ? "Показать" : "Скрыть"}: ${c.value}`}
                   onClick={() => patch({ hidden: off ? (track.hidden ?? []).filter((x) => x !== c.value) : [...(track.hidden ?? []), c.value] })}>{off ? "◌" : "👁"}</button>
-                <input type="color" value={c.color} aria-label={`Цвет: ${c.value}`} onChange={(e) => setColors({ [c.value]: e.target.value }, `cat${c.value}`)} />
+                <ColorField value={c.color} label={`Цвет: ${c.value}`} onChange={(color) => setColors({ [c.value]: color }, `cat${c.value}`)} />
                 {markers && (
                   <select className="dh-cat-marker" value={track.catMarkers?.[c.value] ?? ""} aria-label={`Значок: ${c.value}`} title="Свой значок для этого значения"
                     onChange={(e) => {

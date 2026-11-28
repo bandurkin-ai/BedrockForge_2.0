@@ -3,7 +3,7 @@
  * (`import.files {kind, folder}`; `omf.import` — the same with OMF files offered), «Линии»,
  * «Каркасы» and «Растры»; «Облако точек» (`points.import {mode: "las"|"xyz"}`, ADR 0014 §6) — the same window in
  * the mode of a cloud; the wireframes an import stored are checked (`afterImport.ts`). */
-import { bridge } from "../../bridge";
+import { pickFilesIn } from "../../shell/lastFolder";
 import type { App } from "../../shell/app";
 import { showMessage } from "../../shell/dialogs";
 import { openWindow } from "../../shell/windows";
@@ -85,7 +85,7 @@ export function bindImporting(app: App): void {
   );
   const pickAndImport = async (filter: "objects" | "omf" | "blocks", raw: unknown) => {
     const folder = cleanFolder(raw);
-    const paths = (await bridge()?.pickFiles(filter, true)) ?? [];
+    const paths = await pickFilesIn(filter, true);
     if (!paths.length) return "Отменено";
     // block files are told by their columns: a `.csv` or a `.dat` goes to the composition, not to the drillhole wizard
     return filter === "blocks" ? importPaths(app, paths, "objects", folder, "blocks") : importPaths(app, paths, "auto", folder);
@@ -96,7 +96,7 @@ export function bindImporting(app: App): void {
     "points.import",
     async (a) => {
       const mode: CloudMode = a.mode === "xyz" ? "xyz" : "las";
-      const paths = (await bridge()?.pickFiles(mode, true)) ?? [];
+      const paths = await pickFilesIn(mode, true);
       if (!paths.length) return "Отменено";
       const route = routeImport(paths, "objects");
       if (route.project.length) await showMessage({ title: CLOUD_TITLE, message: "Файл проекта .bfggis загружается командой «Импорт проекта»." });
@@ -110,7 +110,7 @@ export function bindImporting(app: App): void {
     app.registry.bind(
       command,
       async () => {
-        const paths = (await bridge()?.pickFiles(pick, true)) ?? [];
+        const paths = await pickFilesIn(pick, true);
         if (!paths.length) return "Отменено";
         const route = routeImport(paths, "objects");
         if (route.objects.length) openObjectsWizard(route.objects, pick);

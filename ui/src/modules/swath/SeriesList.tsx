@@ -7,6 +7,7 @@ import { useState } from "react";
 import { Icon } from "../../shell/Icon";
 import type { SeriesAnswer, SwathSources } from "./api";
 import { addSeries, blockSeries, MAX_SERIES, moveSeries, removeSeries, replaceSeries, sampleSeries, type SwathSettings } from "./model";
+import { ColorField } from "../../shell/PropsParts";
 import { SeriesForm } from "./SeriesForm";
 import css from "./Swath.module.css";
 
@@ -35,7 +36,7 @@ export function SeriesList({ settings, sources, answers, onChange }: { settings:
       {series.map((s, i) => (
         <div key={i} className={css.series} data-testid={`swath-series-${i}`}>
           <div className={css.seriesHead}>
-            <input type="color" value={s.color} aria-label={`Цвет ряда ${i + 1}`} title="Цвет ряда" onChange={(e) => onChange(replaceSeries(settings, i, { ...s, color: e.target.value }))} />
+            <ColorField value={s.color} label={`Цвет ряда ${i + 1}`} onCommit={(color) => onChange(replaceSeries(settings, i, { ...s, color }))} />
             <strong className={css.grow}>
               Ряд {i + 1} · {s.kind === "blocks" ? "модель" : "пробы"}
             </strong>

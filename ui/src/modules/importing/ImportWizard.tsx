@@ -3,6 +3,7 @@ import { bridge } from "../../bridge";
 import { useApp } from "../../shell/AppContext";
 import { Icon } from "../../shell/Icon";
 import { logStep, openLogWindow, opLogStore, startOpLog, stopOpLog } from "../../shell/opLog";
+import { pickFilesIn } from "../../shell/lastFolder";
 import { useStore } from "../../shell/useStore";
 import { closeWindow, updateWindow } from "../../shell/windows";
 import { setPanel } from "../../shell/workspace";
@@ -56,11 +57,11 @@ export function ImportWizard({ winId, paths, mode }: { winId: string; paths?: st
     updateWindow(winId, { title: MODE_TITLES[m] }); // the window is called by what it loads
   };
   const pick = async () => {
-    const files = (await bridge()?.pickFiles("tables", !trenches)) ?? [];
+    const files = await pickFilesIn("tables", !trenches, `wizard:${winId}`);
     if (files.length) await wizard.add(files, s.step);
   };
   const pickPrj = async () => {
-    const [file] = (await bridge()?.pickFiles("prj", false)) ?? [];
+    const [file] = await pickFilesIn("prj", false, `wizard:${winId}`);
     if (!file) return;
     logStep(wizard.log, `Система координат: ${file}`);
     try {

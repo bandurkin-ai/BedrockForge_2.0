@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { ClaudeLink, antEnv } from "./claude";
 import { CoreProcess, type CoreInfo } from "./core";
+import { LastFolders, safeDefaultPath } from "./dialogPath";
 import { coreCommand, uiRoot } from "./paths";
 import { contentSecurityPolicy, isAllowedExternal, mimeOf, ORIGIN, staticFile } from "./protocol";
 import { mergeSettings, readSettings, writeSettings } from "./userSettings";
@@ -270,6 +271,8 @@ function registerIpc(): void {
   });
   ipcMain.on("bf:app-version", (e) => (e.returnValue = app.getVersion()));
   const fromMain = (sender: WebContents) => mainWin !== null && sender === mainWin.webContents;
+  /** The folders of the last save and folder dialogs of the session (Э27, 27.5). */
+  const lastFolders = new LastFolders();
   ipcMain.handle("bf:claude-seal", (e) => (fromMain(e.sender) ? claude.seal() : { ok: false, message: "Недоступно" }));
   ipcMain.handle("bf:claude-forget", async (e) => {
     if (fromMain(e.sender)) await claude.forget();
@@ -394,8 +397,13 @@ function registerIpc(): void {
   ipcMain.handle("bf:pick-save", async (e, defaultName: string, kind?: string) => {
     if (!mainWin || !fromMain(e.sender)) return null;
     const filters = kind && Object.hasOwn(tableFilters, String(kind)) ? tableFilters[String(kind)] : bfggis;
-    const r = await dialog.showSaveDialog(mainWin, { defaultPath: path.join(app.getPath("documents"), path.basename(String(defaultName))), filters });
-    return r.canceled || !r.filePath ? null : r.filePath;
+    // the next save of a kind opens in the folder of the last one (Э27, 27.5); the first one — in «Документы»
+    const saveKind = `save:${kind && Object.hasOwn(tableFilters, String(kind)) ? String(kind) : "bfggis"}`;
+    const dir = lastFolders.get(saveKind) ?? app.getPath("documents");
+    const r = await dialog.showSaveDialog(mainWin, { defaultPath: path.join(dir, path.basename(String(defaultName))), filters });
+    if (r.canceled || !r.filePath) return null;
+    lastFolders.rememberFile(saveKind, r.filePath);
+    return r.filePath;
   });
   ipcMain.handle("bf:pick-open", async (e) => {
     if (!mainWin || !fromMain(e.sender)) return null;
@@ -460,18 +468,24 @@ function registerIpc(): void {
     // «Настройка › Внешние программы» (ADR 0013 §6): a program of the user; only Windows names them by .exe.
     program: [...(process.platform === "win32" ? [{ name: "Программы", extensions: ["exe"] }] : []), { name: "Все файлы", extensions: ["*"] }],
   };
-  ipcMain.handle("bf:pick-files", async (e, kind: string, multi: boolean) => {
+  // `defaultPath` — the folder of the file chosen last (the interface keeps it per wizard and kind of files, Э27 27.5)
+  ipcMain.handle("bf:pick-files", async (e, kind: string, multi: boolean, defaultPath?: string) => {
     if (!mainWin || !fromMain(e.sender)) return [];
+    const folder = safeDefaultPath(defaultPath);
     const r = await dialog.showOpenDialog(mainWin, {
       properties: multi ? ["openFile", "multiSelections"] : ["openFile"],
       filters: fileFilters[kind] ?? fileFilters.tables,
+      ...(folder ? { defaultPath: folder } : {}),
     });
     return r.canceled ? [] : r.filePaths;
   });
   ipcMain.handle("bf:pick-folder", async (e) => {
     if (!mainWin || !fromMain(e.sender)) return null;
-    const r = await dialog.showOpenDialog(mainWin, { properties: ["openDirectory", "createDirectory"] });
-    return r.canceled || !r.filePaths.length ? null : r.filePaths[0];
+    const folder = lastFolders.get("folder");
+    const r = await dialog.showOpenDialog(mainWin, { properties: ["openDirectory", "createDirectory"], ...(folder ? { defaultPath: folder } : {}) });
+    if (r.canceled || !r.filePaths.length) return null;
+    lastFolders.remember("folder", r.filePaths[0]);
+    return r.filePaths[0];
   });
   ipcMain.on("bf:show-in-folder", (e, file: string) => {
     if (fromMain(e.sender) && typeof file === "string" && path.isAbsolute(file)) shell.showItemInFolder(file);

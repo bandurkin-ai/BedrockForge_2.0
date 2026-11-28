@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { bridge, saveFile } from "../../bridge";
+import { ColorChooser } from "../../shell/ColorPalette";
+import { rememberColor } from "../../shell/quickColors";
 
 /** Small controls shared by the sections of the downhole display form. */
 
@@ -147,33 +149,20 @@ export function MenuItem({ children, onClick, disabled, title, danger }: { child
   return <button type="button" role="menuitem" className={`dh-menu-item${danger ? " danger" : ""}`} disabled={disabled} title={title} onClick={onClick}>{children}</button>;
 }
 
-const RECENT_KEY = "bf.downhole.colors";
-export function recentColors(): string[] {
-  try {
-    const list = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]") as unknown;
-    return Array.isArray(list) ? list.filter((c): c is string => typeof c === "string" && /^#[0-9a-f]{6}$/i.test(c)).slice(0, 10) : [];
-  } catch {
-    return [];
-  }
-}
-export function rememberColor(color: string): void {
-  try {
-    localStorage.setItem(RECENT_KEY, JSON.stringify([color, ...recentColors().filter((c) => c !== color)].slice(0, 10)));
-  } catch {
-    /* not remembered */
-  }
-}
-
-/** A colour: the system picker and swatches of recent colours and colours used in the display. */
+/** A colour: the system picker and the palette under a button — ten standard colours, the five chosen last (the same for
+ * all windows, `shell/ColorPalette`) and the colours already used in the display (`extra`). */
 export function ColorField({ value, onChange, label, extra = [], disabled }: { value: string; onChange: (c: string) => void; label: string; extra?: string[]; disabled?: boolean }) {
-  const swatches = [...new Set([...extra, ...recentColors()])].slice(0, 12);
+  const valid = /^#[0-9a-f]{6}$/i.test(value) ? value : "#9aa3b5";
+  const seen = useRef(valid); // the colour when the picker got the focus: only a changed one is a colour of the user
   return (
     <span className="dh-color">
-      <input type="color" value={/^#[0-9a-f]{6}$/i.test(value) ? value : "#9aa3b5"} aria-label={label} title={label} disabled={disabled}
-        onChange={(e) => onChange(e.target.value)} onBlur={(e) => rememberColor(e.target.value)} />
-      {swatches.map((c) => (
-        <button key={c} type="button" className="dh-swatch" style={{ background: c }} title={`Цвет ${c}`} aria-label={`Цвет ${c}`} disabled={disabled} onClick={() => onChange(c)} />
-      ))}
+      <ColorChooser
+        value={valid}
+        extra={extra}
+        disabled={disabled}
+        onPick={onChange}
+        input={<input type="color" value={valid} aria-label={label} title={label} disabled={disabled} onChange={(e) => onChange(e.target.value)} onFocus={(e) => (seen.current = e.target.value)} onBlur={(e) => e.target.value !== seen.current && rememberColor(e.target.value)} />}
+      />
     </span>
   );
 }
