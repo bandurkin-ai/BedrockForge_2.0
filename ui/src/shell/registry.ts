@@ -99,7 +99,7 @@ export class CommandRegistry {
     if (source === "claude" && c.uiOnly) return this.record(c, args, source, { ok: false, result: "Команда доступна только из интерфейса" });
     const bad = validateArgs(c, args);
     if (bad) return this.record(c, args, source, { ok: false, result: bad });
-    const reason = unavailableReason(c, this.hooks.context());
+    const reason = unavailableReason(c, this.hooks.context(), args);
     if (reason) return this.record(c, args, source, { ok: false, result: reason });
     if (source === "claude" && c.confirm && !(await this.hooks.confirm(c, args))) {
       return this.record(c, args, source, { ok: false, result: DECLINED });

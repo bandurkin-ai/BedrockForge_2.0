@@ -24,6 +24,8 @@ export function bindBlocks(app: App): void {
     const s = app.store.get().selected;
     const list = s?.kind === "blocks" && blockById(s.id)?.layout === "list";
     if (app.store.get().listModel !== list) app.store.set({ listModel: list });
+    const ids = blocksStore.get().list.filter((b) => b.layout === "list").map((b) => b.id);
+    if (ids.join() !== app.store.get().listIds.join()) app.store.set({ listIds: ids });
   };
   if (uid) void loadBlocks();
   unbind.push(

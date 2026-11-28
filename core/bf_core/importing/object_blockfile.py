@@ -532,7 +532,7 @@ def _inspect(source: BlockSource, opts: BlockOptions, tick: Tick | None, sample:
             out["parents"] = int(np.unique(cells.p[valid]).size)
             out["check3"] = check.as_dict()
     except ApiError as exc:
-        out["error"] = {"code": exc.code, "message": exc.message, "hint": exc.hint, **exc.extra}
+        out["error"] = {**exc.extra, "code": exc.code, "message": exc.message, "hint": exc.hint}
         return out
     if n_invalid:
         notes.append(f"Строк без центра или с размером ≤ 0: {_n(n_invalid)} — будут пропущены.")

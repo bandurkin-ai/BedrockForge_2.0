@@ -197,6 +197,8 @@ class Arranged:
     idx: np.ndarray
     dups: int
     examples: list[dict[str, Any]]
+    lc: np.ndarray  # the centres and the sizes in the same order (the repeated rows left out): no second gather
+    ld: np.ndarray
 
 
 def arrange(grid: GridV2, lc: np.ndarray, ld: np.ndarray) -> Arranged:
@@ -204,16 +206,18 @@ def arrange(grid: GridV2, lc: np.ndarray, ld: np.ndarray) -> Arranged:
     (the same centre AND size) left out, the first stays."""
     idx = cells_of(grid, lc)
     order = np.lexsort((lc[:, 0], lc[:, 1], lc[:, 2], idx))
-    dup, first = _kernels().mark_duplicates(
-        idx[order], np.ascontiguousarray(lc[order]), np.ascontiguousarray(ld[order])
-    )
+    idx = idx[order]
+    lcs, lds = lc[order], ld[order]
+    dup, first = _kernels().mark_duplicates(idx, lcs, lds)
     examples: list[dict[str, Any]] = []
-    if dup.any():
+    count = int(dup.sum())
+    if count:
         for at in np.flatnonzero(dup)[:MAX_EXAMPLES]:
-            examples.append({"check": "duplicate", "row": int(order[at]), "p": int(idx[order[at]]), "sub": None,
+            examples.append({"check": "duplicate", "row": int(order[at]), "p": int(idx[at]), "sub": None,
                              "other_row": int(order[first[at]])})  # fmt: skip
-        order = order[~dup]
-    return Arranged(order, idx[order], int(dup.sum()), examples)
+        keep = ~dup
+        order, idx, lcs, lds = order[keep], idx[keep], lcs[keep], lds[keep]
+    return Arranged(order, idx, count, examples, lcs, lds)
 
 
 # --- overlaps ---------------------------------------------------------------------------------------------------------
@@ -226,24 +230,25 @@ def overlaps(lc: np.ndarray, ld: np.ndarray) -> tuple[np.ndarray, int, np.ndarra
     flag = np.zeros(n, dtype=np.bool_)
     if n < 2:
         return flag, 0, np.empty((0, 2), dtype=np.int64)
-    lo = np.ascontiguousarray(lc - ld / 2)
-    hi = np.ascontiguousarray(lc + ld / 2)
-    gmin = lo.min(axis=0)
-    extent = hi.max(axis=0) - gmin
+    lc, ld = np.ascontiguousarray(lc), np.ascontiguousarray(ld)  # the kernels take the edges from them: no `lo`, `hi`
+    gmin = (lc - ld / 2).min(axis=0)
+    extent = (lc + ld / 2).max(axis=0) - gmin
     step = np.maximum(2.0 * np.median(ld, axis=0), extent / MAX_TEST_CELLS)
     step = np.maximum(step, 1e-9)
     while True:  # a giant block entered into the tiny cells would make millions of entries: coarser cells then
-        total = int(_kernels().count_entries(lo, hi, gmin, step))
+        total = int(_kernels().count_entries(lc, ld, gmin, step))
         if total <= 8 * n + 1024:
             break
         step = step * 2.0
     keys = np.empty(total, dtype=np.int64)
-    boxes = np.empty(total, dtype=np.int64)
-    _kernels().fill_entries(lo, hi, gmin, step, keys, boxes)
-    at = np.argsort(keys, kind="stable")
-    keys, boxes = keys[at], boxes[at]
+    boxes = np.empty(total, dtype=np.int32)
+    _kernels().fill_entries(lc, ld, gmin, step, keys, boxes)
+    at = np.argsort(keys)  # the order inside a cell does not matter
+    keys = keys[at]
+    boxes = boxes[at]
+    del at
     pairs = np.empty((MAX_PAIRS, 2), dtype=np.int64)
-    found, kept = _kernels().overlap_pairs(lo, hi, gmin, step, keys, boxes, flag, pairs, MAX_PAIRS)
+    found, kept = _kernels().overlap_pairs(lc, ld, gmin, step, keys, boxes, flag, pairs, MAX_PAIRS)
     got = pairs[:kept]
     return flag, int(found), got[np.lexsort((got[:, 1], got[:, 0]))] if kept else got
 
@@ -483,6 +488,18 @@ def volumes(grid: GridV2, ch: Chunk, frac: np.ndarray | None = None) -> np.ndarr
     return vol if frac is None else vol * np.asarray(frac, dtype=np.float64).reshape(-1)
 
 
+def overlap_note(model: Any) -> str | None:
+    """A warning for the operations that sum the volume of the blocks (the report, the regularization) of a list that
+    has overlapping blocks (`meta.checks.overlaps.n`): the common part of two blocks is counted twice."""
+    if not getattr(model, "listed", False):
+        return None
+    n = int(((model.meta.get("checks") or {}).get("overlaps") or {}).get("n") or 0)
+    if not n:
+        return None
+    return (f"В модели-списке {ru_num(n)} перекрывающихся блоков: их общий объём посчитан дважды, объём и тоннаж "
+            "завышены. Исправьте модель в исходной программе и загрузите заново.")
+
+
 def warm() -> dict[str, float]:
     """Compiles (or loads from the cache) the kernels of a list of blocks on a few boxes: the order, the repeats, the
     overlaps, the shared faces (`blocks/warm.py`, the step `list`)."""
@@ -495,8 +512,8 @@ def warm() -> dict[str, float]:
     lc = np.array([[0.5, 0.5, 0.5], [1.5, 0.5, 0.5], [1.5, 0.5, 0.5], [3.0, 3.0, 3.0]])
     ld = np.array([[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [2.0, 2.0, 2.0]])
     arr = arrange(grid, lc, ld)
-    overlaps(lc[arr.order], ld[arr.order])
+    overlaps(arr.lc, arr.ld)
     ok = np.ones(len(arr.order), dtype=bool)
-    list_shell.view(grid, arr.idx, lc[arr.order], ld[arr.order], ok, limit=1)
-    list_shell.view(grid, arr.idx, lc[arr.order], ld[arr.order], ok, limit=1000)
+    list_shell.view(grid, arr.idx, arr.lc, arr.ld, ok, limit=1)
+    list_shell.view(grid, arr.idx, arr.lc, arr.ld, ok, limit=1000)
     return {"list": time.perf_counter() - t0}

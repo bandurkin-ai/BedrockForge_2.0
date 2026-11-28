@@ -37,6 +37,8 @@ export interface AppState {
   hasSection: boolean;
   /** The selected object is a list of blocks (a block model with no grid of parents, ADR 0030): `blocks/bind.ts`. */
   listModel: boolean;
+  /** The numbers of the block models that are lists of blocks (for a command that names its own model). */
+  listIds: number[];
   editing: boolean;
   /** A passing notice of the view (settings not saved, «упрощено»…). */
   statusNote: string | null;
@@ -65,6 +67,7 @@ export const INITIAL_STATE: AppState = {
   undoDepth: 0,
   hasSection: false,
   listModel: false,
+  listIds: [],
   editing: false,
   statusNote: null,
   modal: 0,
@@ -98,6 +101,7 @@ export function commandContext(s: AppState): CommandContext {
     canUndo: s.undoDepth > 0,
     hasSection: s.hasSection,
     listModel: s.listModel,
+    listIds: s.listIds,
     editing: s.editing,
     coreOnline: s.core === "online",
   };

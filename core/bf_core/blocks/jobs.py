@@ -214,7 +214,10 @@ def run_regularize(
                        "events": _events(target), **done}  # fmt: skip
     finally:
         res.staged.discard()
-    return {**out, "warnings": [], "stages": clock.stages()}
+    from bf_core.blocks import list_layout as ll
+
+    note = ll.overlap_note(model)  # a list with overlapping blocks: the volume of the common part is counted twice
+    return {**out, "warnings": [note] if note else [], "stages": clock.stages()}
 
 
 # --- the warm-up ------------------------------------------------------------------------------------------------------

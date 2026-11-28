@@ -40,9 +40,20 @@ def cell_index(c, origin, size, counts):  # type: ignore[no-untyped-def]
 
 
 @njit(cache=True, nogil=True)
+def _size_slot(d, r, mask):  # type: ignore[no-untyped-def]
+    """The first slot of the table of sizes for row r: the three doubles of the size mixed into an int64."""
+    h = np.int64(1469598103934665603)
+    for a in range(3):
+        h = (h ^ np.int64(np.rint(d[r, a] * 1e6))) * np.int64(1099511628211)
+    return (h ^ (h >> 29)) & mask
+
+
+@njit(cache=True, nogil=True)
 def mark_duplicates(idx, c, d):  # type: ignore[no-untyped-def]
     """`dup[r]` — row r repeats an earlier one (the same idx, centre and size); `first[r]` — that earlier row (−1 if
-    none). The rows go by (idx, cz, cy, cx): the rows of one centre are neighbours."""
+    none). The rows go by (idx, cz, cy, cx): the rows of one centre are neighbours. The sizes of a run of one centre are
+    looked up in a small table (open addressing), so a long series of blocks with one centre costs its length, not the
+    square of it."""
     n = idx.shape[0]
     dup = np.zeros(n, dtype=np.bool_)
     first = np.full(n, -1, dtype=np.int64)
@@ -51,49 +62,59 @@ def mark_duplicates(idx, c, d):  # type: ignore[no-untyped-def]
         e = r + 1
         while e < n and idx[e] == idx[r] and c[e, 0] == c[r, 0] and c[e, 1] == c[r, 1] and c[e, 2] == c[r, 2]:
             e += 1
-        for j in range(r + 1, e):
-            for i in range(r, j):
-                if dup[i]:
-                    continue
-                if d[i, 0] == d[j, 0] and d[i, 1] == d[j, 1] and d[i, 2] == d[j, 2]:
-                    dup[j] = True
-                    first[j] = i
-                    break
+        if e - r > 1:
+            size = 4
+            while size < 2 * (e - r):
+                size <<= 1
+            mask = np.int64(size - 1)
+            table = np.full(size, -1, dtype=np.int64)
+            for j in range(r, e):
+                at = _size_slot(d, j, mask)
+                while True:
+                    k = table[at]
+                    if k < 0:
+                        table[at] = j
+                        break
+                    if d[k, 0] == d[j, 0] and d[k, 1] == d[j, 1] and d[k, 2] == d[j, 2]:
+                        dup[j] = True
+                        first[j] = k
+                        break
+                    at = (at + 1) & mask
         r = e
     return dup, first
 
 
 @njit(cache=True, nogil=True)
-def _span(lo, hi, gmin, step, a, r):  # type: ignore[no-untyped-def]
-    i0 = np.int64(np.floor((lo[r, a] - gmin[a]) / step[a]))
-    i1 = np.int64(np.floor((hi[r, a] - gmin[a] - EPS) / step[a]))
+def _span(c, d, gmin, step, a, r):  # type: ignore[no-untyped-def]
+    i0 = np.int64(np.floor((c[r, a] - d[r, a] * 0.5 - gmin[a]) / step[a]))
+    i1 = np.int64(np.floor((c[r, a] + d[r, a] * 0.5 - gmin[a] - EPS) / step[a]))
     if i1 < i0:
         i1 = i0
     return i0, i1
 
 
 @njit(cache=True, nogil=True)
-def count_entries(lo, hi, gmin, step):  # type: ignore[no-untyped-def]
+def count_entries(c, d, gmin, step):  # type: ignore[no-untyped-def]
     """The number of (box, test cell) entries."""
     total = np.int64(0)
-    for r in range(lo.shape[0]):
+    for r in range(c.shape[0]):
         k = np.int64(1)
         for a in range(3):
-            i0, i1 = _span(lo, hi, gmin, step, a, r)
+            i0, i1 = _span(c, d, gmin, step, a, r)
             k *= i1 - i0 + 1
         total += k
     return total
 
 
 @njit(cache=True, nogil=True)
-def fill_entries(lo, hi, gmin, step, keys, boxes):  # type: ignore[no-untyped-def]
+def fill_entries(c, d, gmin, step, keys, boxes):  # type: ignore[no-untyped-def]
     """The entries: `keys` — the cell of the test grid packed into one int64, `boxes` — the row of the box."""
     o = 0
     m = np.int64(1) << BITS
-    for r in range(lo.shape[0]):
-        x0, x1 = _span(lo, hi, gmin, step, 0, r)
-        y0, y1 = _span(lo, hi, gmin, step, 1, r)
-        z0, z1 = _span(lo, hi, gmin, step, 2, r)
+    for r in range(c.shape[0]):
+        x0, x1 = _span(c, d, gmin, step, 0, r)
+        y0, y1 = _span(c, d, gmin, step, 1, r)
+        z0, z1 = _span(c, d, gmin, step, 2, r)
         for z in range(z0, z1 + 1):
             for y in range(y0, y1 + 1):
                 for x in range(x0, x1 + 1):
@@ -103,7 +124,7 @@ def fill_entries(lo, hi, gmin, step, keys, boxes):  # type: ignore[no-untyped-de
 
 
 @njit(cache=True, nogil=True)
-def overlap_pairs(lo, hi, gmin, step, keys, boxes, flag, pairs, cap):  # type: ignore[no-untyped-def]
+def overlap_pairs(c, d, gmin, step, keys, boxes, flag, pairs, cap):  # type: ignore[no-untyped-def]
     """The overlapping pairs among the boxes of the entries sorted by `keys`: `flag[r]` — the box takes part in one;
     `pairs` [cap, 2] — the first pairs met (row a < row b); returns (the number of pairs, how many were kept)."""
     n = keys.shape[0]
@@ -127,8 +148,10 @@ def overlap_pairs(lo, hi, gmin, step, keys, boxes, flag, pairs, cap):  # type: i
                     continue
                 hit = True
                 for ax in range(3):
-                    top = lo[a, ax] if lo[a, ax] > lo[b, ax] else lo[b, ax]
-                    bot = hi[a, ax] if hi[a, ax] < hi[b, ax] else hi[b, ax]
+                    la, lb = c[a, ax] - d[a, ax] * 0.5, c[b, ax] - d[b, ax] * 0.5
+                    top = la if la > lb else lb
+                    ha, hb = c[a, ax] + d[a, ax] * 0.5, c[b, ax] + d[b, ax] * 0.5
+                    bot = ha if ha < hb else hb
                     if not top < bot - EPS:
                         hit = False
                         break
@@ -137,7 +160,8 @@ def overlap_pairs(lo, hi, gmin, step, keys, boxes, flag, pairs, cap):  # type: i
                 # the cell of the low corner of the common part: the pair belongs to it
                 own = True
                 for ax in range(3):
-                    top = lo[a, ax] if lo[a, ax] > lo[b, ax] else lo[b, ax]
+                    la, lb = c[a, ax] - d[a, ax] * 0.5, c[b, ax] - d[b, ax] * 0.5
+                    top = la if la > lb else lb
                     cell = np.int64(np.floor((top - gmin[ax]) / step[ax]))
                     want = cx if ax == 0 else (cy if ax == 1 else cz)
                     if cell != want:
@@ -180,12 +204,12 @@ def _hash(c, d, r, a, hi):  # type: ignore[no-untyped-def]
 
 
 @njit(cache=True, nogil=True)
-def face_hashes(c, d, hl, hh):  # type: ignore[no-untyped-def]
-    """`hl[3r + a]`, `hh[3r + a]` — the keys of the low and the high face of block r on the axis a."""
+def face_hashes(c, d, hl):  # type: ignore[no-untyped-def]
+    """`hl[3r + a]` — the key of the low face of block r on the axis a (the keys of the high faces are made on the fly:
+    no second array of them)."""
     for r in range(c.shape[0]):
         for a in range(3):
             hl[3 * r + a] = _hash(c, d, r, a, False)
-            hh[3 * r + a] = _hash(c, d, r, a, True)
 
 
 @njit(cache=True, nogil=True)
@@ -206,36 +230,35 @@ def _same(c, d, r1, r2, a):  # type: ignore[no-untyped-def]
 
 
 @njit(cache=True, nogil=True)
-def hide_faces(c, d, hl, hh, hide):  # type: ignore[no-untyped-def]
-    """Matches the high faces `hh[3r + a]` with the low faces `hl[3r + a]` of equal key (a table of the low faces, open
-    addressing); when two faces really are one (no collision of the hash) both are hidden — bit 2·axis + 1 and
-    2·axis of `hide[row]`. Returns the pairs."""
+def hide_faces(c, d, hl, hide):  # type: ignore[no-untyped-def]
+    """Matches the high faces (their keys made here) with the low faces `hl[3r + a]` of equal key (a table of the face
+    numbers, int32, open addressing; the key of the face in a slot is read from `hl`); when two faces really are one
+    (no collision of the hash) both are hidden — bit 2·axis + 1 and 2·axis of `hide[row]`. Returns the pairs."""
     n = hl.shape[0]
     size = 1
     while size < 2 * n + 2:
         size <<= 1
     mask = size - 1
-    keys = np.zeros(size, dtype=np.int64)
-    vals = np.full(size, -1, dtype=np.int64)
+    table = np.full(size, -1, dtype=np.int32)
     for f in range(n):  # the first low face of a key keeps the slot
         k = hl[f]
         at = (k ^ (k >> 32)) & mask
-        while vals[at] >= 0 and keys[at] != k:
+        while table[at] >= 0 and hl[table[at]] != k:
             at = (at + 1) & mask
-        if vals[at] < 0:
-            keys[at] = k
-            vals[at] = f
+        if table[at] < 0:
+            table[at] = f
     pairs = 0
     for f1 in range(n):
-        k = hh[f1]
-        at = (k ^ (k >> 32)) & mask
-        while vals[at] >= 0 and keys[at] != k:
-            at = (at + 1) & mask
-        if vals[at] < 0:
-            continue
-        f2 = vals[at]
         a = f1 % 3
-        r1, r2 = f1 // 3, f2 // 3
+        r1 = f1 // 3
+        k = _hash(c, d, r1, a, True)
+        at = (k ^ (k >> 32)) & mask
+        while table[at] >= 0 and hl[table[at]] != k:
+            at = (at + 1) & mask
+        if table[at] < 0:
+            continue
+        f2 = np.int64(table[at])
+        r2 = f2 // 3
         if f2 % 3 == a and r1 != r2 and _same(c, d, r1, r2, a):
             hide[r1] |= np.uint8(1 << (2 * a + 1))
             hide[r2] |= np.uint8(1 << (2 * a))
