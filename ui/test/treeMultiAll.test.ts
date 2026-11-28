@@ -11,7 +11,7 @@ import { buildLookup, NO_LISTS, rowExists, type Lists } from "../src/shell/multi
 import { applyAll, applyPlan, commonKind, fieldsOf, kindCount, parseNumber, readField, revertPlan, whyNoFields, FIELDS } from "../src/shell/multiPropsModel";
 import { pickGroup, pickMulti, pickPlain, forgetRow, clearGroup } from "../src/shell/multiSelect";
 import { attachUndoKey, clearUndo, ctrlZTarget, isTextField, isUndoKey, lastUndo, pushUndo, undoLast, undoStore, UNDO_LIMIT } from "../src/shell/propsUndo";
-import { groupItems, groupMark, groupStore, multiStore, NO_GROUP, NO_MULTI, pickOfTestId, type Group, type PickKind, type RowRef } from "../src/shell/selection";
+import { groupItems, groupMark, groupStore, multiStore, NO_GROUP, NO_MULTI, pairId, pickOfTestId, unpair, type Group, type PickKind, type RowRef } from "../src/shell/selection";
 import { commandContext } from "../src/shell/store";
 import { sceneObjects } from "../src/modules/scene/objects";
 import { viewStore } from "../src/modules/scene/bind";
@@ -26,6 +26,7 @@ vi.mock("../src/shell/useStore", () => ({
 
 const T = (id: number): RowRef => ({ kind: "trend", id });
 const S = (id: number): RowRef => ({ kind: "set", id });
+const NONE = { ctrl: false, shift: false };
 const ids = (items: readonly RowRef[]) => items.map((x) => x.id);
 
 /** Every section of the tree with a row to choose: the test id of the row, its kind and the fields the registry lets change. */
@@ -54,6 +55,18 @@ const SECTIONS: { section: string; testId: string; kind: PickKind; fields: strin
   { section: "Отображения по стволу", testId: "tree-display-4", kind: "display", fields: [] },
   { section: "Графики", testId: "tree-chart-4", kind: "chart", fields: [] },
   { section: "Результаты обработки проб", testId: "tree-result-4", kind: "result", fields: [] },
+  { section: "Линии: файл", testId: "tree-linefile-4", kind: "line_file", fields: [] },
+  { section: "Карьер: каркас сценария", testId: "tree-pit-9-wireframe-4", kind: "wireframe", fields: ["visible", "color"] },
+  { section: "Неявные модели: каркас-выход", testId: "tree-implicit-out-4", kind: "wireframe", fields: ["visible", "color"] },
+  { section: "Неявные модели: слой линий", testId: "tree-implicit-line-4", kind: "lines", fields: ["visible", "color"] },
+];
+
+/** Rows named by two numbers: the id is made of both. */
+const PAIRS: { section: string; testId: string; kind: PickKind; a: number; b: number; fields: string[] }[] = [
+  { section: "Серии разрезов: разрез серии", testId: "series-tree-3-12", kind: "series_section", a: 3, b: 12, fields: [] },
+  { section: "Неявные модели: группа данных", testId: "tree-implicit-5-group-7", kind: "implicit_group", a: 5, b: 7, fields: ["visible"] },
+  { section: "Неявные модели: разлом", testId: "tree-implicit-5-fault-7", kind: "implicit_fault", a: 5, b: 7, fields: [] },
+  { section: "Неявные модели: домен стека", testId: "tree-implicit-5-stack-7", kind: "implicit_stack", a: 5, b: 7, fields: [] },
 ];
 
 describe("every section of the tree has rows that can be chosen", () => {
@@ -61,8 +74,17 @@ describe("every section of the tree has rows that can be chosen", () => {
     expect(pickOfTestId(testId)).toEqual({ kind, id: 4 });
   });
 
+  it.each(PAIRS)("$section: the row «$testId» is a $kind named by two numbers", ({ testId, kind, a, b, fields }) => {
+    const ref = pickOfTestId(testId)!;
+    expect(ref.kind).toBe(kind);
+    expect(unpair(ref.id)).toEqual([a, b]);
+    expect(ref.id).toBe(pairId(a, b));
+    expect(fieldsOf(kind).map((f) => f.key)).toEqual(fields);
+    if (!fields.length) expect(whyNoFields(kind)).toMatch(/[а-я]/);
+  });
+
   it("the rows of the parts of a section that are no objects are not chosen", () => {
-    for (const id of ["tree-section-holes", "series-tree-4-2", "series-tree-4-more", "tree-implicit-4-group-3", "tree-implicit-error-4", "tree-pit-4-model", "tree-charts-4", "tree-results-4", "tree-set-x"]) {
+    for (const id of ["tree-section-holes", "series-tree-4-more", "tree-implicit-error-4", "tree-implicit-4-data", "tree-implicit-4-wings-rest", "tree-implicit-out-x", "tree-pit-4-model", "tree-pit-4-none", "tree-charts-4", "tree-results-4", "tree-set-x"]) {
       expect(pickOfTestId(id)).toBeUndefined();
     }
   });
@@ -110,6 +132,16 @@ describe("a group of rows (sets, trends, views…)", () => {
     expect(ids(pickGroup(g([T(1)], T(1)), T(4), { ctrl: false, shift: true }, mixed).items)).toEqual([1, 2, 4]);
   });
 
+  it("taking a row away leaves the group alone marked: what the section keeps itself is «активный», never a second «выбран»", () => {
+    const two = pickGroup(pickGroup(NO_GROUP, S(1), NONE, [S(1), S(2)]), S(2), { ctrl: true, shift: false }, [S(1), S(2)]);
+    const left = pickGroup(two, S(1), { ctrl: true, shift: false }, [S(1), S(2)]); // the set that was clicked first is taken away
+    expect(ids(left.items)).toEqual([2]);
+    expect([groupMark(left, S(1)), groupMark(left, S(2))]).toEqual([2, 1]);
+    const none = pickGroup(left, S(2), { ctrl: true, shift: false }, [S(1), S(2)]);
+    expect([none.items, none.kind]).toEqual([[], "set"]);
+    expect([groupMark(none, S(1)), groupMark(none, S(2))]).toEqual([2, 2]); // nothing is chosen
+  });
+
   it("a row of another kind begins a new group", () => {
     const next = pickGroup(g([T(1), T(2)]), S(7), { ctrl: true, shift: false }, [S(7)]);
     expect([next.kind, ids(next.items)]).toEqual(["set", [7]]);
@@ -118,9 +150,11 @@ describe("a group of rows (sets, trends, views…)", () => {
   it("marks the rows: the chosen ones; the others only while two or more are chosen", () => {
     expect(groupMark(g([T(1), T(2)]), T(1))).toBe(1);
     expect(groupMark(g([T(1), T(2)]), T(3))).toBe(2);
-    expect(groupMark(g([T(1)]), T(3))).toBe(0); // a single row: next to what the section marks itself (the active set)
+    // a group of one, and a group that its last row was taken from: the group marks, what the section keeps itself is «активный»
+    expect(groupMark(g([T(1)]), T(3))).toBe(2);
+    expect(groupMark({ items: [], anchor: T(1), kind: "trend" }, T(1))).toBe(2);
     expect(groupMark(g([T(1), T(2)]), S(1))).toBe(0); // another kind
-    expect(groupMark(NO_GROUP, T(1))).toBe(0);
+    expect(groupMark(NO_GROUP, T(1))).toBe(0); // no group: the section marks its own
     expect(groupItems(g([T(1)]))).toEqual([]);
     expect(groupItems(g([T(1), T(2)]))).toHaveLength(2);
   });
@@ -248,6 +282,14 @@ describe("the fields of the rows of the sections", () => {
     expect(applyPlan(fieldsOf("trend")[0], "trend", [4], true)).toEqual([{ command: "trend.show", args: { trend_id: 4, visible: true } }]);
     expect(applyPlan(fieldsOf("planned")[0], "planned", [4], false)).toEqual([{ command: "planned.show", args: { id: 4, visible: false } }]);
     expect(applyPlan(fieldsOf("swath")[0], "swath", [4], true)).toEqual([{ command: "stats.swath_3d", args: { swath_id: 4, visible: true } }]);
+  });
+
+  it("a group of data of an implicit model: the points in 3D, named by the model and the group", () => {
+    const lists2 = lists({ implicit: [{ id: 5, group_list: [{ id: 7 }, { id: 8 }] }] });
+    const lk = buildLookup({ hidden: [], objects: { files: [], rasters: [], wireframes: [], loaded: true, error: null }, view: {}, planned: { hidden: [], chosen: null }, implicit: { points: ["5:7"], ellipsoids: [] } as never, lists: lists2 });
+    const [visible] = fieldsOf("implicit_group");
+    expect(readField(visible, "implicit_group", [pairId(5, 7), pairId(5, 8), pairId(5, 9), pairId(6, 7)], lk).map((r) => [r.id, r.value])).toEqual([[pairId(5, 7), true], [pairId(5, 8), false]]);
+    expect(applyPlan(visible, "implicit_group", [pairId(5, 8)], true)).toEqual([{ command: "implicit.show", args: { model_id: 5, group_id: 8, what: "points", visible: true } }]);
   });
 
   it("a view: the folder is a text, the root is an empty one; a block model: the opacity", () => {

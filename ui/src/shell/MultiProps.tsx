@@ -5,6 +5,8 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { plannedStore, plannedViewStore } from "../modules/drillholes/plannedState";
+import { implicitStore } from "../modules/implicit/state";
+import { implicitViewStore } from "../modules/implicit/viewState";
 import { sceneObjects } from "../modules/scene/objects";
 import { viewStore } from "../modules/scene/bind";
 import { swathsStore } from "../modules/swath/state";
@@ -96,6 +98,8 @@ export function MultiProps({ items }: { items: readonly RowRef[] }) {
   const plannedRows = useStore(plannedStore, (s) => s.rows);
   const swaths = useStore(swathsStore, (s) => s.swaths);
   const views = useStore(viewsStore, (s) => s.views);
+  const implicit = useStore(implicitStore, (s) => s.rows);
+  const implicitView = useStore(implicitViewStore, (s) => s);
   const last = useStore(undoStore, (s) => s.entries.at(-1) ?? null);
   useRegistryVersion(app.registry); // availability of the commands follows the registry
   const { run, error } = useRun();
@@ -104,8 +108,8 @@ export function MultiProps({ items }: { items: readonly RowRef[] }) {
   const kind = commonKind(items);
 
   const lookup = useMemo<Lookup>(
-    () => buildLookup({ hidden, objects, view, planned, lists: { sets, trends, planned: plannedRows, swaths, views } }),
-    [hidden, objects, view, planned, sets, trends, plannedRows, swaths, views],
+    () => buildLookup({ hidden, objects, view, planned, implicit: implicitView, lists: { sets, trends, planned: plannedRows, swaths, views, implicit } }),
+    [hidden, objects, view, planned, implicitView, sets, trends, plannedRows, swaths, views, implicit],
   );
 
   if (!kind) {

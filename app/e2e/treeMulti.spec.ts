@@ -150,6 +150,13 @@ test("tree: the other sections too — «Виды» are chosen with Ctrl, the fo
     await chosen(a, b, c);
     await click(b, ["Control"]);
     await chosen(a, c);
+    // taking away the row the section applied last leaves one chosen row: it is «активный» (`data-active`), not «выбран»
+    await click(a, ["Control"]);
+    await chosen(c);
+    await expect(row(a)).toHaveAttribute("data-active", "");
+    await expect(row(c)).not.toHaveAttribute("data-active", "");
+    await click(a, ["Control"]);
+    await chosen(a, c);
     await click(b, ["Control"]);
     await chosen(a, b, c);
 

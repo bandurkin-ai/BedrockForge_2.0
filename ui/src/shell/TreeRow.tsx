@@ -56,6 +56,8 @@ export function TreeRow(p: TreeRowProps) {
     () => 0,
   );
   const selected = mark === 1 || (mark === 0 && p.selected === true);
+  // while a group of the kind works, the choice the section keeps itself (the active set, the view applied last) is «активный»
+  const active = mark === 2 && p.selected === true;
   // a row that is not drawn any more (the object was deleted, the folder or the section collapsed) leaves the group
   useEffect(() => {
     if (kind === undefined || id === undefined) return;
@@ -78,10 +80,11 @@ export function TreeRow(p: TreeRowProps) {
       aria-label={name}
       tabIndex={-1}
       data-tree-row=""
+      data-active={active ? "" : undefined}
       data-expanded={p.expanded === undefined ? undefined : String(p.expanded)}
       data-testid={p.testId}
       {...(pick ? { [PICK_KIND]: pick.kind, [PICK_ID]: pick.id } : {})}
-      className={`${css.row} ${selected ? css.selected : ""} ${p.className ?? ""}`}
+      className={`${css.row} ${selected ? css.selected : ""} ${active ? css.active : ""} ${p.className ?? ""}`}
       style={{ paddingLeft: 4 + (p.level - 1) * 14 }}
       title={p.title}
       onContextMenu={p.onContextMenu}
