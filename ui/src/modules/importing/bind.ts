@@ -7,9 +7,10 @@ import { pickFilesIn } from "../../shell/lastFolder";
 import type { App } from "../../shell/app";
 import { showMessage } from "../../shell/dialogs";
 import { openWindow } from "../../shell/windows";
-import { onJobFinished } from "../jobs/state";
+import { jobsStore, onJobFinished, refresh as refreshJobs } from "../jobs/state";
 import { loadSets } from "../tables/state";
-import { watchImports } from "./afterImport";
+import { ofOpenProject, watchImports } from "./afterImport";
+import { CHOICE_COMMAND, choiceFailures, jobFolder, noteOf, type ChoiceNote } from "./choice";
 import { CLOUD_TITLE, type CloudMode } from "./cloud";
 import { cleanFolder } from "./objects";
 import { routeImport } from "./route";
@@ -29,8 +30,8 @@ export type ObjectsPick = "objects" | "lines" | "rasters" | "wireframes" | "omf"
 /** The composition of lines, points, rasters, wireframes and OMF; `pick` — what «Добавить файлы…» of the window
  * offers; `cloud` — the window «Облако точек»: every table is a point cloud, «Добавить файлы…» offers LAS or XYZ;
  * `folder` — the folder of the tree the objects go to. */
-export function openObjectsWizard(paths: string[], pick: ObjectsPick = "objects", cloud: CloudMode | null = null, folder: string | null = null): void {
-  const at = folder ? { folder } : {};
+export function openObjectsWizard(paths: string[], pick: ObjectsPick = "objects", cloud: CloudMode | null = null, folder: string | null = null, choice: ChoiceNote | null = null): void {
+  const at = { ...(folder ? { folder } : {}), ...(choice ? { choice } : {}) };
   if (cloud) openWindow("import-objects", CLOUD_TITLE, "normal", { paths, cloud, ...at }, ...viewport());
   else openWindow("import-objects", "Импорт файлов", "normal", { paths, ...(pick === "objects" ? {} : { pick }), ...at }, ...viewport());
 }
@@ -91,6 +92,27 @@ export function bindImporting(app: App): void {
     return filter === "blocks" ? importPaths(app, paths, "objects", folder, "blocks") : importPaths(app, paths, "auto", folder);
   };
   app.registry.bind("import.files", (a) => pickAndImport(a.kind === "omf" ? "omf" : a.kind === "blocks" ? "blocks" : "objects", a.folder), needProject);
+  // «Открыть мастер с выбором» of the job: the file the grid could not hold, in the wizard with the panel of the choice
+  app.registry.bind(
+    CHOICE_COMMAND,
+    async (a) => {
+      const id = Number(a.job_id);
+      const find = () => jobsStore.get().jobs.find((j) => j.id === id && (a.source === undefined || j.source === a.source) && choiceFailures(j).length > 0);
+      let job = find();
+      if (!job) {
+        await refreshJobs();
+        job = find();
+      }
+      if (!job) throw new Error(`В задании №${id} нет файла, для которого ядро предлагает выбор`);
+      if (!ofOpenProject(job)) throw new Error(`Задание №${id} относится к другому проекту: откройте его проект`);
+      const path = typeof a.path === "string" ? a.path : "";
+      const failure = choiceFailures(job).find((f) => !path || f.path === path);
+      if (!failure) throw new Error(`В задании №${id} нет файла «${path}» с выбором`);
+      openObjectsWizard([failure.path], "blocks", null, jobFolder(job), noteOf(failure));
+      return `Открыт мастер импорта блочной модели с выбором для «${failure.file}»`;
+    },
+    needProject,
+  );
   app.registry.bind("omf.import", (a) => pickAndImport("omf", a.folder), needProject);
   app.registry.bind(
     "points.import",

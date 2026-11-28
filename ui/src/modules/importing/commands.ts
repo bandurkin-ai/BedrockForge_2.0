@@ -16,5 +16,14 @@ export const commands: Command[] = [
   { id: "lines.upload", title: "Линии", description: "Загрузить линии и точки: Micromine STR и PIT, Surpac STR, DXF, SHP, MIF/MID, таблицы точек XYZ.", uiOnly: true, stage: "Э7" },
   { id: "points.import", title: "Облако точек", description: "Мастер загрузки облака точек: mode las — LAS 1.2–1.4 (LAZ не читается), xyz — таблица точек XYZ, CSV или TXT облаком (колонки X, Y, Z, класс); «каждая k-я запись» прореживает большое облако.", params: { mode: { type: "string", enum: ["las", "xyz"] } }, uiOnly: true, stage: "Э7.1" },
   { id: "rasters.upload", title: "Растры", description: "Изображение с файлом привязки или GeoTIFF.", uiOnly: true, stage: "Э7" },
+  {
+    id: "import.blocks_choice",
+    title: "Открыть мастер с выбором",
+    description: "Открыть мастер импорта блочной модели для файла, который задание «Импорт файлов» не загрузило и для которого ядро предлагает выбор (блоки не ложатся в сетку — «Задать сетку вручную» или «Не импортировать»; три центра не совпали с поворотом): панель выбора с диагностикой видна сразу. job_id — номер задания, path — файл из его списка «не загружено» (без path — первый такой).",
+    params: { job_id: { type: "integer" }, source: { type: "string" }, path: { type: "string" } },
+    required: ["job_id"],
+    uiOnly: true,
+    stage: "Э27",
+  },
   { id: "omf.import", title: "Импорт OMF", description: "Импорт файла OMF v1 (Leapfrog OMF 0.9): поверхности — каркасы, линии — слои, регулярные объёмы — блочные модели; состав и что не загрузится — в мастере «Импорт файлов». OMF 2 не читается.", params: { folder: { type: "string" } }, uiOnly: true, stage: "Э11" },
 ];
