@@ -14,6 +14,7 @@ import type { CommandContext } from "../../shell/commands";
 import { askText } from "../../shell/dialogs";
 import { needWritable, noted, refusal, viewport } from "../../shell/objectRun";
 import { openWindow } from "../../shell/windows";
+import { cancelSectionDraw } from "../section/state";
 import { lineLayers, loadSceneObjects } from "../scene/objects";
 import { EditError } from "../../edit/io";
 import { getVersions, moveLines, newLayer } from "./editApi";
@@ -137,6 +138,8 @@ export function bindEditor(app: App): void {
     "lines.tool",
     (a) => {
       const s = requireSession();
+      // the tools of the window exclude each other: a section line being drawn is called off first
+      cancelSectionDraw();
       s.setTool(a.tool as Tool);
       return `Инструмент: ${TOOL_TITLES[a.tool as Tool]}`;
     },

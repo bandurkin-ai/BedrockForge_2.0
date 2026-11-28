@@ -317,6 +317,8 @@ export class Scene extends HoleScene {
   /** The drawing state of a section line (the first point marked: the rubber band follows the cursor). */
   setDrawing(state: DrawState): void {
     this.sec.drawing = state;
+    // a general tool (the section line) and the tool of the editor exclude each other (`ToolChain.suspend`)
+    if (this.tools.suspend(state.stage !== "off")) this.input.setTool(this.tools);
     if (state.stage !== "second") this.sec.overlay.setDraft(null, null, 0);
     else this.pointerMove(-1, -1);
     this.renderer.canvas.style.cursor = state.stage === "off" && !this.tools.tool ? "" : "crosshair";
@@ -342,10 +344,9 @@ export class Scene extends HoleScene {
 
   /** A tool of the string editor gets the pointer first; null — the scene alone, as before. */
   setTool(tool: ToolHandler | null): void {
-    this.tools.tool = tool;
-    this.tools.reset();
+    this.tools.install(tool);
     this.input.setTool(this.tools);
-    this.renderer.canvas.style.cursor = tool ? "crosshair" : "";
+    this.renderer.canvas.style.cursor = tool || this.sec.drawing.stage !== "off" ? "crosshair" : "";
   }
 
   /** The handles of a swath (Д-01): the pointer after the editor's tool, before the scene; null — none. */

@@ -110,6 +110,33 @@ export class ToolChain implements ToolHandler {
   /** the handles of a swath (`Scene.setHandles`) */
   handles: ToolHandler | null = null;
   private taker: (ToolHandler & { cancel?(): void }) | null = null;
+  /** a general tool of the view (a section line) holds the pointer: neither the editor's tool nor the handles get it */
+  private held = false;
+
+  get suspended(): boolean {
+    return this.held;
+  }
+
+  /**
+   * One rule of exclusion for the tools of the 3D view: a general tool (the section line being drawn) starts —
+   * the editor's tool is told to end what it holds (`deactivate`: the line of a polyline is finished, an empty one
+   * goes) and gets nothing until the general tool ends; the handles get nothing too. Returns whether it changed.
+   */
+  suspend(on: boolean): boolean {
+    if (on === this.held) return false;
+    this.held = on;
+    if (on) this.tool?.deactivate?.();
+    this.reset();
+    return true;
+  }
+
+  /** The editor's tool in or out: the old one is told to end what it holds (`deactivate`), a press in progress is called off. */
+  install(tool: ToolHandler | null): void {
+    const prev = this.tool;
+    if (prev && prev !== tool) prev.deactivate?.();
+    this.tool = tool;
+    this.reset();
+  }
 
   /**
    * The tool changed (`ToolInput.setTool` drops the press): a drag in progress is called off, the handles let go of
@@ -123,7 +150,7 @@ export class ToolChain implements ToolHandler {
   }
 
   pointer(e: ToolPointer): boolean {
-    const one = this.tool ?? this.handles;
+    const one = this.held ? null : (this.tool ?? this.handles);
     const both = one ? [one] : [];
     switch (e.type) {
       case "down":
