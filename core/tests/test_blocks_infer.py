@@ -335,8 +335,20 @@ def bf_blocks(parent=5.0):
     return a[:, :3], a[:, 3:]
 
 
+def test_halves_of_2_and_3_m_are_a_division_of_five_not_a_refusal():
+    """ADR 0030: BF's 5 m parents with halves 2 + 3 m and layers 2 + 2 + 1 m lie on 5 sub-cells (they were refused as
+    «not 2^L» in 0.5.0)."""
+    c, d = bf_blocks()
+    res = infer(c, d)
+    assert res.grid.sub.div == (5, 1, 5) and res.grid.sub.levels is None and res.grid.size == (5.0, 5.0, 5.0)
+    assert res.valid is None and res.dropped == 0 and res.check3.ok
+
+
 def test_subblocks_not_on_sub_cells_are_refused_with_their_rows():
     c, d = bf_blocks()
+    c, d = np.vstack([c, c[:1]]), np.vstack([d, d[:1]])
+    d[-1] = (5 / 131, 5.0, 5.0)  # a block whose width is no fraction of the parent up to 128 sub-cells
+    c[-1, 0] = c[0, 0] - 2.5 + d[-1, 0] / 2
     with pytest.raises(ApiError) as e:
         infer(c, d)
     err = e.value
@@ -346,6 +358,7 @@ def test_subblocks_not_on_sub_cells_are_refused_with_their_rows():
     assert "не по подъячейкам" in err.message and "Строки данных (с 1)" in err.hint
     assert str(err.extra["rows"][0] + 1) in err.hint
     # the same model with the parent size and the division said by the wizard: the same refusal, the rows are real
+    c, d = bf_blocks()
     with pytest.raises(ApiError) as e2:
         infer(c, d, GridHint(corner=ORIGIN, size=(5.0, 5.0, 5.0), div=(4, 4, 4)))
     bad = e2.value.extra["rows"]

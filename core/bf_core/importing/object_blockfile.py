@@ -43,7 +43,7 @@ from bf_core.api.errors import ApiError
 from bf_core.blocks import checks as bcheck
 from bf_core.blocks import geometry as geo
 from bf_core.blocks import schema as bs
-from bf_core.blocks.grid_infer import OK, GridScan, Unaligned
+from bf_core.blocks.grid_infer import OK, GridScan, Unaligned, shifted_note
 from bf_core.formats import blocks_roles as br
 from bf_core.formats.blocks_text import CHUNK_ROWS, BlockSource, TextColumn, empty_to_nan, text_is_empty
 from bf_core.formats.errors import FormatError
@@ -59,6 +59,7 @@ from .blockfile_parts import (
     _n,
     busy,
     check_roles,
+    column_quanta,
     plan_fields,
     resolve,
 )
@@ -172,6 +173,8 @@ class Cells:
     valid: np.ndarray  # the raw row numbers (ascending) of the rows that are blocks
     invalid: int
     check3: Any
+    shifted: int = 0  # blocks whose edges were moved to the lattice by more than 1e-6 m (ADR 0030 decision 4)
+    max_shift: float = 0.0
 
 
 def _cells(inferred: Any, spool: Spool, rows: int, res: Resolved, tick: Tick) -> Cells:
@@ -208,7 +211,7 @@ def _cells(inferred: Any, spool: Spool, rows: int, res: Resolved, tick: Tick) ->
     check3 = inferred.check3(centres3, sizes3, three)
     if len(valid) != rows:  # rows without a centre or a size are not blocks
         p, s, w = p[valid], None if s is None else s[valid], None if w is None else w[valid]
-    return Cells(p, s, w, valid, lost.invalid, check3)
+    return Cells(p, s, w, valid, lost.invalid, check3, lost.shifted, lost.max_shift)
 
 
 # --- sorting, repeated rows ---------------------------------------------------------------------------------------
@@ -279,7 +282,8 @@ def import_model(
     res = resolve(source.names, source.kinds, opts)
     plans = plan_fields(res, source.kinds, opts)
     notes: list[str] = []
-    scan = GridScan(opts.hint(source.hint), centres=opts.centres)
+    quanta, f4 = column_quanta(source, res.geometry)
+    scan = GridScan(opts.hint(source.hint), centres=opts.centres, quanta=quanta, f4=f4)
     spool = Spool(workdir / "spool")
     writer: bm.CellsWriterV2 | None = None
     staged: bm.StagedCells | None = None
@@ -296,6 +300,11 @@ def import_model(
                          f"с вычисленными на {cells.check3.dist:.3g} м.")  # fmt: skip
         if cells.invalid:
             notes.append(f"Строк без центра или с размером ≤ 0: {_n(cells.invalid)} — пропущены.")
+        if cells.shifted:
+            notes.append(shifted_note(cells.shifted, cells.max_shift))
+        # what the fit moved (only when it did: a model of exact numbers keeps the source of 0.5.0)
+        moved = {"tol": [*inferred.tol], "shifted": cells.shifted, "max_shift": cells.max_shift}
+        fit = {"params": moved} if cells.shifted else {}
         arr = _arrange(cells, rows, tick)
         del cells
         if arr.counts["overlap"]:
@@ -349,7 +358,8 @@ def import_model(
 
         with dialect.write_tx(engine) as conn:
             bm_id = bm.commit_block_model(
-                conn, store, staged, name=name, source={"format": source.format, "file": label},
+                conn, store, staged, name=name,
+                source={"format": source.format, "file": label, **fit},
                 warnings=notes[:MAX_NOTES], folder=folder, state=state, job_id=job_id, author=author,
             )  # fmt: skip
             final = conn.execute(sa.select(objects.c.name).where(objects.c.id == bm_id)).scalar_one()
@@ -533,7 +543,8 @@ def _inspect(source: BlockSource, opts: BlockOptions, tick: Tick | None, sample:
     out["columns"] = [{"name": n, "type": source.kinds[n], "role": by_role.get(n)} for n in source.names]
     geometry = {k: c for k, c in res.geometry.items() if c}
     plans = plan_fields(res, source.kinds, opts)
-    scan = GridScan(opts.hint(source.hint), centres=opts.centres)
+    quanta, f4 = column_quanta(source, res.geometry)
+    scan = GridScan(opts.hint(source.hint), centres=opts.centres, quanta=quanta, f4=f4)
     cs: list[np.ndarray] = []
     ds: list[np.ndarray] = []
     stats = {p.column: _Stat() for p in plans if not p.text}

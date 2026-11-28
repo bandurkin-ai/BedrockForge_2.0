@@ -145,12 +145,13 @@ BRIEF_FIELD = ("name", "kind", "dtype", "unit", "role")
 
 def public_meta(meta: Mapping[str, Any], *, brief: bool = False) -> dict[str, Any]:
     """The part of `GET /blocks[/{id}]` a meta gives (e17-api.md «Модель»): `meta_v` — the stored version, `cells`
-    = `rows` (the name of Э11), the grid with `variable` and `levels`; `brief` (the tree) — no tensors, no checks,
-    fields without stats, labels and sources."""
+    = `rows` (the name of Э11), the grid with `variable` and `levels` (null — not 2^L); `brief` (the tree) — no
+    tensors, no checks, fields without stats, labels and sources."""
     m = upgrade(meta)
     grid = dict(m["grid"])
     grid["variable"] = "tensors" in grid
-    grid["levels"] = list(GridV2.of(m["grid"]).sub.levels)
+    levels = GridV2.of(m["grid"]).sub.levels
+    grid["levels"] = None if levels is None else list(levels)  # None — a division that is not 2^L (ADR 0030)
     if brief:
         grid.pop("tensors", None)
     fields = [{k: f.get(k) for k in BRIEF_FIELD} for f in m["fields"]] if brief else m["fields"]

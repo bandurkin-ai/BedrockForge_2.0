@@ -196,11 +196,19 @@ def test_turn_about_x_or_y_is_refused() -> None:
     assert bs.rotation_of_axes([0, 1, 0], [-1, 0, 0], [0, 0, 1]) == 90.0
 
 
-@pytest.mark.parametrize("value", [3, 6, 0, -2, 256, 2.5, True, "4", None, float("nan")])
-def test_div_not_a_power_of_two_up_to_128_is_refused(value: Any) -> None:
+@pytest.mark.parametrize("value", [0, -2, 256, 129, 2.5, True, "4", None, float("nan")])
+def test_div_not_a_whole_from_1_to_128_is_refused(value: Any) -> None:
     out = refused(bs.GridV2.of, {**SUB_GRID, "div": [8, value, 4]})
     assert out["status"] == 422 and out["code"] == "subblock_div" and out["param"] == "grid.div.1"
-    assert "степень двойки" in out["message"] and "128" in out["hint"]
+    assert "целое от 1 до 128" in out["message"] and "128" in out["hint"]
+
+
+@pytest.mark.parametrize("value", [3, 5, 6, 10, 12, 100, 127])
+def test_div_any_whole_up_to_128_is_taken_and_has_no_levels(value: int) -> None:
+    g = bs.GridV2.of({**SUB_GRID, "div": [8, value, 4]})
+    assert g.sub.div == (8, value, 4) and g.sub.levels is None and g.sub.sub
+    pub = bmeta.public_meta({**sub_meta(), "grid": g.to_meta()})
+    assert pub["grid"]["levels"] is None and pub["grid"]["div"] == [8, value, 4]
 
 
 def test_div_powers_of_two_and_levels() -> None:
@@ -298,7 +306,7 @@ GRIDS: list[tuple[str, dict[str, Any]]] = [
 ]  # fmt: skip
 REFUSALS: list[tuple[str, dict[str, Any]]] = [
     ("rotation_x", {**SUB_GRID, "rotation": {"x": 5, "z": 30}}),
-    ("div_3", {**SUB_GRID, "div": [3, 8, 4]}),
+    ("div_0", {**SUB_GRID, "div": [0, 8, 4]}),
     ("div_256", {**SUB_GRID, "div": [8, 8, 256]}),
     ("div_tensors", {**V1_TENSORS["grid"], "div": [2, 1, 1]}),
     ("too_large", {"corner": [0, 0, 0], "counts": [2001, 1000, 1000], "size": [1, 1, 1]}),

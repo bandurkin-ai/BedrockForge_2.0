@@ -8,7 +8,7 @@
 import { num, type Fact } from "../../../shell/props";
 import { count } from "../../../shell/treeActions";
 import type { BlockModelInfo } from "../api";
-import { gridFacts } from "../props";
+import { gridFacts, isFreeDiv } from "../props";
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -101,7 +101,7 @@ export function rotationText(d: Details): string {
 /** «2 × 2 × 2 подъячеек в блоке» — the parent block is split into sub-blocks (`div`), or «нет». */
 export function subText(d: Details): string {
   if (!d.sub || !d.div) return d.div && d.div.some((v) => v > 1) ? `возможны, деление блока ${d.div.join(" × ")} (в модели их нет)` : "нет";
-  const lv = d.levels ? `; уровней деления ${d.levels.join(" × ")}` : "";
+  const lv = d.levels ? `; уровней деления ${d.levels.join(" × ")}` : isFreeDiv(d.div) ? "; произвольное деление, не по уровням 2^L" : "";
   return `деление блока ${d.div.join(" × ")}${lv}`;
 }
 

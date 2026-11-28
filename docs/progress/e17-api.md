@@ -41,7 +41,7 @@ v1 не переписываются; первая запись v2 (поле к�
 | Точка | p = O + R_z(φ)·q; O = `grid.corner` (минимум локальных координат), φ = `grid.rotation` ∈ (−180°; 180°], против часовой при виде сверху; sin/cos кратных 90° — точные (`GridV2.sin_cos`) |
 | Сетка | `counts` [nx, ny, nz], nx·ny·nz ≤ 2·10⁹ (`MAX_GRID_V2`; сетка v1 — ≤ 2·10⁸, `MAX_CELLS`), `size` [dx, dy, dz] или `tensors` (переменный шаг OMF: показ, фильтр, отчёт, экспорт; субблоки, заполнение, регуляризация — 422 `variable_grid {param: "grid.tensors"}`) |
 | P | P = i + nx·(j + ny·k), uint64 (ADR 0017; Мортон ТЗ 6.5/8.7.2 — вопрос № 62) |
-| Субблоки | `div` [2^Lx, 2^Ly, 2^Lz], L ≤ 7; строка — (P, s, w): s = sx sy sz (смещение в подъячейках, 0…div−1), w = wx wy wz (размер, ≥ 1, s + w ≤ div), uint8; родитель целиком — s = 0, w = div. Центр строки в локальных осях: q_a = (i_a + (s_a + w_a/2)/div_a)·d_a |
+| Субблоки | `div` [nx, ny, nz] — любое целое 1…128 по оси (ADR 0030: 5, 3, 2·3 …; не только 2^L — «уровни» L есть, только если все `div` степени двойки); строка — (P, s, w): s = sx sy sz (смещение в подъячейках, 0…div−1), w = wx wy wz (размер, ≥ 1, s + w ≤ div), uint8; родитель целиком — s = 0, w = div. Центр строки в локальных осях: q_a = (i_a + (s_a + w_a/2)/div_a)·d_a |
 | Порядок строк | (P, sz, sy, sx) строго по возрастанию — все файлы модели (`schema.sort_rows`, `schema.ascending`) |
 | Объём строки | Π_a(w_a·d_a/div_a) · FRAC, если у модели есть поле `role: "frac"` (не больше одного); FRAC пусто — блок не входит в объём (пропуск не ноль: объём `null`) |
 | `rows`, `parents`, `sub`, `full` | строк файлов; занятых родителей; есть столбцы sx…wz; прототип (0 строк), у которого все родители считаются занятыми (№ 66, по умолчанию false) |
@@ -81,8 +81,8 @@ class SubblockSpec:
     @classmethod
     def of(cls, raw: Sequence | None) -> SubblockSpec          # 422 subblock_div {param: "grid.div.N"}
     @classmethod
-    def of_levels(cls, levels: Sequence[int]) -> SubblockSpec  # L 0…7 → 2^L
-    levels: tuple[int, int, int]; sub: bool                    # свойства
+    def of_levels(cls, levels: Sequence[int]) -> SubblockSpec  # L 0…7 → 2^L (прототип и заполнение — по-прежнему 2^L)
+    levels: tuple[int, int, int] | None; sub: bool             # None — div не 2^L (ADR 0030); свойства
     def bad_rows(self, s, w) -> np.ndarray[bool]               # n×3 → строки не по подъячейкам
 
 @dataclass(frozen=True)
@@ -177,7 +177,7 @@ updated_at, stale, stale_reason, …public_meta}`. `size` — байты все�
 {"id": 12, "name": "Модель", "folder": null, "version": 3, "extent": [950.5, 2000.25, -300.0, 1130.4, 2161.9, -250.0],
  "crs": null, "size": 81920, "stale": false, "stale_reason": null, "meta_v": 2,
  "grid": {"corner": [1000.5, 2000.25, -300.0], "counts": [30, 20, 20], "size": [5.0, 5.0, 2.5], "order": "F",
-          "rotation": 30.0, "div": [8, 8, 4], "variable": false, "levels": [3, 3, 2]},
+          "rotation": 30.0, "div": [8, 8, 4], "variable": false, "levels": [3, 3, 2]},   # levels: null при div [5, 5, 3]
  "cells": 5210, "rows": 5210, "parents": 1200, "sub": true, "full": false,
  "fields": [{"name": "AU", "kind": "number", "dtype": "f8", "unit": "г/т", "description": null, "role": "grade",
              "stats": {"count": 5000, "missing": 210, "min": 0.01, "max": 12.3, "mean": 1.1, "std": 0.9},
