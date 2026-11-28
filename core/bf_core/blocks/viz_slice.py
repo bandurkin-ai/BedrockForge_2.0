@@ -29,7 +29,7 @@ from bf_core.viz import binary
 
 from . import geometry, pick
 from . import schema as bs
-from .model import CHUNK, Chunk, Model
+from .model import ANY, CHUNK, Chunk, Model
 from .slice import NUMBER, Plane, Slicer, plane_of
 from .slice_poly import Sectioner
 from .viz_data import Rows, cache_model, column_key, field_spec, open_model, subs
@@ -170,7 +170,11 @@ def parse_at(raw: Any) -> tuple[Common, Any, Any, list[str] | None]:
 
 def at_answer(project: Any, model_id: int, raw: Any) -> dict[str, Any]:
     common, point, normal, fields = parse_at(raw)
-    model, r, _tree = open_model(project, model_id, common)
+    model, r, _tree = open_model(project, model_id, common, ANY)
+    if model.listed:  # a list of blocks: the box that holds the point (list_shell.py)
+        from . import list_shell as ls
+
+        return ls.at_answer(model, r, fields, point, normal)
     names = pick.fields_of(model, fields)
     cm = cache_model(model)
     idx = bc.MODELS.peek(column_key(project, cm, bc.IDX))

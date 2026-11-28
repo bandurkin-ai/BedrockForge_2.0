@@ -420,3 +420,175 @@ def test_regularization_keeps_the_volume_the_tonnes_and_the_metal(project) -> No
     reg = opened(project, done["model_id"], ("grid",))
     assert reg.layout == "grid" and not reg.listed and reg.grid.size == (10.0, 10.0, 10.0)
     assert reg.volume().sum() == pytest.approx(m.volume, rel=1e-9)
+
+
+# --- the display: the faces, the block under a point ----------------------------------------------------------------
+
+API = "/api/v1"
+VIZ = API + "/viz/blocks"
+
+
+@pytest.fixture()
+def vc(pclient, tmp_path):  # type: ignore[no-untyped-def]
+    from fastapi import APIRouter
+
+    from bf_core.blocks import viz_data as vd
+    from bf_core.blocks import viz_routes
+    from bf_core.projects.service import projects_of
+    from bf_core.stats import blocks_cache as bc
+    from bf_core.storage.blobs import BlobStore
+
+    if not any(getattr(r, "path", "") == f"{VIZ}/{{bm_id}}/shell" for r in pclient.app.routes):
+        viz = APIRouter(prefix="/viz")
+        viz.include_router(viz_routes.router)
+        pclient.app.include_router(viz, prefix=API)
+        blocks = APIRouter(prefix="/blocks")
+        blocks.include_router(viz_routes.polygons_router)
+        pclient.app.include_router(blocks, prefix=API)
+    assert pclient.post(f"{API}/projects", json={"name": "Показ"}).status_code == 200
+    pclient.project = projects_of(pclient.core).require_current()
+    pclient.store = BlobStore(pclient.project.folder)
+    pclient.tmp = tmp_path
+    vd.RESPONSES.clear()
+    bc.MODELS.clear()
+    return pclient
+
+
+def put_list(c: Any, m: SimpleNamespace, name: str = "Список") -> int:
+    from bf_core.importing import object_blockfile as obf
+
+    path = write_csv(c.tmp / f"{name}.csv", m)
+    opts = obf.BlockOptions.of({"layout": "list"})
+    done = obf.import_model(obf.open_source(path, opts), opts, engine=c.project.engine, store=c.store,
+                            workdir=c.tmp / f"work-{name}", name=name, label=path.name, tick=lambda f, msg: None)
+    return done.model_id
+
+
+def shell_of(c: Any, mid: int, **body: Any) -> tuple[dict[str, Any], dict[str, np.ndarray]]:
+    from bf_core.viz import binary
+
+    r = c.post(f"{VIZ}/{mid}/shell", json=body)
+    assert r.status_code == 200, r.text
+    return binary.decode(r.content)
+
+
+def shared_pairs(c: np.ndarray, d: np.ndarray) -> int:
+    """The pairs of blocks that share a whole face (the high face of one is the low face of the other, the same
+    extents), by brute force — the reference of the faces that are hidden."""
+    lo, hi = c - d / 2, c + d / 2
+    pairs = 0
+    for a in range(len(c)):
+        for ax in range(3):
+            u, v = (ax + 1) % 3, (ax + 2) % 3
+            m = (np.abs(hi[a, ax] - lo[:, ax]) < 1e-6) & (np.abs(lo[a, u] - lo[:, u]) < 1e-6)
+            m &= (np.abs(hi[a, u] - hi[:, u]) < 1e-6) & (np.abs(lo[a, v] - lo[:, v]) < 1e-6)
+            m &= np.abs(hi[a, v] - hi[:, v]) < 1e-6
+            pairs += int(m.sum())
+    return pairs
+
+
+def test_every_block_has_six_faces_and_a_shell_hides_the_shared_ones(vc) -> None:  # type: ignore[no-untyped-def]
+    m = partition(seed=6, parents=3)
+    mid = put_list(vc, m)
+    head, arr = shell_of(vc, mid, mode="all", colour={"kind": "none"})
+    assert head["kind"] == "blocks" and head["faces"] == 6 * m.n and head["simplified"] is False and head["lod"] == 0
+    h = arr["h"].astype(np.float64).reshape(-1, 2)
+    area = 4.0 * (h[:, 0] * h[:, 1])
+    d = m.d
+    surface = float((2 * (d[:, 0] * d[:, 1] + d[:, 1] * d[:, 2] + d[:, 0] * d[:, 2])).sum())
+    assert area.sum() == pytest.approx(surface, rel=1e-5)
+    assert set(np.unique(arr["a"])) == set(range(6))
+    assert (np.diff(arr["a"].astype(np.int64)) >= 0).all()  # by the side, the faces of a plane go together
+    head, arr = shell_of(vc, mid, mode="shell", colour={"kind": "none"})
+    pairs = shared_pairs(m.q, m.d)
+    assert pairs > 0  # the blocks of a column meet face to face
+    assert head["faces"] == 6 * m.n - 2 * pairs and head["faces_raw"] == head["faces"]
+    h = arr["h"].astype(np.float64).reshape(-1, 2)
+    assert (4.0 * (h[:, 0] * h[:, 1])).sum() < surface  # what is seen is a part of the surface of all the blocks
+
+
+def test_the_colour_of_a_face_is_the_class_of_its_block_and_a_filter_drops_blocks(vc) -> None:  # type: ignore[no-untyped-def]
+    from bf_core.blocks.shell_merge import NO_CLASS
+
+    m = partition(seed=8, parents=3)
+    mid = put_list(vc, m)
+    head, arr = shell_of(vc, mid, mode="all", colour={"field": "DOM", "kind": "categories", "hidden": []})
+    assert sorted(head["labels"]) == sorted(LABELS) and head["classes"] == 3  # the labels go in the order of the file
+    got = np.bincount(arr["k"].astype(np.int64), minlength=3)
+    want = 6 * np.bincount(m.dom, minlength=3)
+    by_head = {lab: int(got[i]) for i, lab in enumerate(head["labels"])}
+    assert by_head == {lab: int(want[i]) for i, lab in enumerate(LABELS)}
+    head, arr = shell_of(vc, mid, mode="all", colour={"field": "AU", "kind": "scale"},
+                         restrict={"cond": {"field": "SG", "op": ">", "value": 2.8}})
+    kept = int((m.sg > 2.8).sum())
+    assert head["faces"] == 6 * kept and head["passed"] == kept and head["empty"] == m.n - kept
+    nogap = int(np.isnan(m.au[m.sg > 2.8]).sum())  # a block without a value has the class «no value», not 0
+    assert int((arr["k"] == NO_CLASS).sum()) == 6 * nogap
+
+
+def test_above_the_limit_the_blocks_become_cells_of_the_enclosing_grid(vc) -> None:  # type: ignore[no-untyped-def]
+    from bf_core.blocks import list_shell as ls
+
+    m = partition(seed=1, parents=6)
+    mid = put_list(vc, m)
+    with dialect.read_tx(vc.project.engine) as conn:
+        mod = Model.open(conn, vc.store, mid, ANY)
+    idx, (lc, ld) = mod.p(), mod.geo()
+    ok = np.ones(mod.rows, dtype=bool)
+    full = ls.view(mod.grid, idx, lc, ld, ok, limit=10**9)
+    assert not full.simplified and full.lod == 0
+    small = ls.view(mod.grid, idx, lc, ld, ok, limit=600)
+    assert small.simplified and small.lod >= 1 and len(small.faces) <= 600 and small.faces_raw == full.faces_raw
+    c = small.faces.c  # the coarse shell lies inside the extent of the enclosing grid
+    assert (c.min(axis=0) >= -1e-9).all() and (c.max(axis=0) <= np.asarray(mod.grid.lengths()) + 1e-9).all()
+
+
+def test_the_block_under_a_point_is_the_box_that_holds_it(vc) -> None:  # type: ignore[no-untyped-def]
+    m = partition(seed=2, parents=4)
+    mid = put_list(vc, m)
+    rng = np.random.default_rng(3)
+    for r in rng.integers(0, m.n, 8):
+        centre, size = m.centre[r], m.d[r]
+        got = vc.post(f"{VIZ}/{mid}/at", json={"point": list(centre), "fields": ["AU", "DOM"]}).json()
+        assert got["found"] is True and got["sub"] is None and got["passed"] is True
+        assert got["centre"] == pytest.approx(list(centre), abs=1e-9) and got["size"] == pytest.approx(list(size))
+        assert got["values"]["DOM"] == LABELS[m.dom[r]]
+        want = None if math.isnan(m.au[r]) else m.au[r]
+        assert got["values"]["AU"] == want  # a gap is null, never 0
+        # a point on the high face, with the normal out of the block, is still that block
+        top = [centre[0], centre[1], centre[2] + size[2] / 2]
+        again = vc.post(f"{VIZ}/{mid}/at", json={"point": top, "normal": [0, 0, 1]}).json()
+        assert again["found"] is True and again["row"] == got["row"]
+    assert vc.post(f"{VIZ}/{mid}/at", json={"point": [0.0, 0.0, 0.0]}).json() == {"found": False}
+    hole = vc.post(f"{VIZ}/{mid}/at", json={"point": [ORIGIN[0] + 5, ORIGIN[1] + 5, ORIGIN[2] + 500]}).json()
+    assert hole == {"found": False}
+    cut = vc.post(f"{VIZ}/{mid}/at", json={"point": list(m.centre[0]),
+                                           "restrict": {"cond": {"field": "SG", "op": ">", "value": 99}}}).json()
+    assert cut["found"] is True and cut["passed"] is False and cut["f"] == 0.0
+
+
+# --- what a list does not do ----------------------------------------------------------------------------------------
+
+
+def test_the_operations_that_need_the_grid_say_to_regularize(vc) -> None:  # type: ignore[no-untyped-def]
+    from bf_core.stats import blocks_cache as bc
+
+    m = partition(seed=2, parents=3)
+    mid = put_list(vc, m)
+
+    def refused(r: Any) -> None:
+        e = r.json()
+        assert (r.status_code, e["code"]) == (422, "block_list_unsupported"), e
+        assert "Регуляризуйте" in e["hint"] and "список" in e["message"].casefold()
+
+    slice_body = {"plane": {"origin": list(m.centre[0]), "normal": [0, 0, 1]}}
+    refused(vc.post(f"{VIZ}/{mid}/slice", json=slice_body))
+    refused(vc.post(f"{API}/blocks/{mid}/slice/polygons", json=slice_body))
+    with dialect.read_tx(vc.project.engine) as conn:
+        for what in ("Оценка", "Ресурсы", "Карьер", "Заполнение", "Кодирование", "Сравнение"):
+            with pytest.raises(ApiError) as exc:
+                Model.open(conn, vc.store, mid, what=what)
+            assert exc.value.code == "block_list_unsupported" and f"«{what}»" in exc.value.message
+        with pytest.raises(ApiError) as exc2:  # the statistics read the grid of parents
+            bc.model_of(conn, mid)
+    assert exc2.value.code == "block_list_unsupported"

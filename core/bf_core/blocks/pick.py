@@ -56,6 +56,8 @@ class Hit:
     centre: tuple[float, float, float]
     size: tuple[float, float, float]
     point: tuple[float, float, float]
+    lc: tuple[float, float, float] | None = None  # a list of blocks: the centre and the size, local axes
+    ld: tuple[float, float, float] | None = None
 
 
 def bad_point(param: str = "point") -> ApiError:
@@ -209,6 +211,12 @@ def fields_of(model: Model, fields: Sequence[str] | None) -> list[str]:
     return model.reader.canonical([str(x) for x in fields])
 
 
+def _boxes_of(hit: Hit) -> tuple[np.ndarray | None, np.ndarray | None]:
+    if hit.lc is None or hit.ld is None:
+        return None, None
+    return np.array([hit.lc]), np.array([hit.ld])
+
+
 def fetch_row(model: Model, hit: Hit, names: Sequence[str] = ()) -> Chunk:
     """The row as a one-row `Chunk(start=row, p, s, w, cols)` with the fields `names` in the memory form; what
     `restrict.Restrictor.weights` takes (its `fields` first), so the answer can say `f` and `passed`. Reads the
@@ -217,7 +225,8 @@ def fetch_row(model: Model, hit: Hit, names: Sequence[str] = ()) -> Chunk:
     s = w = None
     if hit.sub is not None:
         s, w = np.array([hit.sub[:3]], dtype=np.uint8), np.array([hit.sub[3:]], dtype=np.uint8)
-    return Chunk(hit.row, np.array([hit.p], dtype=np.uint64), s, w, cols)
+    lc, ld = _boxes_of(hit)
+    return Chunk(hit.row, np.array([hit.p], dtype=np.uint64), s, w, cols, lc, ld)
 
 
 def chunk_of(hit: Hit, columns: Mapping[str, np.ndarray], names: Sequence[str] | None = None) -> Chunk:
@@ -228,7 +237,8 @@ def chunk_of(hit: Hit, columns: Mapping[str, np.ndarray], names: Sequence[str] |
     if hit.sub is not None:
         s, w = np.array([hit.sub[:3]], dtype=np.uint8), np.array([hit.sub[3:]], dtype=np.uint8)
     cols = {k: np.asarray(columns[k][hit.row : hit.row + 1]) for k in keep}
-    return Chunk(hit.row, np.array([hit.p], dtype=np.uint64), s, w, cols)
+    lc, ld = _boxes_of(hit)
+    return Chunk(hit.row, np.array([hit.p], dtype=np.uint64), s, w, cols, lc, ld)
 
 
 def value_of(spec: Mapping[str, Any], v: Any) -> float | str | None:
