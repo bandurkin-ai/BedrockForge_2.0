@@ -10,6 +10,7 @@ import { Fragment, useEffect, useMemo, useState, type MouseEvent } from "react";
 import { useApp } from "../../shell/AppContext";
 import { openMenu } from "../../shell/ContextMenu";
 import { Glyph } from "../../shell/ObjectRows";
+import { isSelected } from "../../shell/selection";
 import { TreeRow } from "../../shell/TreeRow";
 import tree from "../../shell/DataTree.module.css";
 import { getImpact, type Dependent } from "../lineage/api";
@@ -27,6 +28,7 @@ export const childrenOf = (nodes: readonly Dependent[]): Dependent[] => nodes.fi
 /** The rows under an open scenario: the facts of its result and the wireframes built from it. */
 export function ScenarioChildren({ row, level }: { row: ScenarioRow; level: number }) {
   const app = useApp();
+  const selected = useSelect(app.store, (s) => s.selected);
   const key = `${row.id}:${row.version}:${row.has_result}:${row.job_id ?? ""}`;
   const detail = usePulled(() => loadScenario(row.id), `d:${key}`);
   const impact = usePulled(() => getImpact({ kind: NODE_KIND, id: row.id }), `i:${row.id}`);
@@ -44,6 +46,7 @@ export function ScenarioChildren({ row, level }: { row: ScenarioRow; level: numb
           label={w.name || `Каркас №${w.id}`}
           level={level}
           title={`Каркас или ЦТМ «${w.name}», построенный из сценария. Щелчок — выбрать`}
+          selected={isSelected(selected, "wireframe", w.id)}
           testId={`tree-pit-${row.id}-wireframe-${w.id}`}
           glyph={<Glyph icon="wireframe" />}
           onSelect={() => void app.run("object.select", { kind: "wireframe", id: w.id })}

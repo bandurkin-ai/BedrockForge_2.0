@@ -43,6 +43,7 @@ import { SettingsWindow } from "./SettingsWindow";
 import { WindowLayer, type WindowRenderer } from "./WindowLayer";
 import { Header } from "./Header";
 import { resolveKey, shortcutMap } from "./hotkeys";
+import { attachUndoKey } from "./propsUndo";
 import { eventShortcut } from "./keys";
 import { Ribbon } from "./Ribbon";
 import { buildRibbon, flattenRibbon } from "./ribbonConfig";
@@ -171,6 +172,9 @@ export function Shell() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [app, keys, paletteOpen]);
+
+  // Ctrl+Z takes back the last change of properties of several objects, unless an editor has the key (propsUndo.ts)
+  useEffect(() => attachUndoKey(app), [app]);
 
   useEffect(() => {
     // Files dropped from Explorer open the import wizard with the detected type (ТЗ 7.1, 7.8).

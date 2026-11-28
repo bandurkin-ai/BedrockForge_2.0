@@ -1,18 +1,25 @@
 /**
  * «Свойства» of several chosen objects (Д-44 А5): objects of one kind show the fields they share — a value that
- * differs is «разные» (an empty field with a hint); a change is set on every chosen object and is one step that
- * «Отменить» takes back. Objects of different kinds have no properties: a plaque says so.
+ * differs is «разные» (an empty field with a hint); a change is set on every chosen object and is one entry of the stack
+ * «Отменить» (`propsUndo.ts`: the button, `props.undo`, Ctrl+Z). Objects of different kinds have no properties: a plaque says so.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { styleIn } from "../modules/blocks/display";
-import { sceneObjects, lineLayers } from "../modules/scene/objects";
+import { plannedStore, plannedViewStore } from "../modules/drillholes/plannedState";
+import { implicitStore } from "../modules/implicit/state";
+import { implicitViewStore } from "../modules/implicit/viewState";
+import { sceneObjects } from "../modules/scene/objects";
 import { viewStore } from "../modules/scene/bind";
-import { itemExists } from "../modules/wireframes/named";
+import { swathsStore } from "../modules/swath/state";
+import { tablesStore } from "../modules/tables/state";
+import { trendsStore } from "../modules/trends/state";
+import { viewsStore } from "../modules/views/state";
 import { useApp } from "./AppContext";
-import { applyAll, commonKind, commonValue, fieldsOf, kindCount, parseOpacity, readField, type FieldValue, type Lookup, type MultiField, type Step } from "./multiPropsModel";
+import { buildLookup } from "./multiLookup";
+import { applyAll, commonKind, commonValue, fieldsOf, kindCount, parseNumber, readField, whyNoFields, type FieldValue, type Lookup, type MultiField } from "./multiPropsModel";
 import { NO_COLOR, normalizeColor } from "./props";
+import { pushUndo, undoStore } from "./propsUndo";
 import { ColorField, useRun } from "./PropsParts";
-import type { Selected } from "./selection";
+import type { RowRef } from "./selection";
 import { useRegistryVersion, useStore } from "./useStore";
 import css from "./PropsParts.module.css";
 import own from "./MultiProps.module.css";
@@ -33,30 +40,39 @@ function MixedCheck({ checked, mixed, disabled, title, label, onChange }: { chec
   );
 }
 
-/** A number typed with a comma; empty while the values differ (the hint «разные»). Saved on Enter or on leaving. */
-function NumberField({ value, mixed, label, disabled, onCommit }: { value: number; mixed: boolean; label: string; disabled: boolean; onCommit: (v: number) => Promise<boolean> }) {
-  const shown = mixed ? "" : String(value).replace(".", ",");
-  const [text, setText] = useState(shown);
+/** A text or a number typed with a comma; empty while the values differ (the hint «разные»). Saved on Enter or on leaving. */
+function TextField({ shown, current, mixed, label, disabled, parse, onCommit, numeric }: { shown: string; current: FieldValue; mixed: boolean; label: string; disabled: boolean; parse: (text: string) => { value: FieldValue; error: string | null }; onCommit: (v: FieldValue) => Promise<boolean>; numeric: boolean }) {
+  const [text, setText] = useState(mixed ? "" : shown);
+  const [dirty, setDirty] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => setText(shown), [shown]);
+  useEffect(() => {
+    setText(mixed ? "" : shown);
+    setDirty(false);
+  }, [shown, mixed]);
   const commit = () => {
-    const r = parseOpacity(text);
+    if (!dirty) return; // leaving a field that was not typed in sets nothing (an empty «разные» is not a value)
+    const r = parse(text);
     setError(r.error);
-    if (r.value === null || (!mixed && r.value === value)) return;
-    void onCommit(r.value).then((ok) => ok === false && setText(shown));
+    if (r.error || (r.value === null && numeric)) return;
+    setDirty(false);
+    if (!mixed && r.value === current) return; // typed back to what it was: nothing to set, nothing to take back
+    void onCommit(r.value).then((ok) => ok === false && setText(mixed ? "" : shown));
   };
   return (
     <>
       <input
-        className={`${css.input} ${own.number}`}
-        inputMode="decimal"
+        className={`${css.input} ${numeric ? own.number : own.text}`}
+        inputMode={numeric ? "decimal" : undefined}
         value={text}
         placeholder={mixed ? "разные" : undefined}
         title={mixed ? MIXED_HINT : label}
         aria-label={label}
         aria-invalid={error !== null}
         disabled={disabled}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => {
+          setText(e.target.value);
+          setDirty(true);
+        }}
         onBlur={commit}
         onKeyDown={(e) => e.key === "Enter" && commit()}
       />
@@ -69,28 +85,32 @@ function NumberField({ value, mixed, label, disabled, onCommit }: { value: numbe
   );
 }
 
-export function MultiProps({ items }: { items: readonly Selected[] }) {
+const asText = (v: FieldValue): string => (typeof v === "number" ? String(v).replace(".", ",") : typeof v === "string" ? v : "");
+
+export function MultiProps({ items }: { items: readonly RowRef[] }) {
   const app = useApp();
   const hidden = useStore(app.store, (s) => s.view.hidden);
   const objects = useStore(sceneObjects, (o) => o);
   const view = useStore(viewStore, (k) => k);
+  const planned = useStore(plannedViewStore, (v) => v);
+  const sets = useStore(tablesStore, (s) => s.sets);
+  const trends = useStore(trendsStore, (s) => s.trends);
+  const plannedRows = useStore(plannedStore, (s) => s.rows);
+  const swaths = useStore(swathsStore, (s) => s.swaths);
+  const views = useStore(viewsStore, (s) => s.views);
+  const implicit = useStore(implicitStore, (s) => s.rows);
+  const implicitView = useStore(implicitViewStore, (s) => s);
+  const last = useStore(undoStore, (s) => s.entries.at(-1) ?? null);
   useRegistryVersion(app.registry); // availability of the commands follows the registry
   const { run, error } = useRun();
-  const [undo, setUndo] = useState<{ text: string; steps: Step[] } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [undoError, setUndoError] = useState<string | null>(null);
   const kind = commonKind(items);
 
-  const lookup = useMemo<Lookup>(() => {
-    const layers = new Map(lineLayers(objects).map((l) => [l.id, l]));
-    return {
-      exists: itemExists,
-      hidden,
-      blockShown: (id) => styleIn(view, id).visible,
-      layerColor: (id) => layers.get(id)?.color,
-      wireframeColor: (id) => objects.wireframes.find((w) => w.id === id)?.color,
-      rasterOpacity: (id) => objects.rasters.find((r) => r.id === id)?.opacity,
-    };
-  }, [hidden, objects, view]);
+  const lookup = useMemo<Lookup>(
+    () => buildLookup({ hidden, objects, view, planned, implicit: implicitView, lists: { sets, trends, planned: plannedRows, swaths, views, implicit } }),
+    [hidden, objects, view, planned, implicitView, sets, trends, plannedRows, swaths, views, implicit],
+  );
 
   if (!kind) {
     return (
@@ -106,22 +126,22 @@ export function MultiProps({ items }: { items: readonly Selected[] }) {
   const fields = fieldsOf(kind);
   const ids = items.map((x) => x.id);
 
-  /** Sets `value` on every chosen object, one after another; the previous values are kept as one step of undo. */
+  /** Sets `value` on every chosen object, one after another; the previous values are put on the stack of «Отменить». */
   const apply = async (f: MultiField, value: FieldValue): Promise<boolean> => {
     setBusy(true);
-    setUndo(null);
+    setUndoError(null);
     const r = await applyAll(run, f, kind, ids, lookup, value);
     setBusy(false);
-    if (r.done > 0) setUndo({ text: `«${f.label}»: изменено ${kindCount(kind, r.done)}${r.done < r.total ? ` из ${r.total}` : ""}${r.skipped ? `; пропущено удалённых: ${r.skipped}` : ""}`, steps: r.undo });
+    if (r.done > 0) pushUndo({ text: `«${f.label}»: изменено ${kindCount(kind, r.done)}${r.done < r.total ? ` из ${r.total}` : ""}${r.skipped ? `; пропущено удалённых: ${r.skipped}` : ""}`, steps: r.undo });
     return r.done === r.total;
   };
 
+  /** The same step as Ctrl+Z and the command `props.undo`: the last change of the stack. */
   const revert = async () => {
-    if (!undo) return;
     setBusy(true);
-    for (const step of undo.steps) if (!(await run(step.command, step.args))) break;
+    const r = await app.registry.execute("props.undo");
     setBusy(false);
-    setUndo(null);
+    setUndoError(r.ok ? null : r.result);
   };
 
   return (
@@ -130,7 +150,7 @@ export function MultiProps({ items }: { items: readonly Selected[] }) {
         <span className={css.kind}>Выбрано</span>
         <h4 className={css.name}>{kindCount(kind, items.length)}</h4>
       </header>
-      {fields.length === 0 && <p className={css.note}>У этих объектов нет общих свойств для изменения: откройте каждый по отдельности.</p>}
+      {fields.length === 0 && <p className={css.note}>{whyNoFields(kind)}</p>}
       {fields.map((f) => {
         const read = readField(f, kind, ids, lookup);
         if (!read.length) return null;
@@ -150,26 +170,40 @@ export function MultiProps({ items }: { items: readonly Selected[] }) {
                     разные
                   </span>
                 )}
-                <button type="button" className={css.btn} disabled={off || (!common.mixed && common.value === null)} title="Объекты рисуются цветом по умолчанию" onClick={() => void apply(f, null)}>
-                  Без цвета
-                </button>
+                {f.nullable !== false && (
+                  <button type="button" className={css.btn} disabled={off || (!common.mixed && common.value === null)} title="Объекты рисуются цветом по умолчанию" onClick={() => void apply(f, null)}>
+                    Без цвета
+                  </button>
+                )}
               </>
             )}
-            {f.type === "number" && <NumberField value={typeof common.value === "number" ? common.value : 1} mixed={common.mixed} label={f.label} disabled={off} onCommit={(v) => apply(f, v)} />}
+            {f.type === "number" && f.range && (
+              <TextField
+                numeric
+                shown={asText(typeof common.value === "number" ? common.value : 1)}
+                current={common.value}
+                mixed={common.mixed}
+                label={f.label}
+                disabled={off}
+                parse={(t) => parseNumber(t, f.range!, f.label.replace(/, px$/, ""), f.example)}
+                onCommit={(v) => apply(f, v)}
+              />
+            )}
+            {f.type === "text" && <TextField numeric={false} shown={asText(common.value)} current={common.value ?? ""} mixed={common.mixed} label={f.label} disabled={off} parse={(t) => ({ value: t.trim(), error: null })} onCommit={(v) => apply(f, v)} />}
           </div>
         );
       })}
-      {undo && (
+      {last && (
         <div className={own.undo} data-testid="props-multi-undo">
-          <span>{undo.text}</span>
-          <button type="button" className={css.btn} disabled={busy} onClick={() => void revert()}>
+          <span>{last.text}</span>
+          <button type="button" className={css.btn} disabled={busy} title="Отменить последнее изменение свойств (Ctrl+Z)" onClick={() => void revert()}>
             Отменить
           </button>
         </div>
       )}
-      {error && (
+      {(error || undoError) && (
         <p className={css.error} role="alert">
-          {error}
+          {undoError ?? error}
         </p>
       )}
     </section>

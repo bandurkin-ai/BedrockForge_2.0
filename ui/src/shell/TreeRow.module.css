@@ -2,6 +2,7 @@
 .row:hover { background: var(--bg-hover); }
 .row:focus-visible { box-shadow: inset 0 0 0 1px var(--accent); }
 .selected { background: var(--bg-active, var(--bg-hover)); font-weight: 600; }
+.active { box-shadow: inset 2px 0 0 var(--accent); }
 .spacer { width: 18px; flex: none; }
 .chev { width: 18px; height: 18px; flex: none; display: flex; align-items: center; justify-content: center; border: 0; padding: 0; background: transparent; color: var(--text-dim); cursor: pointer; border-radius: var(--radius); }
 .chev:hover { background: var(--bg-active); color: var(--text); }

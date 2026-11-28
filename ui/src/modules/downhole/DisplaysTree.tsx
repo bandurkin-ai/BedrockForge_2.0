@@ -75,6 +75,7 @@ export function DisplayRows({ setId }: { setId: number }) {
             level={3}
             check={{ checked: on, label: `Показать «${c.name}» на скважинах`, onChange: (v) => show(c, v) }}
             selected={picked === c.id}
+            pick={{ kind: "display", id: c.id }}
             onSelect={() => setPicked(c.id)}
             onActivate={open}
             title={`${c.name}: галочка — показать или скрыть, двойной щелчок — настройки`}

@@ -1,6 +1,13 @@
 import type { Command } from "../../shell/commands";
 
-const OBJECT_KIND = { type: "string", enum: ["wireframe", "lines", "raster", "blocks", "implicit", "resource_report", "pit_scenario"] } as const;
+/** The rows of the data tree that can be chosen with Ctrl and Shift: the objects of `object.select` and the rows of every other section. */
+const OBJECT_KIND = {
+  type: "string",
+  enum: [
+    "wireframe", "lines", "raster", "blocks", "implicit", "resource_report", "pit_scenario",
+    "set", "view", "series", "filter", "trend", "vario", "est_row", "est_plan", "sim_row", "planned", "swath", "qaqc_data", "qaqc_report", "display", "chart", "result",
+  ],
+} as const;
 
 /** Panels, themes, palette, settings: implemented on Э1 (handlers are bound by the shell). */
 export const commands: Command[] = [
@@ -30,7 +37,7 @@ export const commands: Command[] = [
   {
     id: "tree.select_range",
     title: "Выбрать диапазон",
-    description: "Выбрать подряд объекты раздела дерева данных от последнего выбранного до указанного (Shift+щелчок, Shift+↑/↓ в дереве); add — добавить диапазон к уже выбранным (Ctrl+Shift+щелчок). Главным становится указанный объект: «Свойства» показывают общие поля выбранных объектов одного вида.",
+    description: "Выбрать подряд объекты раздела дерева данных от последнего выбранного до указанного (Shift+щелчок, Shift+↑/↓ в дереве); add — добавить диапазон к уже выбранным (Ctrl+Shift+щелчок). Работает в любом разделе: каркасы, линии, растры, блочные модели, наборы скважин, тренды, виды, фильтры… «Свойства» показывают общие поля выбранных объектов одного вида; изменение применяется ко всем.",
     params: { kind: OBJECT_KIND, id: { type: "integer" }, add: { type: "boolean" } },
     required: ["kind", "id"],
   },
@@ -40,6 +47,12 @@ export const commands: Command[] = [
     description: "Добавить объект дерева данных к выбранным или убрать его из них (Ctrl+щелчок, Ctrl+Пробел в дереве). Если убран последний объект — выбор снимается.",
     params: { kind: OBJECT_KIND, id: { type: "integer" } },
     required: ["kind", "id"],
+  },
+  {
+    id: "props.undo",
+    title: "Отменить изменение свойств",
+    description: "Отменить последнее изменение свойств, сделанное сразу у нескольких выбранных объектов (панель «Свойства», Ctrl+Z): все объекты получают прежние значения. Повторный вызов отменяет предыдущее изменение. Правки таблиц и редактора стрингов отменяют их команды: table.undo, lines.undo.",
+    confirm: true,
   },
   { id: "app.about", title: "О производителе", description: "Плашка «О производителе»: название, слоган, производитель, версии программы и ядра.", uiOnly: true, stage: "Э6.1" },
   { id: "license.open", title: "Лицензия", description: "Окно «Лицензия»: код ПК, пробный период, файл лицензии.", uiOnly: true },
