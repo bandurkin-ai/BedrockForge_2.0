@@ -102,7 +102,8 @@ def _memory(params: dict[str, Any]) -> int:
         elif path.suffix.lower() == ".omf":
             size = ob.memory(path, size)
         elif obf.is_blockfile(path, chosen.get(option_key(path))):
-            size = obf.memory(path, size) * 2**20
+            blocks = (chosen.get(option_key(path)) or {}).get("blocks") or {}
+            size = obf.memory(path, size, listed=blocks.get("layout") == "list") * 2**20
         elif path.suffix.lower() in IMAGE_SUFFIXES:
             try:
                 from bf_core.formats.raster_image import probe

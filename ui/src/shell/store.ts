@@ -35,6 +35,8 @@ export interface AppState {
   /** How many changes of properties «Отменить» can take back (`propsUndo.ts`). */
   undoDepth: number;
   hasSection: boolean;
+  /** The selected object is a list of blocks (a block model with no grid of parents, ADR 0030): `blocks/bind.ts`. */
+  listModel: boolean;
   editing: boolean;
   /** A passing notice of the view (settings not saved, «упрощено»…). */
   statusNote: string | null;
@@ -62,6 +64,7 @@ export const INITIAL_STATE: AppState = {
   groupSize: 0,
   undoDepth: 0,
   hasSection: false,
+  listModel: false,
   editing: false,
   statusNote: null,
   modal: 0,
@@ -94,6 +97,7 @@ export function commandContext(s: AppState): CommandContext {
     hasGroup: s.groupSize > 1,
     canUndo: s.undoDepth > 0,
     hasSection: s.hasSection,
+    listModel: s.listModel,
     editing: s.editing,
     coreOnline: s.core === "online",
   };

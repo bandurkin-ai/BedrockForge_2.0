@@ -19,6 +19,12 @@ export function bindBlocks(app: App): void {
   unbind.forEach((fn) => fn());
   unbind = [];
   let uid: string | null = projectStore.get().current?.uid ?? null;
+  // the selected model is a list of blocks: the commands that need the grid say why they are unavailable
+  const syncList = () => {
+    const s = app.store.get().selected;
+    const list = s?.kind === "blocks" && blockById(s.id)?.layout === "list";
+    if (app.store.get().listModel !== list) app.store.set({ listModel: list });
+  };
   if (uid) void loadBlocks();
   unbind.push(
     bindShow(app), // the display in 3D: `blocks.show`, `.filter`, `.quick`, `.style`, `.pick` and the layers of the scene
@@ -37,6 +43,8 @@ export function bindBlocks(app: App): void {
     onJobFinished((job) => {
       if (job.status === "done" && job.kind.startsWith("import.")) void loadBlocks();
     }),
+    blocksStore.subscribe(syncList),
+    app.store.subscribe(syncList),
     blocksStore.subscribe(() => {
       const s = app.store.get().selected;
       if (s?.kind === "blocks" && blocksStore.get().loaded && !blockById(s.id)) app.store.set({ selected: null });

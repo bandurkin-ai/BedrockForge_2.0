@@ -344,8 +344,12 @@ def is_blockfile(path: str | Path, chosen: Mapping[str, Any] | None = None) -> b
     return roles.has_centre and roles.has_size and br.looks_like_block_model(peek[1])
 
 
-def memory(path: Path, size: int) -> int:
-    """MB the job needs: the keys and rows of the sort (≈ 70 bytes a block) and the portions of the writing."""
+LIST_BYTES = 130  # a list of blocks keeps the centres and sizes of all rows (≈ 100 bytes a block) and a reserve
+
+
+def memory(path: Path, size: int, listed: bool = False) -> int:
+    """MB the job needs: the keys and rows of the sort (≈ 70 bytes a block; a list of blocks — `LIST_BYTES`: the boxes
+    of all the rows are held for the sort and the overlaps) and the portions of the writing."""
     from bf_core.formats.blocks_text import peek_names
 
     rows = size // 40  # a text row of a block file
@@ -357,7 +361,7 @@ def memory(path: Path, size: int) -> int:
             rows = max(0, size - h.data_offset) // max(h.record_size, 1)
     except (FormatError, OSError):
         pass
-    return int(1024 + rows * 70 / 2**20)
+    return int(1024 + rows * (LIST_BYTES if listed else 70) / 2**20)
 
 
 def write_blockfile(
