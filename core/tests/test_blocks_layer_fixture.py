@@ -24,6 +24,7 @@ from bf_core.blocks.lod import View, view
 from bf_core.blocks.schema import GridV2
 from bf_core.blocks.shell_merge import NO_CLASS, break_bins, break_class, scale_bins, scale_class
 from bf_core.viz import binary
+from tests import golden
 
 DATA = Path(__file__).parent / "data" / "blocks" / "layer_fixture.json"
 REGEN = os.environ.get("BF_REGEN_BLOCKS_LAYER") == "1"
@@ -247,6 +248,16 @@ def build() -> dict[str, Any]:
     return {"note": "BF_REGEN_BLOCKS_LAYER=1 uv run pytest -q tests/test_blocks_layer_fixture.py", "cases": cases}
 
 
+def same_bfa1(kept: str, fresh: str, name: str) -> None:
+    """The same BFA1: the same bytes — or, on a processor that rounds the float64 of the rotation otherwise (1e-16,
+    which may turn a float32 over to the next one), the same header and arrays to the tolerance of `tests/golden.py`."""
+    if kept == fresh:
+        return
+    (ha, aa), (hb, ab) = (binary.decode(base64.b64decode(x)) for x in (kept, fresh))
+    golden.assert_same(ha, hb, f"(header of {name})")
+    golden.same_arrays(aa, ab, name)
+
+
 def test_fixture_matches_the_kernels() -> None:
     fresh = build()
     for c in fresh["cases"]:
@@ -265,5 +276,6 @@ def test_fixture_matches_the_kernels() -> None:
     kept = json.loads(DATA.read_text(encoding="utf-8"))
     assert [c["name"] for c in kept["cases"]] == [c["name"] for c in fresh["cases"]]
     for a, b in zip(kept["cases"], fresh["cases"], strict=True):
-        assert a["bfa1"] == b["bfa1"], a["name"]  # the kernels give the bytes the viewer was read against
-        assert a["faces"] == b["faces"] and a["rays"] == b["rays"], a["name"]
+        same_bfa1(a["bfa1"], b["bfa1"], a["name"])  # the kernels give the bytes the viewer was read against
+        golden.assert_same(a["faces"], b["faces"], f"(faces of {a['name']})")
+        golden.assert_same(a["rays"], b["rays"], f"(rays of {a['name']})")  # float64 of the rotation: last digits

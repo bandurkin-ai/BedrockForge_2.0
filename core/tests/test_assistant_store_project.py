@@ -106,6 +106,39 @@ def test_change_of_project_copies_the_dialog_and_the_old_keeps_the_version_befor
         b.engine.dispose()
 
 
+def test_change_of_project_closes_the_pending_commands_of_the_copy(tmp_path: Path, temp: sp.TempDialogs) -> None:
+    """Э26 В5: the commands waiting for the window carry the numbers of the old project: the copy in another project
+    (and in the temporary ones) has no pending, its card is `declined`; the source keeps its pending."""
+    from bf_core.assistant import errors
+
+    a, b = project_in(tmp_path, "a"), project_in(tmp_path, "b")
+    try:
+        da, db = Dialogs(a, temp), Dialogs(b, temp)
+        h = ask(da, "Удали набор 12")
+        waiting = item("tool", 5, tool_use_id="t9", name="ui_data_delete", side="ui", title="Удалить",
+                       status="waiting", args={"ids": [12]}, summary="")  # fmt: skip
+        pending = {
+            "id": "p-9",
+            "tools": [{"tool_use_id": "t9", "name": "ui_data_delete", "args": {"ids": [12]}, "item_id": "i5"}],
+            "data_results": [],
+        }
+        da.append(h["id"], [], [waiting], pending=pending)
+        before = da.read(h["id"])
+        for dst, where in ((db, "project"), (Dialogs(None, temp), "temporary")):
+            copied = da.copy_to(h["id"], dst)
+            got = dst.read(copied["id"])
+            assert got.pending is None and got.meta["pending"] is None and got.head["state"] == "idle", where
+            cards = [i for i in got.items if i["id"] == "i5"]
+            assert [c["status"] for c in cards] == ["waiting", "declined"] and cards[1]["title"] == "Удалить", where
+            assert cards[1]["summary"] == errors.TEXT_IMPORTED and got.messages == before.messages, where
+            dst.append(copied["id"], [], [item("user", 9, text="повтори")], questions=1)  # it goes on
+        after = da.read(h["id"])  # the source is as it was
+        assert after.pending == before.pending and after.items == before.items and after.head["state"] == "pending"
+    finally:
+        a.engine.dispose()
+        b.engine.dispose()
+
+
 # --- delete, the collector of the blobs, the views of the project ----------------------------------
 
 
@@ -210,12 +243,7 @@ def test_bfggis_export_import_keeps_the_dialogs_and_no_usage(pclient, tmp_path: 
     src = projects_of(pclient.core).require_current()
     d = Dialogs(src, temp)
     first = ask(d, "Сводка по проекту", at="2026-11-26T08:00:00Z")
-    d.append(
-        first["id"],
-        ANSWER,
-        [item("assistant", 3, text="Ещё ход")],
-        pending={"id": "p-1", "tools": [{"tool_use_id": "t"}]},
-    )
+    d.append(first["id"], ANSWER, [item("assistant", 3, text="Ещё ход")])
     second = ask(d, "Другой диалог", at="2026-11-26T11:00:00Z")
     d.rename(second["id"], "Переименованный")
     big = Dialogs(src, temp).create("Крупный")
@@ -266,6 +294,51 @@ def test_bfggis_export_import_keeps_the_dialogs_and_no_usage(pclient, tmp_path: 
         )
         ids = conn.execute(sa.select(objects.c.id).where(objects.c.kind == sp.KIND)).scalars().all()
     assert set(owners) == set(ids)
+
+
+def test_bfggis_import_closes_the_pending_commands_of_a_dialog(pclient, tmp_path: Path, temp: sp.TempDialogs) -> None:  # type: ignore[no-untyped-def]
+    """Э26 В5: the commands waiting for the window carry the numbers of the old project (`data.delete ids=12`): after
+    the import they are closed with «Не выполнено», the dialog is still readable and goes on."""
+    from bf_core.assistant import errors
+    from bf_core.projects.service import projects_of
+
+    pclient.post(f"{API}/projects", json={"name": "С ожиданием"})
+    src = projects_of(pclient.core).require_current()
+    d = Dialogs(src, temp)
+    head = ask(d, "Удали набор 12")
+    waiting = item("tool", 5, tool_use_id="t9", name="ui_data_delete", side="ui", title="Удалить", status="waiting",
+                   args={"ids": [12]}, summary="")  # fmt: skip
+    use = {"type": "tool_use", "id": "t9", "name": "ui_data_delete", "input": {"ids": [12]}}
+    call = {"role": "assistant", "content": [use]}
+    pending = {
+        "id": "p-9",
+        "tools": [
+            {"tool_use_id": "t9", "name": "ui_data_delete", "command": None, "args": {"ids": [12]}, "item_id": "i5"}
+        ],
+        "data_results": [{"type": "tool_result", "tool_use_id": "d1", "content": "ok"}],
+    }
+    d.append(head["id"], [call], [waiting], pending=pending)
+    before = d.read(head["id"])
+    assert before.pending is not None and before.head["state"] == "pending"
+    out = tmp_path / "ожидание.bfggis"
+    r = pclient.post(f"{API}/projects/export", json={"path": str(out), "password": None})
+    assert wait_job(pclient, r.json()["source"], r.json()["id"])["status"] == "done"
+    r = pclient.post(f"{API}/projects/import", json={"path": str(out), "mode": "copy"}).json()
+    job = wait_job(pclient, r["source"], r["id"])
+    assert job["status"] == "done", job
+    pclient.post(f"{API}/projects/{job['result']['uid']}/open")
+    dst = projects_of(pclient.core).require_current()
+    got = Dialogs(dst, temp)
+    loaded = got.read(got.list()["items"][0]["id"])
+    assert loaded.pending is None and loaded.meta["pending"] is None and loaded.head["state"] == "idle"
+    assert loaded.messages == before.messages  # the history of the API is as it was: the next question closes the call
+    cards = [i for i in loaded.items if i["id"] == "i5"]
+    assert [c["status"] for c in cards] == ["waiting", "declined"]  # the last card of the id wins
+    assert cards[1]["summary"] == errors.TEXT_IMPORTED and cards[1]["args"] == {"ids": [12]}
+    assert cards[1]["title"] == "Удалить" and "Не выполнено" in cards[1]["summary"]
+    assert got.list()["items"][0]["questions"] == before.head["questions"]  # the dialog goes on
+    got.append(got.list()["items"][0]["id"], [], [item("user", 9, text="повтори")], questions=1)
+    assert Dialogs(src, temp).read(head["id"]).pending == before.pending  # the source keeps what it had
 
 
 def test_deleting_a_project_deletes_its_dialogs_and_not_the_temporary_ones(

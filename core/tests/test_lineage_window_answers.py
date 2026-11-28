@@ -21,8 +21,9 @@ from bf_core import lineage
 from bf_core.db import dialect
 from bf_core.db.schema import objects
 from bf_core.lineage.store import Node
+from tests.golden import assert_same
 from tests.lineage_stub_jobs import NODE
-from tests.test_blocks_fields_window_answers import answer, first_diff, masked
+from tests.test_blocks_fields_window_answers import answer, masked
 from tests.test_import_job import API, wait_job
 from tests.test_lineage_api import (  # noqa: F401
     Chain,
@@ -210,7 +211,7 @@ def _check(built: dict[str, Any], part: str) -> None:
         have = {**have, part: built[part], "rules": built.get("rules", have.get("rules"))}
         DATA.write_text(json.dumps(have, ensure_ascii=False, indent=1, sort_keys=True) + "\n", encoding="utf-8")
     a = json.loads(DATA.read_text(encoding="utf-8"))
-    assert masked(a[part]) == masked(built[part]), first_diff(masked(a[part]), masked(built[part]))
+    assert_same(masked(a[part]), masked(built[part]), f"({part})")
     check_shapes(a[part], part)
 
 

@@ -29,6 +29,7 @@ import pytest
 
 from bf_core.db import dialect
 from bf_core.mine import store as st
+from tests.golden import assert_same
 from tests.pitworld import PIT, finish, make_model, params, pw  # noqa: F401 - the fixture
 
 DATA = Path(__file__).parent / "data" / "pit" / "contract_answers.json"
@@ -48,6 +49,9 @@ KEYS = (
     "surfaces_result", "solid_result",
 )  # fmt: skip
 SKIP = ("seconds", "created_at", "updated_at", "cells_sha", "versions", "job_id", "at", "stages")
+#: `fp` of the model of the fixture is the SHA-256 of its cells (random floats through `exp` / `log` of numpy: the
+#: instruction set of the processor changes their last bits, and a hash with them): compared by its form only
+FORMS = ("fp",)
 CALENDAR = {"q_ore": 1_000_000.0, "q_mass": None, "rate": 0.1}
 
 
@@ -128,13 +132,11 @@ def build(c: Any) -> dict[str, Any]:
 
 
 def masked(x: Any) -> Any:
-    """The floats to 9 significant digits; what varies from run to run is left out."""
+    """What varies from run to run is left out; the floats are compared by `tests/golden.py`."""
     if isinstance(x, dict):
         return {k: masked(v) for k, v in x.items() if k not in SKIP}
     if isinstance(x, list):
         return [masked(v) for v in x]
-    if isinstance(x, float):
-        return float(f"{x:.9g}")
     return x
 
 
@@ -152,7 +154,9 @@ def test_answers_are_what_the_core_answers(pw) -> None:  # type: ignore[no-untyp
                **{k: built[k] for k in KEYS if k not in old}})  # fmt: skip
         stored = json.loads(DATA.read_text(encoding="utf-8"))
     for key in KEYS:
-        assert masked(built[key]) == masked(stored[key]), f"{key}: BF_REGEN_PIT=1, {Path(__file__).name}"
+        assert_same(
+            masked(stored[key]), masked(built[key]), f"({key}: BF_REGEN_PIT=1, {Path(__file__).name})", forms=FORMS
+        )
     assert "настоящ" in stored["_note"] and "_status" not in stored
 
 

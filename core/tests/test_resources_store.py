@@ -272,6 +272,33 @@ def test_a_failure_in_the_write_leaves_nothing(w: W, monkeypatch: pytest.MonkeyP
     assert {p.name for p in w.store.root.glob("??/??/*")} == files  # the placed files are not left either
 
 
+def test_a_changed_input_is_model_changed_before_any_file_is_put(w: W) -> None:
+    """Э26 В5: the fingerprints are compared BEFORE the files are put (as in `mine.store.write_result`): a 409
+    `model_changed` of `create` and of `replace` leaves no file in the store (no blob without an owner until `gc`)."""
+    ident = make(w, "Есть")["id"]
+    before, files = counts(w), {p.name for p in w.store.root.glob("??/??/*")}
+    for name in ("Новый", None):
+        b = built(w, rows=ROWS[:3])  # other rows: other files than the ones in the store
+        prints = rd(w, st.input_prints, w.model, b.fields)
+        prints[next(iter(prints))] = "x"  # an input is another than the pass read
+        b.prints = prints
+        with pytest.raises(ApiError) as e:
+            with dialect.write_tx(w.project.engine) as conn:
+                if name:
+                    st.create(conn, w.store, name, b)
+                else:
+                    st.replace(conn, w.store, ident, b)
+        assert (e.value.status, e.value.code) == (409, "model_changed") and e.value.hint
+        assert not w.store.path_of(b.staged.data[1]).is_file()  # the new table is not placed
+        b.staged.discard()
+        assert counts(w) == before and not list(w.store.tmp_dir.glob("*"))
+        assert {p.name for p in w.store.root.glob("??/??/*")} == files  # no new file, `gc` is not needed
+    ok = built(w, rows=ROWS[:3])  # the same inputs as they are: written
+    ok.prints = rd(w, st.input_prints, w.model, ok.fields)
+    with dialect.write_tx(w.project.engine) as conn:
+        assert st.replace(conn, w.store, ident, ok)["version"] == 2
+
+
 def test_a_job_cancelled_before_the_write_leaves_nothing(w: W) -> None:
     before = counts(w)
     b = built(w)

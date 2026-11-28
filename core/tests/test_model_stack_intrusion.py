@@ -23,6 +23,7 @@ from bf_core.model.bodies import BodiesResult
 from bf_core.model.bodies_parts import box_solid
 from bf_core.model.stack import build_stack, domains_of, order_of, precedence
 from tests.test_model_bodies import (
+    OVERLAP_TOL,
     SCENE_BOX,
     Cancelled,
     assert_solid,
@@ -136,7 +137,7 @@ def test_td31_1_layers_are_the_originals_minus_the_sphere(intr: BodiesResult) ->
     for x in (body, upper, lower):
         assert_solid(x.vertices, x.triangles)
     for x, y in ((body, upper), (body, lower), (upper, lower)):
-        assert overlap(x, y) <= 1e-9 * BOX_VOLUME
+        assert overlap(x, y) <= OVERLAP_TOL * BOX_VOLUME
     info = res.stats["stack"]
     assert info["order"] == [1, 2, 3] and info["relations"] == {1: "intrusion", 2: "conformable", 3: "conformable"}
     assert info["dropped_total"] == 0  # the observed data lie outside the sphere: nothing to drop
@@ -251,7 +252,7 @@ def test_td31_3_the_younger_erosion_cuts_the_top_of_the_intrusion(eroded: Bodies
     for x in (cap, body, upper, lower):
         assert_solid(x.vertices, x.triangles)
     for x, y in ((cap, body), (body, upper), (body, lower), (cap, upper)):
-        assert overlap(x, y) <= 1e-9 * BOX_VOLUME
+        assert overlap(x, y) <= OVERLAP_TOL * BOX_VOLUME
     by = {(d["group"], d["by"], d["relation"]) for d in res.stats["stack"]["dropped"]}
     assert (2, 1, "erode") in by  # the sphere data above the cut are dropped by the younger group
     assert not any(g == 3 and b == 1 for g, b, _ in by)  # the layers have no data above the cut
@@ -306,7 +307,7 @@ def test_the_intrusion_of_the_holes_replaces_four_older_groups_and_is_the_same_b
     for i, x in enumerate(bodies):
         assert_solid(x.vertices, x.triangles)
         for y in bodies[i + 1 :]:
-            assert overlap(x, y) <= 1e-9 * boundary
+            assert overlap(x, y) <= OVERLAP_TOL * boundary
     shuffled = scene_points(order=np.random.default_rng(11).permutation(100))
     same(base, build_stack(scene_spec(), shuffled, box_solid(SCENE_BOX), relations={1: "intrusion"}, threads=8))
 

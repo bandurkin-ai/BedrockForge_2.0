@@ -17,6 +17,7 @@ from typing import Any
 import numpy as np
 
 from bf_core.drillholes import store as dh
+from tests.golden import assert_same
 from tests.test_stats_tab_vario_api import MODEL, T, demo  # noqa: F401 — the fixture
 
 DATA = Path(__file__).parent / "data" / "stats" / "tab_vario_answers.json"
@@ -87,8 +88,6 @@ def masked(x: Any) -> Any:
         return {k: masked(v) for k, v in x.items()}
     if isinstance(x, list):
         return [masked(v) for v in x]
-    if isinstance(x, float):
-        return float(f"{x:.9g}")
     return x
 
 
@@ -107,7 +106,7 @@ def test_tab_vario_answers_are_what_the_core_answers(demo) -> None:  # type: ign
         DATA.parent.mkdir(parents=True, exist_ok=True)
         DATA.write_text(json.dumps(built, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     stored = json.loads(DATA.read_text(encoding="utf-8"))
-    assert masked(stored) == masked(built)
+    assert_same(masked(stored), masked(built))
     # what the tab relies on
     v = stored["variogram"]
     assert [d["az"] for d in v["directions"]] == [0.0, 45.0, 90.0, 135.0] and v["model"]["structures"][0]["it"]

@@ -28,6 +28,7 @@ from bf_core.db import dialect
 from bf_core.db.schema import dh_tables
 from bf_core.drillholes import store as dh
 from bf_core.projects.service import projects_of
+from tests.golden import assert_same
 from tests.test_import_job import wait_job
 
 API = "/api/v1"
@@ -228,7 +229,8 @@ VARYING = {"created_at", "updated_at", "token"}  # the times; the token of a tab
 
 def masked(x: Any, path: str = "") -> Any:
     """A key (64 hex digits anywhere) — its form; the stages — their names; the times, the tokens — their type; a
-    path — its file name; the text of a JSON export — parsed; other numbers to 1e−9 relative (threads, libm)."""
+    path — its file name; the text of a JSON export — parsed; the numbers (also in a text: the GSLIB file) are compared
+    by `tests/golden.py` to 1e−9 relative (the BLAS and libm of another processor differ in the last digits)."""
     if isinstance(x, dict):
         out: dict[str, Any] = {}
         for k, v in x.items():
@@ -247,8 +249,6 @@ def masked(x: Any, path: str = "") -> Any:
         return [masked(v, path) for v in x]
     if isinstance(x, str) and len(x) == 64 and set(x) <= HEX:
         return True
-    if isinstance(x, float):
-        return float(f"{x:.9g}")
     return x
 
 
@@ -258,7 +258,7 @@ def test_window_answers_are_what_the_core_answers(core, tmp_path: Path) -> None:
         DATA.parent.mkdir(parents=True, exist_ok=True)
         DATA.write_text(json.dumps(built, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     stored = json.loads(DATA.read_text(encoding="utf-8"))
-    assert masked(stored) == masked(built)
+    assert_same(masked(stored), masked(built))
     # what the window relies on
     job = stored["job_axes"]
     assert job["fresh"] is False
