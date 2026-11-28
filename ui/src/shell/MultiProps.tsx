@@ -9,7 +9,7 @@ import { sceneObjects, lineLayers } from "../modules/scene/objects";
 import { viewStore } from "../modules/scene/bind";
 import { itemExists } from "../modules/wireframes/named";
 import { useApp } from "./AppContext";
-import { applyAll, commonKind, commonValue, fieldsOf, kindCount, parseOpacity, readField, type FieldValue, type Lookup, type MultiField, type Step } from "./multiProps";
+import { applyAll, commonKind, commonValue, fieldsOf, kindCount, parseOpacity, readField, type FieldValue, type Lookup, type MultiField, type Step } from "./multiPropsModel";
 import { NO_COLOR, normalizeColor } from "./props";
 import { ColorField, useRun } from "./PropsParts";
 import type { Selected } from "./selection";

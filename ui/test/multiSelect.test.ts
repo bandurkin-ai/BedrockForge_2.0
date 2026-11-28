@@ -9,7 +9,7 @@ import { sceneObjects, type LineLayerInfo, type RasterInfo } from "../src/module
 import { AppContext } from "../src/shell/AppContext";
 import { createApp, type App } from "../src/shell/app";
 import { MultiProps } from "../src/shell/MultiProps";
-import { applyAll, applyPlan, commonKind, commonValue, fieldsOf, parseOpacity, readField, revertPlan, type Lookup } from "../src/shell/multiProps";
+import { applyAll, applyPlan, commonKind, commonValue, fieldsOf, parseOpacity, readField, revertPlan, type Lookup } from "../src/shell/multiPropsModel";
 import { bindTreeSelection, pickMulti, pickPlain } from "../src/shell/multiSelect";
 import { isSelected, multiStore, NO_MULTI, pickOfTestId, pickSelection, selectedIds, selectedItems, type Mods, type Selected } from "../src/shell/selection";
 
