@@ -99,8 +99,20 @@ def model_source(info: dict[str, Any]) -> dict[str, Any]:
     except (KeyError, TypeError, ValueError):
         block = None
     cats = [f for f in info["fields"] if f["kind"] == "category"]
+    listed = info.get("layout") == "list"  # a list of blocks has no grid of parents to cut the profiles by (ADR 0030)
+    mark = (
+        {
+            "available": False,
+            "reason": {
+                "message": "Модель — список блоков: профили по сетке для неё не считаются.",
+                "hint": "Регуляризуйте модель: Блочные модели → Регуляризация.",
+            },
+        }
+        if listed
+        else {}
+    )
     return {
-        "id": int(info["id"]), "name": info["name"],
+        "id": int(info["id"]), "name": info["name"], **mark,
         "numbers": [{"name": f["name"], "unit": f.get("unit")} for f in numbers],
         "categories": [{"name": f["name"], "labels": list(f.get("labels") or [])[:LABELS],
                         "more": len(f.get("labels") or []) > LABELS} for f in cats],

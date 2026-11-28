@@ -1,7 +1,6 @@
 """Inference of the grid of a block model from the centres and sizes of its blocks (ТЗ 7.31, 8.7.2; ADR 0023
 decisions 5–6, ADR 0030 decisions 1–4; Д-13, Д-45): the parent block, the step, the corner O, the sub-cells `div` (any
-whole 1…128 per axis), the row (P, s, w) of every block, the refusal of blocks that cannot be represented, the check of
-three centres.
+whole 1…128 per axis), the row (P, s, w) of every block, the refusal of blocks that cannot be held, the three centres.
 
 A file gives a block as a centre (X, Y, Z) and a size (dx, dy, dz) — or only a centre (a regular model). The grid
 of the model is `GridV2`; a hint (`GridHint`) carries what the file or the wizard says — the corner, the parent size,

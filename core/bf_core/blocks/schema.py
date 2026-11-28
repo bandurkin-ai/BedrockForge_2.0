@@ -53,9 +53,7 @@ field of the file, named by the field: v1 number — float64 (NaN — empty), v1
 `fld:<key>` holds the fields of one calculation in the same rows and row groups, without `idx`. A cell not in the
 file is not in the model. The source file of an import, if kept, is a blob of an `import_log` row.
 
-API (`blocks/router.py`): `GET /blocks`, `GET /blocks/{id}`, `PATCH /blocks/{id}` {name, expected_version},
-`DELETE /blocks/{id}`; changes publish `objects.changed {kind: "block_model", id[, deleted]}`.
-Writing and reading: `blocks/store.py` (`CellsWriter`, `commit_block_model`, `iter_cells`, `read_cells`).
+API (`blocks/router.py`): `GET /blocks[/{id}]`, `PATCH`, `DELETE`; changes publish `objects.changed`. Files: `store.py`.
 
 This module has no numpy at import time (tests/test_process.py): the array helpers import it inside.
 """

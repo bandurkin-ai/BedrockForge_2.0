@@ -71,7 +71,8 @@ describe("the slice refuses a list", () => {
     expect(styleIn(viewStore.get(), 7).slice.on).toBe(false);
     const ok = await app.registry.execute("blocks.slice", { model_id: 8, plane: "z", at: 120 });
     expect(ok.ok).toBe(true);
-    expect((await app.registry.execute("blocks.slice", { model_id: 7, on: false })).ok).toBe(true);
+    const off = await app.registry.execute("blocks.slice", { model_id: 7, on: false });
+    expect(off.ok).toBe(true);
   });
 });
 
@@ -90,7 +91,17 @@ describe("the commands that need the grid are unavailable while a list of blocks
     expect(unavailableReason(cmd("blocks.export"), { ...ctx, listModel: true })).toBeNull();
   });
 
-  it("the module follows the selection: a list selected — `listModel`; another model or nothing — not", () => {
+  it("a call that names its own model is judged by that model, not by the selected one", () => {
+    const sel = { ...ctx, listModel: true, listIds: [7] }; // a list (7) is selected
+    expect(unavailableReason(cmd("blocks.slice"), sel, { model_id: 8 })).toBeNull(); // another model, a grid one
+    expect(unavailableReason(cmd("blocks.slice"), sel, { model_id: 7 })).toContain("Регуляризуйте модель");
+    expect(unavailableReason(cmd("blocks.slice"), sel, {})).toContain("Регуляризуйте модель"); // no model: the selected one
+    const grid = { ...ctx, listModel: false, listIds: [7] }; // a grid model is selected, the call names the list
+    expect(unavailableReason(cmd("blocks.slice"), grid, { model_id: 7 })).toContain("Регуляризуйте модель");
+    expect(unavailableReason(cmd("blocks.slice"), grid, { id: 8 })).toBeNull();
+  });
+
+  it("the module follows the selection: a list selected — `listModel`; another model or nothing — not", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } })));
     setCoreTarget({ baseUrl: "http://127.0.0.1:1", token: "t" });
     const app = createApp({ persist: false });
@@ -99,6 +110,9 @@ describe("the commands that need the grid are unavailable while a list of blocks
     const off = (bindBlocks(app), () => undefined);
     app.store.set({ selected: { kind: "blocks", id: 7 } });
     expect(app.store.get().listModel).toBe(true);
+    expect(app.store.get().listIds).toEqual([7]);
+    expect((await app.registry.execute("blocks.slice", { model_id: 8, plane: "z", at: 120 })).ok).toBe(true); // the grid model named
+    expect((await app.registry.execute("blocks.slice", { model_id: 7, plane: "z", at: 120 })).ok).toBe(false);
     expect(unavailableReason(app.registry.get("blocks.slice")!, { ...ctx, listModel: app.store.get().listModel })).toContain("Регуляризуйте модель");
     app.store.set({ selected: { kind: "blocks", id: 8 } });
     expect(app.store.get().listModel).toBe(false);

@@ -35,23 +35,48 @@ from bf_core.blocks.model import P as COL_P
 from bf_core.blocks.schema import GridV2
 from bf_core.blocks.shell import Faces, count_faces, exposed, face_mask
 from bf_core.blocks.shell_merge import merge_faces
-from bf_core.blocks.viz_data import Rows
+from bf_core.blocks.viz_data import Rows, _keep, _take, cache_model
 from bf_core.blocks.viz_spec import Token
 from bf_core.composites.strips import Tick
+from bf_core.stats import blocks_cache as bc
 
 _ZERO_G = np.zeros((1, 5), dtype=np.int64)
+P_KEY, C_KEY, D_KEY = "\0lp", "\0lc", "\0ld"  # the names of the columns of a list in the cache of columns
 
 
 class ListRows(Rows):
-    """The columns of a list of blocks for one request: `idx`, the boxes `lc`, `ld`, the fields asked for."""
+    """The columns of a list of blocks for one request: `idx`, the boxes `lc`, `ld`, the fields asked for. They are kept
+    in the cache of columns of the process (`stats/blocks_cache.MODELS`, keyed by the file of the model and the name of
+    the column, as the columns of a grid model): the next request of the same model reads nothing."""
 
     def __init__(self, project: Any, model: Model, r: restrict.Restrictor, names: Sequence[str] = ()) -> None:
         self.model, self.r = model, r
         want = list(dict.fromkeys([*r.fields, *model.reader.canonical(names)]))
-        got = model.reader.fill(want, p=True, geo=True)
-        self.idx, self.lc, self.ld = got[COL_P], got[LC], got[LD]
+        cm = cache_model(model)
+        n = model.rows
+        shapes: dict[str, tuple[tuple[int, ...], Any]] = {
+            P_KEY: ((n,), np.uint64),
+            C_KEY: ((n, 3), np.float64),
+            D_KEY: ((n, 3), np.float64),
+        }
+        for f in want:
+            shapes[f] = ((n,), np.int32 if model.field(f)["kind"] == bs.CATEGORY else np.float64)
+        with bc.MODELS.gate((project.uid, model.id, cm.sha)):
+            have = {k: _take(project, cm, k, dt, shape, False) for k, (shape, dt) in shapes.items()}
+            lacking = [k for k, v in have.items() if v is None]
+            if lacking:
+                with bc.MODELS._lock:  # noqa: SLF001
+                    bc.MODELS.reads += 1
+                    bc.MODELS.misses += len(lacking)
+                geo = any(k in (P_KEY, C_KEY, D_KEY) for k in lacking)
+                got = model.reader.fill([k for k in lacking if k in want], p=geo, geo=geo)
+                fresh = {P_KEY: got.get(COL_P), C_KEY: got.get(LC), D_KEY: got.get(LD), **got}
+                for k in lacking:
+                    _keep(project, cm, k, fresh[k], False)
+                    have[k] = fresh[k]
+        self.idx, self.lc, self.ld = have[P_KEY], have[C_KEY], have[D_KEY]
         self.s = self.w = None
-        self._cols = {n: got[n] for n in want}
+        self._cols = {f: have[f] for f in want}
 
     def values(self, name: str) -> np.ndarray:
         return self._cols[name]  # type: ignore[no-any-return]
@@ -97,9 +122,9 @@ def hidden(c: np.ndarray, d: np.ndarray) -> np.ndarray:
     hide = np.zeros(n, dtype=np.uint8)
     if n < 2:
         return hide
-    hl, hh = np.empty(3 * n, dtype=np.int64), np.empty(3 * n, dtype=np.int64)
-    lk.face_hashes(c, d, hl, hh)
-    lk.hide_faces(c, d, hl, hh, hide)
+    hl = np.empty(3 * n, dtype=np.int64)
+    lk.face_hashes(c, d, hl)
+    lk.hide_faces(c, d, hl, hide)
     return hide
 
 

@@ -313,6 +313,9 @@ def make_plan(model: Model, spec: Spec) -> Plan:
     plan = Plan(grades, str(cut_spec["name"]), cutoff_k, dens_field, dens_value, list(spec.cutoffs),
                 np.unique(np.array(spec.cutoffs, dtype=np.float64)), np.empty(0), None, groups, categories,
                 None, [], [])  # fmt: skip
+    note = ll.overlap_note(model)
+    if note:
+        plan.notes.append(note)
     frac = model.role_field("frac")
     plan.frac = None if frac is None else str(frac["name"])
     curve: np.ndarray | None = None

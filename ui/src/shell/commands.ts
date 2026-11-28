@@ -28,6 +28,8 @@ export interface CommandContext {
   coreOnline: boolean;
   /** The selected object is a block model kept as a list of blocks (ADR 0030): no grid of parents. */
   listModel?: boolean;
+  /** The numbers of all the block models of the project that are lists of blocks: a call with its own `model_id`. */
+  listIds?: readonly number[];
 }
 
 export const EMPTY_CONTEXT: CommandContext = {
@@ -60,8 +62,10 @@ export const NEEDS_GRID: Readonly<Record<string, string>> = {
 };
 
 /** Why a command cannot run on a list of blocks, or null. */
-export function listReason(command: Pick<Command, "id">, ctx: CommandContext): string | null {
-  const what = ctx.listModel ? NEEDS_GRID[command.id] : undefined;
+export function listReason(command: Pick<Command, "id">, ctx: CommandContext, args?: Record<string, unknown>): string | null {
+  const own = args?.model_id ?? args?.id; // a call that names its model: that model counts, not the selected one
+  const isList = typeof own === "number" ? (ctx.listIds ?? []).includes(own) : ctx.listModel;
+  const what = isList && args?.on !== false ? NEEDS_GRID[command.id] : undefined; // switching a display off is allowed
   return what ? `«${what}» недоступна для модели-списка блоков. Регуляризуйте модель: Блочные модели → Регуляризация.` : null;
 }
 
@@ -91,9 +95,9 @@ export interface Command {
 }
 
 /** Why the command cannot run now, or null. */
-export function unavailableReason(command: Command, ctx: CommandContext): string | null {
+export function unavailableReason(command: Command, ctx: CommandContext, args?: Record<string, unknown>): string | null {
   if (command.stage || !command.run) return `Функция появится на этапе ${command.stage ?? "разработки"}`;
-  return listReason(command, ctx) ?? command.unavailable?.(ctx) ?? null;
+  return listReason(command, ctx, args) ?? command.unavailable?.(ctx) ?? null;
 }
 
 /** Tool definition in the shape of the Claude Messages API (ТЗ 6.9: generated from the registry). */

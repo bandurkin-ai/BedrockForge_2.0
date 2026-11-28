@@ -144,12 +144,14 @@ def write_list_dat(path: Path, rows: int, fields: int = 20, seed: int = 1) -> di
     rng = np.random.default_rng(seed)
     cols = max(1, rows // 5)
     pieces = rng.integers(2, 9, cols)
-    col = np.repeat(np.arange(cols), pieces)[:rows]
-    n = len(col)
+    col = np.repeat(np.arange(cols), pieces)
     starts = np.concatenate([[0], np.cumsum(pieces)[:-1]])
     w = rng.uniform(0.3, 1.0, int(pieces.sum()))
-    dz = (10.0 * w / np.repeat(np.add.reduceat(w, starts), pieces))[:n]
-    z1 = np.cumsum(dz) - np.repeat(np.concatenate([[0.0], np.cumsum(np.add.reduceat(dz, starts)[:-1])]), pieces)[:n]
+    dz = 10.0 * w / np.repeat(np.add.reduceat(w, starts), pieces)
+    base = np.repeat(np.concatenate([[0.0], np.cumsum(np.add.reduceat(dz, starts)[:-1])]), pieces)
+    z1 = np.cumsum(dz) - base
+    col, dz, z1 = col[:rows], dz[:rows], z1[:rows]  # the last column may be short
+    n = len(col)
     nx = int(np.ceil(np.sqrt(cols)))
     centre = np.column_stack([1000.0 + (col % nx) * 10.0 + 5.0, 2000.0 + (col // nx) * 10.0 + 5.0,
                               100.0 + z1 - dz / 2])  # fmt: skip

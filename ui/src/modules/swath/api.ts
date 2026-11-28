@@ -68,7 +68,7 @@ export function sourcesView(raw: unknown): SwathSources {
     typeof s?.id === "number" ? [{ id: s.id, name: String(s.name ?? `Набор ${s.id}`), tables: asList<SourceTable>(s.tables).filter((t) => typeof t?.key === "string") }] : [],
   );
   const models = asList<Record<string, unknown>>(r.models).flatMap((m) => {
-    if (typeof m?.id !== "number") return [];
+    if (typeof m?.id !== "number" || m.available === false) return []; // a list of blocks: no profiles by the grid (ADR 0030)
     const block = Array.isArray(m.block) && m.block.length === 3 && m.block.every((x) => typeof x === "number" && x > 0) ? (m.block as [number, number, number]) : null;
     return [
       {

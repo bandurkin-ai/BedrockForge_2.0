@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, datetime
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -97,10 +98,12 @@ def write_list(
         c, d = c[good], d[good]
     lc = frame.local(c)
     del c
-    arr = busy(lambda: ll.arrange(frame.grid, lc, d), tick, 0.5, "Сортировка")
+    # the unsorted arrays are not kept beside the sorted ones: `partial` holds them only while the sort runs
+    arr = busy(partial(ll.arrange, frame.grid, lc, d), tick, 0.5, "Сортировка")
+    del lc, d
     if arr.dups:
         notes.append(f"Повторяющиеся блоки (тот же центр и размер): {_n(arr.dups)}. Оставлена первая строка.")
-    lc, ld, sel = lc[arr.order], d[arr.order], raw[arr.order]
+    lc, ld, sel = arr.lc, arr.ld, raw[arr.order]
     n_out = len(sel)
     tick(0.55, "Запись")
     origin: dict[str, Any] = {"op": "import", "inputs": [], "algo": None, "versions": {},
