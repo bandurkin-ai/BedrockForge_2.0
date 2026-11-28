@@ -43,7 +43,7 @@ import { SettingsWindow } from "./SettingsWindow";
 import { WindowLayer, type WindowRenderer } from "./WindowLayer";
 import { Header } from "./Header";
 import { resolveKey, shortcutMap } from "./hotkeys";
-import { attachUndoKey } from "./propsUndo";
+import { attachUndoKey, UNDO_COMMAND } from "./propsUndo";
 import { eventShortcut } from "./keys";
 import { Ribbon } from "./Ribbon";
 import { buildRibbon, flattenRibbon } from "./ribbonConfig";
@@ -165,6 +165,7 @@ export function Shell() {
       const modal = paletteOpen || dialogStore.get().queue.length > 0 || app.store.get().modal > 0;
       const item = resolveKey(sc, keys, { typing: isTyping(e.target), modal });
       if (!item) return;
+      if (item.command === UNDO_COMMAND) return; // its key is the window's of propsUndo.ts: the editors and the text fields go first
       e.preventDefault();
       if (app.registry.reason(item.command)) return; // an unavailable button is not run by its key
       void app.run(item.command, item.args ?? {});

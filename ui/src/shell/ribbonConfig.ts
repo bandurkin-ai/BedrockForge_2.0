@@ -123,7 +123,7 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState, series: Partial
           items: [
             { command: "palette.open", args: { query: "скв " }, label: "Найти скважину", icon: "search", small: true },
             { command: "selection.clear", label: "Снять выбор", icon: "clear", hint: "Снять выбор скважины и объекта: линии, растра, каркаса, ЦТМ", shortcut: "escape", small: true, unavailable: NOTHING_SELECTED },
-            { command: "props.undo", label: "Отменить", icon: "edUndo", hint: "Отменить последнее изменение свойств нескольких выбранных объектов (Ctrl+Z)", small: true },
+            { command: "props.undo", label: "Отменить", icon: "edUndo", hint: "Отменить последнее изменение свойств нескольких выбранных объектов", shortcut: "ctrl+z", small: true },
             { command: "object.rename", label: "Переименовать объект", icon: "edit", hint: "Новое название выбранного слоя линий, растра, каркаса или ЦТМ", small: true, unavailable: NO_OBJECT },
             { command: "object.color", label: "Цвет объекта", icon: "palette", hint: "Цвет выбранного слоя линий, каркаса или ЦТМ — в панели «Свойства»", small: true, unavailable: NO_OBJECT },
             { command: "object.delete", label: "Удалить объект", icon: "trash", hint: "Удалить выбранный растр, каркас или ЦТМ из проекта", small: true, unavailable: NO_OBJECT },

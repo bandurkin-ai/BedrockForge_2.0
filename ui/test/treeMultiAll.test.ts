@@ -10,11 +10,12 @@ import { MultiProps } from "../src/shell/MultiProps";
 import { buildLookup, NO_LISTS, rowExists, type Lists } from "../src/shell/multiLookup";
 import { applyAll, applyPlan, commonKind, fieldsOf, kindCount, parseNumber, readField, revertPlan, whyNoFields, FIELDS } from "../src/shell/multiPropsModel";
 import { pickGroup, pickMulti, pickPlain, forgetRow, clearGroup } from "../src/shell/multiSelect";
-import { attachUndoKey, clearUndo, ctrlZTarget, isTextField, isUndoKey, lastUndo, pushUndo, undoLast, undoStore, UNDO_LIMIT } from "../src/shell/propsUndo";
+import { attachUndoKey, clearUndo, ctrlZTarget, isTextField, lastUndo, pushUndo, undoLast, undoStore, UNDO_LIMIT } from "../src/shell/propsUndo";
 import { groupItems, groupMark, groupStore, multiStore, NO_GROUP, NO_MULTI, pairId, pickOfTestId, unpair, type Group, type PickKind, type RowRef } from "../src/shell/selection";
 import { commandContext } from "../src/shell/store";
 import { sceneObjects } from "../src/modules/scene/objects";
 import { viewStore } from "../src/modules/scene/bind";
+import { setCurrent } from "../src/modules/projects/state";
 import { tablesStore } from "../src/modules/tables/state";
 import { viewsStore } from "../src/modules/views/state";
 
@@ -432,12 +433,16 @@ describe("the stack of «Отменить» for properties", () => {
     expect(r.result).toContain("Не отменено");
   });
 
-  it("the stack is cleared when another project is opened: its objects are not these", () => {
+  it("the stack is cleared when another project is opened (by its uid): its objects are not these; a rename keeps it", () => {
     const app = createApp({ persist: false });
-    app.store.set({ projectName: "A" });
+    const info = (uid: string, name: string) => ({ uid, name }) as never;
+    setCurrent(app, info("a", "A"));
     pushUndo({ text: "x", steps: [step(1)] });
-    app.store.set({ projectName: "B" });
+    setCurrent(app, info("a", "A2")); // renamed, the same project
+    expect(undoStore.get().entries).toHaveLength(1);
+    setCurrent(app, info("b", "A2")); // another project with the same name
     expect(undoStore.get().entries).toHaveLength(0);
+    setCurrent(app, null);
   });
 });
 
@@ -456,18 +461,6 @@ describe("Ctrl+Z: who answers it", () => {
     ["the string editor or a form already handled the key", { handled: true }],
   ])("%s keeps the key", (_why, patch) => {
     expect(ctrlZTarget({ ...free, ...patch })).toBe("other");
-  });
-
-  it("Ctrl+Z and the Russian «я»; Shift and Alt make another key; Ctrl+Y is not an undo", () => {
-    const k = (key: string, p: Record<string, boolean> = {}) => ({ key, ctrlKey: true, metaKey: false, shiftKey: false, ...p });
-    expect(isUndoKey(k("z"))).toBe(true);
-    expect(isUndoKey(k("Z"))).toBe(true);
-    expect(isUndoKey(k("я"))).toBe(true);
-    expect(isUndoKey({ ...k("z"), ctrlKey: false, metaKey: true })).toBe(true);
-    expect(isUndoKey(k("z", { shiftKey: true }))).toBe(false);
-    expect(isUndoKey(k("z", { altKey: true }))).toBe(false);
-    expect(isUndoKey(k("y"))).toBe(false);
-    expect(isUndoKey({ ...k("z"), ctrlKey: false })).toBe(false);
   });
 
   it("a text field is where text is typed; a check box, a colour and a range are not", () => {
@@ -490,7 +483,7 @@ describe("the key Ctrl+Z of the window", () => {
   /** A key event as the window gets it: the target is a stand-in with the few things the handler asks. */
   const press = (win: EventTarget, target: Record<string, unknown>, patch: Record<string, unknown> = {}) => {
     const e = new Event("keydown", { cancelable: true });
-    const props = { key: "z", ctrlKey: true, metaKey: false, shiftKey: false, altKey: false, repeat: false, target, ...patch };
+    const props = { key: "z", code: "KeyZ", ctrlKey: true, metaKey: false, shiftKey: false, altKey: false, repeat: false, target, ...patch };
     for (const [k, v] of Object.entries(props)) Object.defineProperty(e, k, { value: v, configurable: true });
     if (patch.defaultPrevented) Object.defineProperty(e, "defaultPrevented", { value: true });
     win.dispatchEvent(e);

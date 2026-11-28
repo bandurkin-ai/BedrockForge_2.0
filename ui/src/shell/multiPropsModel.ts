@@ -219,28 +219,34 @@ export type RunStep = (command: string, args: Record<string, unknown>) => Promis
 
 /** Sets `value` on every chosen object one after another. An object that is gone (before or during the run) is
  * skipped — «объект не найден» does not stop the others; any other failure stops the run. `undo` brings the objects
- * that were changed back — the one step of «Отменить» of the whole change. */
-export async function applyAll(run: RunStep, f: MultiField, kind: PickKind, ids: readonly number[], lk: Lookup, value: FieldValue): Promise<{ done: number; total: number; skipped: number; undo: Step[] }> {
+ * that were changed back (those changed in part too: `partial`) — the one step of «Отменить» of the whole change. */
+export async function applyAll(run: RunStep, f: MultiField, kind: PickKind, ids: readonly number[], lk: Lookup, value: FieldValue): Promise<{ done: number; partial: number; total: number; skipped: number; undo: Step[] }> {
   const before = readField(f, kind, ids, lk);
   const changed: { id: number; value: FieldValue }[] = [];
+  let full = 0;
   let gone = 0;
   for (const b of before) {
     if (!lk.exists(kind, b.id)) {
       gone++;
       continue;
     }
+    let ran = 0;
     let ok = true;
     for (const step of f.steps(kind, b.id, value)) {
       if (!(await run(step.command, step.args))) {
         ok = false;
         break;
       }
+      ran++;
     }
-    if (ok) changed.push(b);
+    // an object that got some of its steps (not all) is changed too: it goes to the undo, whatever the next step did
+    if (ran > 0) changed.push(b);
+    if (ok) full++;
     else if (lk.exists(kind, b.id)) break; // a real failure: stop, the rest stays as it was
-    else gone++; // deleted while the run was going
+    else if (ran === 0) gone++; // deleted while the run was going
   }
-  return { done: changed.length, total: before.length - gone, skipped: ids.length - before.length + gone, undo: revertPlan(f, kind, changed) };
+  const partial = changed.length - full;
+  return { done: full, partial, total: before.length - gone, skipped: ids.length - before.length + gone, undo: revertPlan(f, kind, changed) };
 }
 
 /** What the text of a number field is: the value, or the reason it is not one («0,5», «0.5»). */
