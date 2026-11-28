@@ -43,6 +43,7 @@ export function WireframeRows({ pick, label }: { pick: (list: readonly Wireframe
               level={level}
               check={{ checked: visible, label: `Показать «${w.name}» в 3D`, onChange: (v) => void app.run("layer.show", { layer: "wireframe", id: w.id, visible: v }) }}
               selected={isSelected(selected, "wireframe", w.id)}
+              pick={{ kind: "wireframe", id: w.id }}
               onSelect={() => (row.click === "properties" ? local() : void app.run("object.select", { kind: "wireframe", id: w.id }))}
               onActivate={local}
               title={row.title}

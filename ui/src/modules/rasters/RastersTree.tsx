@@ -38,6 +38,7 @@ export function RastersTree() {
               level={level}
               check={{ checked: visible, label: `Показать «${r.name}» в 3D`, onChange: (v) => void app.run("layer.show", { layer: "raster", id: r.id, visible: v }) }}
               selected={isSelected(selected, "raster", r.id)}
+              pick={{ kind: "raster", id: r.id }}
               onSelect={() => void app.run("object.select", { kind: "raster", id: r.id })}
               onActivate={() => void selectWithProperties(app, "raster", r.id)}
               title={rasterTitle(r)}

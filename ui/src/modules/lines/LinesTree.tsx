@@ -45,6 +45,7 @@ export function LinesTree() {
         level={level}
         check={{ checked: visible, label: `Показать «${l.name}» в 3D`, onChange: (v) => void app.run("layer.show", { layer: "lines", id: l.id, visible: v }) }}
         selected={isSelected(selected, "lines", l.id)}
+        pick={{ kind: "lines", id: l.id }}
         onSelect={() => void app.run("object.select", { kind: "lines", id: l.id })}
         onActivate={() => void selectWithProperties(app, "lines", l.id)}
         title={l.id === edited ? `${layerTitle(l)}. На правке в редакторе стрингов: в 3D показана рабочая копия` : layerTitle(l)}
