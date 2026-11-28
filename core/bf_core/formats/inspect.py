@@ -117,9 +117,4 @@ def inspect_table(
         return _csv(path, options, limit)
     if kind in (registry.XLSX, registry.XLS):
         return _excel(path, options, limit)
-    suffix = Path(filename or path.name).suffix.lower()
-    raise FormatError(
-        "unsupported",
-        f"Формат файла «{suffix or 'без расширения'}» не поддерживается или содержимое не похоже на таблицу.",
-        "Подходят: Micromine .DAT, текст .csv / .txt, Excel .xlsx / .xlsm / .xls.",
-    )
+    raise registry.unsupported_error(path, filename)

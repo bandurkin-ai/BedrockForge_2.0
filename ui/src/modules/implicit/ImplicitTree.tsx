@@ -11,6 +11,7 @@ import { useApp } from "../../shell/AppContext";
 import { openMenu } from "../../shell/ContextMenu";
 import type { IconName } from "../../shell/Icon";
 import { Glyph } from "../../shell/ObjectRows";
+import { isSelected } from "../../shell/selection";
 import { TreeRow } from "../../shell/TreeRow";
 import { selectWithProperties } from "../../shell/treeRun";
 import tree from "../../shell/DataTree.module.css";
@@ -211,7 +212,7 @@ export function ImplicitTree() {
           key={it.key}
           label={label}
           level={it.level}
-          selected={chosen === it.key || (selected?.kind === "lines" && lineId !== null && selected.id === lineId)}
+          selected={chosen === it.key || (lineId !== null && isSelected(selected, "lines", lineId))}
           onSelect={() => {
             setChosen(it.key);
             if (lineId !== null) void run("object.select", { kind: "lines", id: lineId });
@@ -230,7 +231,7 @@ export function ImplicitTree() {
         key={it.key}
         label={label}
         level={it.level}
-        selected={chosen === it.key || (selected?.kind === "wireframe" && wid !== null && selected.id === wid)}
+        selected={chosen === it.key || (wid !== null && isSelected(selected, "wireframe", wid))}
         onSelect={() => {
           setChosen(it.key);
           if (wid !== null) void run("object.select", { kind: "wireframe", id: wid });

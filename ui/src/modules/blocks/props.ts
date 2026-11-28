@@ -43,8 +43,8 @@ export interface GridV2 {
   rotation?: number;
   /** the division of a parent into sub-blocks along each axis (1 — none) */
   div?: [number, number, number];
-  /** the levels of the division along each axis (2^level) */
-  levels?: [number, number, number];
+  /** the levels of the division along each axis (2^level); null — the division is not a power of two (5, 3, 6 …; ADR 0030) */
+  levels?: [number, number, number] | null;
 }
 
 export interface CheckExample {
@@ -59,7 +59,7 @@ export interface CheckExample {
 export interface Checks {
   at?: string;
   duplicates: number;
-  overlaps: { n: number; method: "exact" | "volume" | string };
+  overlaps: { n: number; method: "exact" | "volume" | "boxes" | string };
   /** the names of the fields without a single value */
   empty: string[];
   /** the names of the fields with one value in all the blocks */
@@ -70,6 +70,8 @@ export interface Checks {
 }
 
 export interface BlockV2 {
+  /** `list` — a list of blocks (`meta v3`) */
+  layout?: "grid" | "list";
   sub?: boolean;
   parents?: number;
   rows?: number;
@@ -83,7 +85,34 @@ export const v2 = (b: BlockModelInfo): BlockInfoV2 => b as BlockInfoV2;
 
 const LEVELS = (l: readonly number[]): string => l.map((x) => String(x)).join(" × ");
 
+/** «, уровней 2 × 2 × 1» for a division by 2^L; «, произвольное деление» when an axis is divided by 3, 5, 6 … (no levels). */
+export const divTail = (levels: readonly number[] | null | undefined, div: readonly number[]): string => {
+  if (levels) return `, уровней ${LEVELS(levels)}`;
+  return isFreeDiv(div) ? ", произвольное деление (не по уровням 2^L)" : "";
+};
+
+/** A division with an axis that is not a power of two (3, 5, 6 …): it has no levels. */
+export const isFreeDiv = (div: readonly number[]): boolean => div.some((d) => d > 1 && (d & (d - 1)) !== 0);
+
+/** A list of blocks (ADR 0030): the structure, the blocks and the enclosing grid — no sub-blocks, no parents. */
+export function listFacts(b: BlockModelInfo): Fact[] {
+  const total = b.grid.counts.reduce((a, c) => a * c, 1);
+  const facts: Fact[] = [
+    { label: "Структура", value: "список блоков (без сетки субблоков)" },
+    { label: "Блоков", value: count(b.cells) },
+    { label: "Охватывающая сетка", value: `${gridCounts(b)} (${counted(total, "ячейка", "ячейки", "ячеек")}), ячейка ${stepText(b)} — только для поиска блока под точкой` },
+    { label: "Угол сетки", value: b.grid.corner.map((v, i) => `${AXES[i]} ${num(v, 3)}`).join(", ") },
+    ...extentFacts(b.extent),
+  ];
+  const turn = v2(b).grid.rotation;
+  if (typeof turn === "number" && turn !== 0) facts.splice(4, 0, { label: "Поворот", value: `${num(turn, 4)}° вокруг Z, против часовой стрелки при виде сверху` });
+  if (b.crs) facts.push({ label: "Система координат", value: b.crs });
+  if (typeof b.size === "number") facts.push({ label: "Файл ячеек", value: bytes(b.size) });
+  return facts;
+}
+
 export function gridFacts(b: BlockModelInfo): Fact[] {
+  if (b.layout === "list") return listFacts(b);
   const total = b.grid.counts.reduce((a, c) => a * c, 1);
   const share = total > 0 ? ` (${num((100 * b.cells) / total, 1)} %)` : "";
   const m = v2(b);
@@ -109,7 +138,7 @@ export function subFacts(b: BlockModelInfo): Fact[] {
   const div = m.grid.div;
   if (!m.sub && !(div && div.some((d) => d > 1))) return [];
   const out: Fact[] = [];
-  if (div) out.push({ label: "Субблоки", value: `родитель делится на ${div.map((d) => num(d, 0)).join(" × ")}${m.grid.levels ? `, уровней ${LEVELS(m.grid.levels)}` : ""}` });
+  if (div) out.push({ label: "Субблоки", value: `родитель делится на ${div.map((d) => num(d, 0)).join(" × ")}${divTail(m.grid.levels, div)}` });
   else out.push({ label: "Субблоки", value: "есть" });
   if (typeof m.rows === "number" && typeof m.parents === "number") out.push({ label: "Блоков и родителей", value: `${count(m.rows)} блоков в ${count(m.parents)} родителях` });
   return out;

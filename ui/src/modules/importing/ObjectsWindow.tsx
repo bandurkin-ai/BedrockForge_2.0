@@ -7,6 +7,7 @@ import { bridge } from "../../bridge";
 import { useApp } from "../../shell/AppContext";
 import { Icon } from "../../shell/Icon";
 import { openLogWindow, opLogStore, startOpLog, stopOpLog } from "../../shell/opLog";
+import { pickFilesIn } from "../../shell/lastFolder";
 import { useStore } from "../../shell/useStore";
 import { closeWindow, windowStore } from "../../shell/windows";
 import { syncOda } from "../../shell/odaTool";
@@ -27,6 +28,11 @@ export function ObjectsWindow({ winId, paths, pick, cloud }: { winId: string; pa
     const f = windowStore.get().windows.find((w) => w.id === winId)?.props?.folder;
     return typeof f === "string" && f ? f : null;
   });
+  // opened from the job that refused the file (`import.blocks_choice`): why, shown above the composition
+  const [choice] = useState(() => {
+    const c = windowStore.get().windows.find((w) => w.id === winId)?.props?.choice as { file?: unknown; message?: unknown } | undefined;
+    return c && typeof c.file === "string" ? { file: c.file, message: typeof c.message === "string" ? c.message : "" } : null;
+  });
   const [wizard] = useState(() => {
     const project = projectStore.get().current;
     const log = startOpLog(cloud ? "Облако точек" : "Импорт файлов", "import", { uiVersion: bridge()?.appVersion(), coreVersion: app.store.get().coreVersion, project: project?.name });
@@ -40,7 +46,7 @@ export function ObjectsWindow({ winId, paths, pick, cloud }: { winId: string; pa
   }, [wizard, paths]);
 
   const add = async () => {
-    const files = (await bridge()?.pickFiles(cloud ?? pick ?? "objects", true)) ?? [];
+    const files = await pickFilesIn(cloud ?? pick ?? "objects", true, `wizard:${winId}`);
     if (files.length) await wizard.add(files);
   };
   const start = async () => {
@@ -71,6 +77,11 @@ export function ObjectsWindow({ winId, paths, pick, cloud }: { winId: string; pa
           <Icon name="log" size={15} />
         </button>
       </div>
+      {choice && (
+        <div className={css.note} role="status" data-testid="objects-choice-note">
+          Файл «{choice.file}» не загрузился в задании{choice.message ? `: ${choice.message}` : "."} Выберите ниже, что с ним сделать.
+        </div>
+      )}
       <div className={css.body}>
         <ObjectsStep wizard={wizard} onAdd={() => void add()} onSettings={() => void app.run("settings.open", { tab: "tools" })} />
       </div>

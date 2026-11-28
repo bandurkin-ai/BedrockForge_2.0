@@ -130,6 +130,16 @@ def _extent_cells(model: Model) -> tuple[list[int], list[int]]:
     return lo, hi
 
 
+def _extent_boxes(model: Model) -> tuple[list[float], list[float]]:
+    """A list of blocks: the lowest and the highest edge of the boxes along every local axis (the columns of the boxes
+    only)."""
+    lo, hi = np.full(3, np.inf), np.full(3, -np.inf)
+    for _first, n, _p, c, d, _cols in model.reader.pieces((), p=False, geo=True):
+        if n and c is not None and d is not None:
+            lo, hi = np.minimum(lo, (c - d / 2).min(axis=0)), np.maximum(hi, (c + d / 2).max(axis=0))
+    return [float(v) for v in lo], [float(v) for v in hi]
+
+
 def _density_of(model: Model, density: Any) -> str | float | None:
     if isinstance(density, str):
         spec = model.field(density)
@@ -173,12 +183,18 @@ def make_plan(model: Model, size: Sequence[float], grades: Sequence[Any] | None 
                 raise bad_param(f"categories.{n}", f"Поле «{spec['name']}» — не категория.", "Выберите поле-категорию.")
             if spec["name"] not in pl.cats:
                 pl.cats.append(str(spec["name"]))
-    # the grid: the origin — a multiple of the size from O, the cover — the parents that hold rows
-    lo, hi = _extent_cells(model)
+    # the grid: the origin — a multiple of the size from O, the cover — the parents that hold rows (a list of blocks:
+    # the boxes of the rows)
+    if model.listed:
+        elo, ehi = _extent_boxes(model)
+    else:
+        lo, hi = _extent_cells(model)
+        elo = [lo[a] * d[a] for a in range(3)]
+        ehi = [(hi[a] + 1) * d[a] for a in range(3)]
     n0, counts = [], []
     for a in range(3):
-        n0.append(int(math.floor(_snap_py(lo[a] * d[a] / pl.size[a]))))
-        counts.append(int(math.ceil(_snap_py((hi[a] + 1) * d[a] / pl.size[a]))) - n0[a])
+        n0.append(int(math.floor(_snap_py(elo[a] / pl.size[a]))))
+        counts.append(int(math.ceil(_snap_py(ehi[a] / pl.size[a]))) - n0[a])
     pl.q0 = (n0[0] * pl.size[0], n0[1] * pl.size[1], n0[2] * pl.size[2])
     corner = model.grid.to_project(np.asarray([pl.q0]))[0]
     pl.grid = GridV2.of({"corner": [float(v) for v in corner], "counts": counts, "size": list(pl.size),
@@ -366,6 +382,7 @@ class _Run:
         """A portion of rows: the boxes and the sums before, then the cells, segment by segment (module docstring)."""
         pl, g, n = self.pl, self.model.grid, ch.n
         has_sub = ch.s is not None
+        listed = ch.lc is not None and ch.ld is not None
         vals = np.stack([ch.cols[nm] for nm, _ in pl.numbers]) if pl.numbers else np.empty((0, n))
         cats = np.stack([ch.cols[nm] for nm in pl.cats]).astype(np.int32) if pl.cats else np.empty((0, n), np.int32)
         frac = ch.cols[pl.frac] if pl.frac else np.empty(0)
@@ -374,32 +391,39 @@ class _Run:
         w = ch.w if ch.w is not None else np.empty((0, 3), np.uint8)
         tlo, thi = np.empty((n, 3)), np.empty((n, 3))
         clo, chi = np.empty((n, 3), np.int32), np.empty((n, 3), np.int32)
-        prep = partial(
-            rk.prep,
-            ch.p,
-            has_sub,
-            s,
-            w,
-            g.counts[0],
-            g.counts[1],
-            self.d,
-            self.div,
-            self.q0,
-            self.size,
-            frac,
-            pl.frac is not None,
-            dens,
-            self.dens_mode,
-            self.dens_c,
-            vals,
-            tlo,
-            thi,
-            clo,
-            chi,
-        )
+        if listed:  # the boxes as they are: no (P, s, w) to compute them from
+            assert ch.lc is not None and ch.ld is not None
+            prep = partial(rk.prep_list, ch.lc - ch.ld / 2, ch.lc + ch.ld / 2, ch.ld, self.q0, self.size, frac,
+                           pl.frac is not None, dens, self.dens_mode, self.dens_c, vals, tlo, thi, clo,
+                           chi)  # fmt: skip
+        else:
+            prep = partial(
+                rk.prep,
+                ch.p,
+                has_sub,
+                s,
+                w,
+                g.counts[0],
+                g.counts[1],
+                self.d,
+                self.div,
+                self.q0,
+                self.size,
+                frac,
+                pl.frac is not None,
+                dens,
+                self.dens_mode,
+                self.dens_c,
+                vals,
+                tlo,
+                thi,
+                clo,
+                chi,
+            )
         self.before.extend(strips.run(prep, n, threads=self.threads, size=STRIP_ROWS))
         last = int(ch.p[-1]) // (g.counts[0] * g.counts[1])  # later rows are not lower than the bottom of this layer
-        safe = int(math.floor(_snap_py((last * self.d[2] - self.q0[2]) / self.size[2])))
+        low = last * self.d[2] - (self.d[2] / 2 if listed else 0.0)  # a block of a list reaches ½ cell below its cell
+        safe = int(math.floor(_snap_py((low - self.q0[2]) / self.size[2])))
         lows, highs = clo[:, 2], chi[:, 2]
         floor_ahead = np.minimum.accumulate(lows[::-1])[::-1]  # the lowest new layer of the rows from here on
         cuts = np.flatnonzero(floor_ahead[1:] > np.maximum.accumulate(highs)[:-1]) + 1  # nothing joins the two sides

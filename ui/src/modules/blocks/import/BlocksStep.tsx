@@ -16,6 +16,7 @@ import {
   gridText,
   headline,
   isTextFormat,
+  listText,
   n,
   parseCodes,
   patchDraft,
@@ -23,11 +24,13 @@ import {
   shownChoice,
   TRIPLE_TITLES,
   turnNote,
+  unalignedOf,
   type BlocksDraft,
   type BlocksInfo,
   type Choice,
   type TripleKey,
 } from "./model";
+import { UnalignedChoice } from "./UnalignedChoice";
 import css from "../../importing/ImportWizard.module.css";
 
 const AXES = ["X", "Y", "Z"];
@@ -46,6 +49,7 @@ export function BlocksStep({ wizard, file, options }: Props) {
   const check = check3Text(info);
   const turn = turnNote(info, draft);
   const stem = file.block_models?.[0]?.name ?? file.file.replace(/\.[^.]+$/, "");
+  const unaligned = unalignedOf(info.error); // a refusal with a diagnosis: the panel of the choice (ADR 0030)
   return (
     <div className={css.importStep} data-testid="blocks-step" data-format={info.format}>
       <div data-testid="blocks-headline">
@@ -66,7 +70,8 @@ export function BlocksStep({ wizard, file, options }: Props) {
           </label>
         )}
       </div>
-      {info.error && (
+      {unaligned && <UnalignedChoice wizard={wizard} file={file} options={options} un={unaligned} />}
+      {info.error && !unaligned && (
         <div className={css.error} role="alert" data-testid="blocks-error" data-code={info.error.code}>
           {info.error.message} {info.error.code === "blocks_unaligned" ? "" : info.error.hint}
           {info.error.code === "blocks_unaligned" && (
@@ -77,9 +82,10 @@ export function BlocksStep({ wizard, file, options }: Props) {
           )}
         </div>
       )}
+      {draft?.layout === "list" && <ListNote info={info} onBack={() => set({ layout: "grid" })} />}
       <ColumnsTable wizard={wizard} file={file} info={info} draft={draft} />
       <EmptyCodes info={info} value={draft?.empty ?? ""} error={errors.empty} onApply={(empty) => set({ empty })} />
-      <GridPart info={info} draft={draft} errors={errors} onApply={set} />
+      <GridPart info={info} draft={draft} errors={errors} onApply={set} listed={draft?.layout === "list"} />
       {check && (
         <div className={check.ok ? css.note : css.error} data-testid="blocks-check3" data-ok={check.ok ? "yes" : "no"}>
           {check.text}
@@ -226,7 +232,27 @@ function EmptyCodes({ info, value, error, onApply }: { info: BlocksInfo; value: 
 
 const TRIPLE_ORDER: TripleKey[] = ["corner", "size", "counts"];
 
-function GridPart({ info, draft, errors, onApply }: { info: BlocksInfo; draft: BlocksDraft | null; errors: ReturnType<typeof draftErrors>; onApply: (patch: Partial<BlocksDraft>) => void }) {
+/** The model is read as a list of blocks (ADR 0030): what it holds and the way back to the grid. */
+function ListNote({ info, onBack }: { info: BlocksInfo; onBack: () => void }) {
+  const text = listText(info);
+  return (
+    <div className={css.group} data-testid="blocks-list">
+      <div data-testid="blocks-list-text">
+        <b>{text ?? "Модель будет импортирована списком блоков."}</b>
+      </div>
+      <div className={css.note}>
+        Блоки хранятся как есть — центр и размер каждого, без родительской сетки и субблоков. Доступны показ и выбор блока, фильтры, калькулятор, плотность, категории, отчёт «Содержание–тоннаж», экспорт и регуляризация; срез, оценка, ресурсы, карьер, заполнение и OMF — после регуляризации в сетку.
+      </div>
+      <div className={css.options}>
+        <button type="button" data-testid="blocks-list-back" onClick={onBack}>
+          Вернуться к сетке
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function GridPart({ info, draft, errors, onApply, listed = false }: { info: BlocksInfo; draft: BlocksDraft | null; errors: ReturnType<typeof draftErrors>; onApply: (patch: Partial<BlocksDraft>) => void; listed?: boolean }) {
   const g = info.grid;
   const found = (key: TripleKey, i: number): string => {
     const v = g?.[key as "corner" | "size" | "counts" | "div"];
@@ -236,13 +262,19 @@ function GridPart({ info, draft, errors, onApply }: { info: BlocksInfo; draft: B
     <fieldset className={css.group} data-testid="blocks-grid">
       <legend>Сетка модели</legend>
       <div className={css.note}>
-        {g ? `Определена по файлу: ${gridText(g)}.` : "Сетку по файлу определить не удалось: укажите её здесь."} Пустое поле — «как в файле».
+        {listed
+          ? "Список блоков не делится на родителей: здесь задаются только поворот вокруг Z и оси, в которых записаны центры."
+          : g
+            ? `Определена по файлу: ${gridText(g)}.`
+            : "Сетку по файлу определить не удалось: укажите её здесь."}{" "}
+        {listed ? "" : "Пустое поле — «как в файле»."}
       </div>
-      {[...TRIPLE_ORDER, ...(info.sub || draft?.div.some(Boolean) ? (["div"] as const) : [])].map((key) => (
+      {(listed ? [] : [...TRIPLE_ORDER, ...(info.sub || draft?.div.some(Boolean) ? (["div"] as const) : [])]).map((key) => (
         <TripleField key={key} id={key} title={TRIPLE_TITLES[key]} values={draft?.[key] ?? ["", "", ""]} placeholders={[0, 1, 2].map((i) => found(key, i))} error={errors[key]} onApply={(v) => onApply({ [key]: v })} />
       ))}
       <div className={css.options}>
         <RotationField value={draft?.rotation ?? ""} placeholder={g ? n(g.rotation) : ""} error={errors.rotation} onApply={(rotation) => onApply({ rotation })} />
+        {!listed && <TolField value={draft?.tol ?? ""} error={errors.tol} onApply={(tol) => onApply({ tol })} />}
         <label>
           Оси центров в файле
           <select value={draft?.centres ?? "project"} aria-label="Оси центров" onChange={(e) => onApply({ centres: e.target.value as "project" | "model" })}>
@@ -266,6 +298,29 @@ function RotationField({ value, placeholder, error, onApply }: { value: string; 
       <label>
         Поворот вокруг Z, °
         <input value={draft} placeholder={placeholder || "0"} style={{ width: 80 }} aria-label="Поворот вокруг Z" aria-invalid={error ? true : undefined} onChange={(e) => setDraft(e.target.value)} onBlur={apply} onKeyDown={(e) => e.key === "Enter" && apply()} />
+      </label>
+      {error && (
+        <span className={css.error} role="alert">
+          {error}
+        </span>
+      )}
+    </>
+  );
+}
+
+/** How far an edge of a block may be from its line of the grid: empty — by the type of the columns (a number written with
+ * two decimals — 0,005 m); at most a quarter of a sub-cell, the core says so. */
+function TolField({ value, error, onApply }: { value: string; error?: string; onApply: (v: string) => void }) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  const apply = () => {
+    if (draft.trim() !== value.trim()) onApply(draft.trim());
+  };
+  return (
+    <>
+      <label title="Насколько грань блока может отстоять от линии сетки. Пусто — по типу столбцов файла; не больше четверти подъячейки.">
+        Допуск, м
+        <input value={draft} placeholder="по столбцам" style={{ width: 90 }} aria-label="Допуск привязки" aria-invalid={error ? true : undefined} onChange={(e) => setDraft(e.target.value)} onBlur={apply} onKeyDown={(e) => e.key === "Enter" && apply()} />
       </label>
       {error && (
         <span className={css.error} role="alert">

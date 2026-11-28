@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { bridge } from "../bridge";
 import { CoreError } from "./api";
 import { useApp } from "./AppContext";
+import { pickFilesIn } from "./lastFolder";
 import { findOda, odaLines, pickOdaFile, setOdaPath, syncOda, type OdaStatus, type OdaTone } from "./odaTool";
 import { normalizeOdaPath } from "./settings";
 import { useStore } from "./useStore";
@@ -52,7 +53,7 @@ export function ExternalTools() {
   /** A closed dialog changes nothing (an answer on its way is still shown); one that did not open is told as any other error. */
   const pick = async () => {
     const b = bridge();
-    const file = await pickOdaFile(b ? () => b.pickFiles("program", false) : undefined).catch((e: unknown) => ask(() => Promise.reject(e)));
+    const file = await pickOdaFile(b ? () => pickFilesIn("program", false) : undefined).catch((e: unknown) => ask(() => Promise.reject(e)));
     if (file) await ask(() => setOdaPath(app.store, file));
   };
   const changed = normalizeOdaPath(draft) !== saved;

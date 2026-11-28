@@ -247,7 +247,7 @@ describe("the refusals of the core are shown with their rows and their hint", ()
     expect(err.count).toBe(103);
     expect(rowsText(err)).toBe("Строки данных (с 1): 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 и другие");
     expect(err.message).toContain("за началом или за краем сетки");
-    expect(err.hint).toContain("Проверьте начало и размер родителя");
+    expect(err.hint).toContain("Задайте родителя и начало сетки вручную");
     expect(rowsText(null)).toBe("");
   });
 

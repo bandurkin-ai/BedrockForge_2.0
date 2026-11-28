@@ -557,3 +557,20 @@ def test_imported_objects_survive_bfggis(pclient, files: dict[str, Path], tmp_pa
         assert [tuple(row) for row in log] == [("contours.str", "objects"), ("scan.png", "objects")]
         scan = conn.execute(sa.select(objects.c.id).where(objects.c.kind == "raster")).scalar_one()
         assert set(roles_of(conn, scan)) == {"source", "sidecar:grf", "display0", "display1"}
+
+
+def test_a_single_refused_block_file_keeps_its_choices_in_the_error(project, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    """Э27 27.12: no file was done — the job fails, and the error keeps `failed[]` with `diag`/`choices`, so the
+    window of the job offers «Открыть мастер с выбором» for the only file too; the worker stores `extra` with it."""
+    from bf_core.jobs.context import JobError as Err
+    from tests.test_grid_diag import write_hard_dat
+
+    path = tmp_path / "hard.dat"
+    write_hard_dat(path)
+    with pytest.raises(JobError) as err:
+        run_job(project.folder, {"files": [str(path)]})
+    assert err.value.code == "blocks_unaligned"
+    (failed,) = err.value.extra["failed"]
+    assert failed["file"] == "hard.dat" and failed["diag"]
+    assert [c["id"] for c in failed["choices"]] == ["grid", "list", "cancel"]
+    assert Err("c", "m").extra == {}

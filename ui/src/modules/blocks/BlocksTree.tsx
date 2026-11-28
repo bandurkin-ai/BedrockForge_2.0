@@ -45,6 +45,7 @@ export function BlocksTree() {
               ariaLabel={`${b.name}, ${blockSummary(b)}`}
               level={level}
               selected={isSelected(selected, "blocks", b.id)}
+              pick={{ kind: "blocks", id: b.id }}
               onSelect={() => void app.run("object.select", { kind: "blocks", id: b.id })}
               onActivate={local}
               title={row.title}

@@ -103,11 +103,11 @@ class Ctx:
         return dict(json.loads((self.work / META).read_text(encoding="utf-8")))
 
     def model(self, model_id: int) -> Any:
-        from bf_core.blocks.model import Model
+        from bf_core.blocks.model import ANY, Model
         from bf_core.db import dialect
 
         with dialect.read_tx(self.engine) as conn:
-            return Model.open(conn, self.store, model_id)
+            return Model.open(conn, self.store, model_id, ANY)  # a list of blocks too (ADR 0030)
 
     def version(self, model_id: int) -> int:
         return int(self.model(model_id).version)

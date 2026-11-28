@@ -82,6 +82,10 @@ def model_of(conn: Any, bm_id: int) -> Model:
     from bf_core.blocks.model import is_plain
 
     info = store.block_model_info(conn, bm_id)
+    if info.get("layout") == "list":  # the statistics and the swath read the grid of parents
+        from bf_core.blocks.model import list_unsupported
+
+        raise list_unsupported(str(info["name"]), "Статистика и профили по сетке")
     grid = dict(info["grid"])
     fields = list(info["fields"])
     plain = is_plain(info) and not any(f.get("role") == "frac" for f in fields)

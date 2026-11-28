@@ -1,4 +1,5 @@
 import type { TraceStyle } from "../../viz/holes/traceStyle";
+import { ColorField } from "../../shell/PropsParts";
 import css from "./StyleForms.module.css";
 
 const clamp = (v: string, lo: number, hi: number, fallback: number) => {
@@ -22,7 +23,7 @@ export function TraceStyleForm({ style, onChange, notes }: { style: TraceStyle; 
             <input type="number" min={0.5} max={12} step={0.5} value={style.width} aria-label="Толщина ствола, px"
               onChange={(e) => set({ width: clamp(e.target.value, 0.5, 12, style.width) })} />
           </label>
-          <label className={css.check}>Цвет<input type="color" value={style.color} aria-label="Цвет ствола" onChange={(e) => set({ color: e.target.value })} /></label>
+          <label className={css.check}>Цвет<ColorField value={style.color} label="Цвет ствола" onCommit={(color) => set({ color })} /></label>
         </div>
       </fieldset>
 
@@ -57,7 +58,7 @@ export function TraceStyleForm({ style, onChange, notes }: { style: TraceStyle; 
               onChange={(e) => set({ labelSize: clamp(e.target.value, 7, 30, style.labelSize) })} />
           </label>
         </div>
-        <label className={css.check}>Цвет подписей<input type="color" value={style.labelColor} disabled={!(style.ticks && style.tickLabels) && !style.endDepth} aria-label="Цвет подписей глубины" onChange={(e) => set({ labelColor: e.target.value })} /></label>
+        <label className={css.check}>Цвет подписей<ColorField value={style.labelColor} disabled={!(style.ticks && style.tickLabels) && !style.endDepth} label="Цвет подписей глубины" onCommit={(labelColor) => set({ labelColor })} /></label>
       </fieldset>
 
       <fieldset>
@@ -82,8 +83,8 @@ export function TraceStyleForm({ style, onChange, notes }: { style: TraceStyle; 
         </div>
         <label className={css.check}><input type="checkbox" checked={byObject} disabled={!style.intersections} onChange={(e) => set({ wireframeColor: e.target.checked ? "object" : "#ff4d6d" })} /> каркасы — цветом каркаса</label>
         <div className={css.pair}>
-          {!byObject && <label className={css.check}>Каркасы<input type="color" value={style.wireframeColor} disabled={!style.intersections} aria-label="Цвет пересечений с каркасами" onChange={(e) => set({ wireframeColor: e.target.value })} /></label>}
-          <label className={css.check}>Блоки (вход ▲, выход ■)<input type="color" value={style.blockColor} disabled={!style.intersections} aria-label="Цвет пересечений с блочными моделями" onChange={(e) => set({ blockColor: e.target.value })} /></label>
+          {!byObject && <label className={css.check}>Каркасы<ColorField value={style.wireframeColor} disabled={!style.intersections} label="Цвет пересечений с каркасами" onCommit={(wireframeColor) => set({ wireframeColor })} /></label>}
+          <label className={css.check}>Блоки (вход ▲, выход ■)<ColorField value={style.blockColor} disabled={!style.intersections} label="Цвет пересечений с блочными моделями" onCommit={(blockColor) => set({ blockColor })} /></label>
         </div>
         {style.intersections && notes?.map((n) => <p key={n} className={css.muted}>{n}</p>)}
       </fieldset>

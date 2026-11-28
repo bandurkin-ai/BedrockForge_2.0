@@ -14,6 +14,7 @@ import { ChartWindow } from "../ChartWindow";
 import { ChartToolbar } from "../core/ChartToolbar";
 import { fieldLabel, FieldSelect, TableSelect } from "../core/Pickers";
 import { NumberInput, SampleFilterForm } from "../SampleFilterForm";
+import { ColorField } from "../../shell/PropsParts";
 import css from "../core/Chart.module.css";
 import { HistogramChart } from "./HistogramChart";
 import { binModeOf, countsNotes, histogramCalculator, histogramCsv, histogramMarks, histogramRequest, statsTable, withBinMode, Y_TITLES, type BinMode } from "./model";
@@ -192,7 +193,7 @@ export function HistogramWindow(props: ChartWindowProps<"histogram">) {
           ))}
         </div>
         <label className={css.check}>
-          <input type="color" value={s.view.color} aria-label="Цвет столбцов" onChange={(e) => setView({ color: e.target.value })} /> Цвет столбцов
+          <ColorField value={s.view.color} label="Цвет столбцов" onCommit={(color) => setView({ color })} /> Цвет столбцов
         </label>
       </fieldset>
     </>

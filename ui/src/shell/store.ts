@@ -30,7 +30,15 @@ export interface AppState {
   holeId: string | null;
   /** The object chosen by `object.select` (a layer of lines, a raster, a wireframe or a DTM), or null. */
   selected: Selected | null;
+  /** How many rows of the tree are chosen as a group (`groupStore`): the sections without `object.select` (Д-44 А5). */
+  groupSize: number;
+  /** How many changes of properties «Отменить» can take back (`propsUndo.ts`). */
+  undoDepth: number;
   hasSection: boolean;
+  /** The selected object is a list of blocks (a block model with no grid of parents, ADR 0030): `blocks/bind.ts`. */
+  listModel: boolean;
+  /** The numbers of the block models that are lists of blocks (for a command that names its own model). */
+  listIds: number[];
   editing: boolean;
   /** A passing notice of the view (settings not saved, «упрощено»…). */
   statusNote: string | null;
@@ -55,7 +63,11 @@ export const INITIAL_STATE: AppState = {
   setHoles: 0,
   holeId: null,
   selected: null,
+  groupSize: 0,
+  undoDepth: 0,
   hasSection: false,
+  listModel: false,
+  listIds: [],
   editing: false,
   statusNote: null,
   modal: 0,
@@ -85,7 +97,11 @@ export function commandContext(s: AppState): CommandContext {
     hasSet: s.setName !== null,
     hasHole: s.holeId !== null,
     hasObject: s.selected !== null,
+    hasGroup: s.groupSize > 1,
+    canUndo: s.undoDepth > 0,
     hasSection: s.hasSection,
+    listModel: s.listModel,
+    listIds: s.listIds,
     editing: s.editing,
     coreOnline: s.core === "online",
   };

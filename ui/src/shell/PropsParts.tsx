@@ -5,6 +5,8 @@
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useApp } from "./AppContext";
+import { ColorChooser } from "./ColorPalette";
+import { rememberColor } from "./quickColors";
 import { num, type Fact } from "./props";
 import css from "./PropsParts.module.css";
 
@@ -65,14 +67,29 @@ export function Check({ checked, title, disabled, onCommit, children }: { checke
   );
 }
 
-/** A colour field: `onCommit` runs once — when the picker is closed or the value is typed. */
-export function ColorField({ value, label, disabled, onCommit }: { value: string; label: string; disabled?: boolean; onCommit: Commit<string> }) {
+/** A colour field: `onCommit` runs once — when the picker is closed, a colour of the palette is clicked (ten standard
+ * ones and the five chosen last, `ColorPalette`) or the value is typed. The colours the user picked go to the history. */
+export function ColorField({ value, label, disabled, testId, onCommit }: { value: string; label: string; disabled?: boolean; testId?: string; onCommit: Commit<string> }) {
   const [draft, setDraft] = useState(value);
   useEffect(() => setDraft(value), [value]);
-  const ref = useCommitted((v) => {
+  const commit = (v: string) => {
     if (v !== value) void Promise.resolve(onCommit(v)).then((ok) => ok === false && setDraft(value));
+  };
+  const ref = useCommitted((v) => {
+    rememberColor(v);
+    commit(v);
   });
-  return <input ref={ref} type="color" className={css.color} value={draft} aria-label={label} title={label} disabled={disabled} onChange={(e) => setDraft(e.target.value)} />;
+  return (
+    <ColorChooser
+      value={draft}
+      disabled={disabled}
+      onPick={(hex) => {
+        setDraft(hex);
+        commit(hex);
+      }}
+      input={<input ref={ref} type="color" className={css.color} value={draft} aria-label={label} title={label} data-testid={testId} disabled={disabled} onChange={(e) => setDraft(e.target.value)} />}
+    />
+  );
 }
 
 /** A slider with its value: it follows the pointer and is saved when released (or changed by a key). */

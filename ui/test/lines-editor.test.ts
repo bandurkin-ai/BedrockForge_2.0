@@ -5,6 +5,8 @@ import { windowStore } from "../src/shell/windows";
 import { answerChoice, choiceStore } from "../src/modules/lines/choice";
 import { editedLayer, editStore, layerShown } from "../src/modules/lines/editState";
 import { finishEditor } from "../src/modules/lines/editor";
+import { sectionStore } from "../src/modules/section/state";
+import { DRAW_OFF, startDraw } from "../src/viz/section/draw";
 import { closeApp, openApp, type server } from "./linesHarness";
 
 let core: ReturnType<typeof server>;
@@ -104,5 +106,15 @@ describe("the string editor in the application", () => {
     expect(added.ok, added.result).toBe(true);
     expect(added.result).toMatch(/площадь 100 м²/);
     expect(editStore.get().session!.layer.lines.at(-1)!.points[0]).toEqual([0, 0, 6]); // on the Z of the panel
+  });
+
+  it("a tool of the editor called while a section line is being drawn calls the line off (Д-47 А8)", async () => {
+    const app = await open();
+    await app.registry.execute("lines.edit", { layer_id: 7 });
+    sectionStore.set({ draw: startDraw() });
+    const r = await app.registry.execute("lines.tool", { tool: "line" });
+    expect(r.ok, r.result).toBe(true);
+    expect(sectionStore.get().draw).toEqual(DRAW_OFF);
+    expect(editStore.get().session!.tool).toBe("line");
   });
 });

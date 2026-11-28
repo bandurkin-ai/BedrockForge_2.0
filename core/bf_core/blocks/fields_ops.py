@@ -46,7 +46,7 @@ from bf_core.blocks import jobs_fields as jf
 from bf_core.blocks import schema as bs
 from bf_core.blocks.fill import commit, inputs
 from bf_core.blocks.filters import schema as fs
-from bf_core.blocks.model import Model
+from bf_core.blocks.model import ANY, Model
 from bf_core.db.schema import objects, settings
 from bf_core.storage.blobs import BlobStore
 
@@ -324,7 +324,7 @@ def edit_fields(
 def remove_field(conn: sa.Connection, store: BlobStore, model_id: int, expected_version: int, name: str) -> int:
     """Inside the write transaction: the field leaves the model (`delete_fields`) unless it is required or used:
     422 `field_required`, 422 `field_in_use {usage}`; 404 `block_field_not_found`; 409 `version_conflict`."""
-    model = Model.open(conn, store, model_id)
+    model = Model.open(conn, store, model_id, ANY)
     if model.version != expected_version:
         raise fst.version_conflict(model.version)
     field = model.field(name)

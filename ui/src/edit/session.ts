@@ -410,6 +410,21 @@ export class EditSession implements CommandHost {
     this.emit();
   }
 
+  /**
+   * A general tool of the 3D view (a section line, another tool of the window) takes the pointer: a drag is dropped,
+   * the line being drawn is finished as with Enter (a polyline of two points and more stays, an empty one or one
+   * with a single point goes without a trace), the tool returns to «Выбор». Undo of the steps made stays.
+   */
+  release(): void {
+    if (this.drag) {
+      this.drag = null;
+      if (this.history.pending) this.history.cancel();
+      this.afterChange();
+    }
+    if (this.drawing) this.finishDrawing();
+    if (this.tool !== "select") this.setTool("select");
+  }
+
   /** Ends the line being drawn: a polygon closes, a line left with one point goes away. */
   finishDrawing(): void {
     finishDrawing(this);

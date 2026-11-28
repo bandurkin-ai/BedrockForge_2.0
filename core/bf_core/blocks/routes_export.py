@@ -41,11 +41,11 @@ def check_model(svc: Svc, s: Sched, bm_id: int) -> dict[str, Any]:
     from bf_core.storage.blobs import BlobStore
 
     from . import check_job
-    from .model import Model
+    from .model import ANY, Model
 
     project = svc.require_current(writable=True)
     with dialect.read_tx(project.engine) as conn:
-        Model.open(conn, BlobStore(project.folder), bm_id)  # 404 for a model that is not there
+        Model.open(conn, BlobStore(project.folder), bm_id, ANY)  # 404 for a model that is not there
     if check_job.KIND not in REGISTERED:
         raise ApiError(422, "not_ready", "Проверка блочных моделей не подключена в этой сборке.",
                        "Обновите программу.")

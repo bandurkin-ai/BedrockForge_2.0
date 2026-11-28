@@ -5,6 +5,7 @@ file, the spool of raw columns on the disk and `busy` — a long call that keeps
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
@@ -17,6 +18,7 @@ import numpy as np
 from bf_core.api.errors import ApiError
 from bf_core.blocks import schema as bs
 from bf_core.blocks.grid_infer import GridHint
+from bf_core.blocks.grid_lattice import column_tol, edge_tol
 from bf_core.formats import blocks_roles as br
 from bf_core.formats.blocks_text import TextColumn
 
@@ -46,9 +48,75 @@ def _triple(value: Any, label: str, cast: Callable[[Any], Any] = float) -> tuple
     return (a, b, c)
 
 
+def _whole(value: Any) -> int:
+    """A whole number from a number or a text («5», 5.0); 2.5 is not one (int() would cut it to 2)."""
+    v = float(value)
+    if not v.is_integer():
+        raise ValueError(value)
+    return int(v)
+
+
+def _tol(value: Any) -> float | None:
+    """`grid.tol` of the wizard, m: None — by the type of the columns; a number > 0 (the grid checks the quarter)."""
+    if value is None or value == "":
+        return None
+    try:
+        v = float(str(value).replace(",", ".")) if isinstance(value, str) else float(value)
+    except (TypeError, ValueError):
+        v = float("nan")
+    if isinstance(value, bool) or not math.isfinite(v) or v <= 0:
+        raise _err("bad_param", "Допуск привязки: нужно число метров больше нуля.",
+                   "Задайте допуск, например 0,005 для чисел с двумя знаками после запятой.",
+                   {"param": "grid.tol"})  # fmt: skip
+    return v
+
+
+def column_quanta(source: Any, geometry: Mapping[str, str | None]) -> tuple[tuple[float, float, float],
+                                                                          tuple[bool, bool, bool]]:  # fmt: skip
+    """The tolerance of the edges of every axis by the types of the columns of the file (ADR 0030 decision 4) and the
+    axes stored as float32: a Micromine DAT field `N` with d decimals is rounded to 0.5·10^−d (an edge is the centre
+    ∓ half the size: the centre's quantum plus half the size's); `F` — the spacing of float32 (the grid takes it from
+    the biggest value); `R`, a CSV and Datamine — exact (1e-6 m)."""
+    fields = {f.name: f for f in getattr(getattr(source, "header", None), "fields", [])}
+    quanta: list[float] = []
+    f4: list[bool] = []
+    for a in "xyz":
+        centre, size = fields.get(geometry.get(a) or ""), fields.get(geometry.get("d" + a) or "")
+
+        def tol_of(f: Any) -> float:
+            if f is not None and f.kind == "N" and getattr(f, "decimals", None) is not None:  # not a Datamine field
+                return column_tol("N", decimals=int(f.decimals))
+            return 0.0
+
+        quanta.append(edge_tol(tol_of(centre), tol_of(size)) if centre is not None else 1e-6)
+        f4.append(any(f is not None and f.kind == "F" for f in (centre, size)))
+    return (quanta[0], quanta[1], quanta[2]), (f4[0], f4[1], f4[2])
+
+
+def column_types(source: Any, geometry: Mapping[str, str | None]) -> dict[str, str]:
+    """The type of the columns of the centre and the size for the diagnosis of a refusal: «R 8» (a double of 8 bytes),
+    «N 10.2» (a number written as text of 10 characters with 2 decimals), «F 4»; a text file or Datamine — «число»."""
+    fields = {f.name: f for f in getattr(getattr(source, "header", None), "fields", [])}
+    out: dict[str, str] = {}
+    for role in ("x", "y", "z", "dx", "dy", "dz"):
+        name = geometry.get(role)
+        if not name:
+            continue
+        f = fields.get(name)
+        decimals = getattr(f, "decimals", None)
+        if f is None or decimals is None:
+            out[role] = "число"
+        elif f.kind == "N":
+            out[role] = f"N {f.width}.{decimals}"
+        else:
+            out[role] = f"{f.kind} {f.width}"
+    return out
+
+
 @dataclass
 class BlockOptions:
-    """`options[<путь>].blocks` (docs/progress/e17-api.md §5) and the encoding and delimiter of a text file. `roles`
+    """`options[<путь>].blocks` (docs/progress/e17-api.md §5) and the encoding and delimiter of a text file. `layout` —
+    `grid` | `list` (ADR 0030 decision 14: a list of blocks only when the user chose it). `roles`
     — the columns the user chose (a role absent or None is found by name, "" — there is no such column); `grid` —
     corner, size, counts, rotation, div (what is absent is read from the file or inferred); `centres` — `project` |
     `model`; `empty` — the codes of «пусто»; `fields` — {column: {unit, role, skip}}."""
@@ -61,6 +129,7 @@ class BlockOptions:
     encoding: str | None = None
     delimiter: str | None = None
     name: str | None = None
+    layout: str = "grid"  # `blocks.layout`: "grid" (parents and sub-blocks) | "list" (a list of boxes, ADR 0030)
 
     @classmethod
     def of(
@@ -83,8 +152,12 @@ class BlockOptions:
                 raise _err("blocks_options", f"Код пустого «{v}» не число.", "Введите числа, например -99.")
             empty.append(float(value))
         fields = {str(k): dict(v or {}) for k, v in dict(raw.get("fields") or {}).items()}
+        layout = str(raw.get("layout") or "grid")
+        if layout not in ("grid", "list"):
+            raise _err("bad_param", f"Способ импорта «{layout}» неизвестен.",
+                       "Допустимо: «grid» — сетка, «list» — список блоков.", {"param": "blocks.layout"})  # fmt: skip
         return cls(roles, dict(raw.get("grid") or {}), centres, empty, fields, raw.get("encoding") or encoding,
-                   raw.get("delimiter") or None, raw.get("name") or name)  # fmt: skip
+                   raw.get("delimiter") or None, raw.get("name") or name, layout)  # fmt: skip
 
     def hint(self, base: GridHint | None) -> GridHint:
         """The hint of the file (its grid line, a Datamine header) overridden by what the wizard says."""
@@ -93,10 +166,11 @@ class BlockOptions:
         return GridHint(
             corner=_triple(g.get("corner"), "Начало сетки") or b.corner,
             size=_triple(g.get("size"), "Размер родителя") or b.size,
-            counts=_triple(g.get("counts"), "Число ячеек", int) or b.counts,
+            counts=_triple(g.get("counts"), "Число ячеек", _whole) or b.counts,
             rotation=b.rotation if rotation in (None, "") else float(rotation),
-            div=_triple(g.get("div"), "Деление на субблоки", int) or b.div,
+            div=_triple(g.get("div"), "Деление на субблоки", _whole) or b.div,
             notes=b.notes,
+            tol=_tol(g.get("tol")),
         )
 
 

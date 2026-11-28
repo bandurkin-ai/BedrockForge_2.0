@@ -4,7 +4,7 @@
  * «Обратить направление» for all or for single trenches, and the preview of what will be loaded.
  */
 import { useEffect, useState } from "react";
-import { bridge } from "../../bridge";
+import { pickFilesIn } from "../../shell/lastFolder";
 import { useStore } from "../../shell/useStore";
 import { isVertexTable, PREVIEW_LIMIT, toggleReverse, trenchSummary, type TrenchState } from "./trenches";
 import type { Wizard } from "./wizard";
@@ -18,7 +18,7 @@ export function TrenchesStep({ wizard }: { wizard: Wizard }) {
   const p = t.preview;
   const table = isVertexTable(t);
   const pick = async () => {
-    const [file] = (await bridge()?.pickFiles("trenches", false)) ?? [];
+    const [file] = await pickFilesIn("trenches", false);
     if (file) await wizard.setTrenchFile(file);
   };
   const allLayers = p?.layers.map((l) => l.name) ?? [];

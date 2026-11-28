@@ -48,7 +48,7 @@ from bf_core.blocks import schema as bs
 from bf_core.blocks.fields_store import FieldsWriter, commit_fields, version_conflict
 from bf_core.blocks.filters import schema as fs
 from bf_core.blocks.jobs import Clock
-from bf_core.blocks.model import CHUNK, Model
+from bf_core.blocks.model import ANY, CHUNK, Model
 from bf_core.db import dialect
 from bf_core.jobs.registry import handler
 from bf_core.storage.blobs import BlobStore
@@ -163,7 +163,7 @@ def run_density(
     clock = Clock(tick, KEYS)
     clock(0.02, S_READ)
     with dialect.read_tx(engine) as conn:
-        model = Model.open(conn, store, int(params["model_id"]))
+        model = Model.open(conn, store, int(params["model_id"]), ANY)
         if model.version != com.expected_version:
             raise version_conflict(model.version)
         check_names(model, [spec.out, spec.src_field], com.replace)
@@ -237,7 +237,7 @@ def run_classify(
     clock = Clock(tick, KEYS)
     clock(0.02, S_READ)
     with dialect.read_tx(engine) as conn:
-        model = Model.open(conn, store, int(params["model_id"]))
+        model = Model.open(conn, store, int(params["model_id"]), ANY)
         if model.version != com.expected_version:
             raise version_conflict(model.version)
         check_names(model, [spec.out], com.replace)

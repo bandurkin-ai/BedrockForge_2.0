@@ -52,6 +52,73 @@ export interface Check3 {
   rows: number[];
 }
 
+/** One of the sizes, offsets or fractions the core counted: the value, m, and how many blocks have it. */
+export interface DiagValue {
+  v: number;
+  n: number;
+}
+
+export interface DiagAxis {
+  axis: "X" | "Y" | "Z";
+  parent: number;
+  origin: number;
+  /** the biggest sizes of the blocks along the axis (≤ 12) and how many different there are */
+  sizes: DiagValue[];
+  distinct: number;
+  /** the denominators q of the fractions of the parent: v = parent / q (0 — no denominator up to 128) */
+  fractions: { v: number; q: number }[];
+  /** the division of the parent the blocks need; null — there is none up to 128 */
+  div: number | null;
+  /** where the blocks start inside their parent (≤ 5 values) */
+  residues: DiagValue[];
+  /** how far an edge may be from its line, m (by the type of the columns) */
+  quantum: number;
+  suggest_tol: number | null;
+  fit: { total: number; aligned: number; before: number; crosses: number; off: number } | null;
+  overflow: boolean;
+}
+
+/** A grid the core offers (or the user may try): the share of blocks that lie on it. */
+export interface DiagCandidate {
+  size: [number, number, number];
+  corner: [number, number, number];
+  div: [number, number, number];
+  tol: [number, number, number];
+  aligned: number;
+  crosses: number;
+  off_grid: number;
+  off_sub: number;
+  current: boolean;
+}
+
+/** `diag` of the 422 `blocks_unaligned` (ADR 0030 decision 5): why the blocks do not lie, in numbers. */
+export interface Diag {
+  rows: number;
+  sample: number;
+  columns: Record<string, string>;
+  axes: DiagAxis[];
+  candidates: DiagCandidate[];
+  causes: string[];
+  text: string[];
+}
+
+/** What the user may do after the refusal (ADR 0030 decision 6): the grid by hand, to leave the file out. */
+export interface UnalignedGrid {
+  corner: [number, number, number];
+  size: [number, number, number];
+  div: [number, number, number];
+  tol: number;
+  rotation: number;
+}
+
+export interface UnalignedOption {
+  id: "grid" | "list" | "cancel" | string;
+  label: string;
+  grid?: UnalignedGrid | null;
+  aligned?: number | null;
+  note?: string;
+}
+
 export interface BlocksError {
   code: string;
   message: string;
@@ -59,6 +126,26 @@ export interface BlocksError {
   /** `blocks_unaligned`: how many blocks and the first rows (0-based) */
   count?: number;
   rows?: number[];
+  by_reason?: { off_grid: number; crosses_parent: number; off_subcells: number };
+  diag?: Diag;
+  choices?: UnalignedOption[];
+  /** `rotation_mismatch`: the largest distance of the three centres of the file from the computed ones, m */
+  dist?: number;
+}
+
+/** `list` of the inspection of a list of blocks (ADR 0030 decision 8): what the model holds. */
+export interface ListSummary {
+  rows: number;
+  /** [xmin, ymin, zmin, xmax, ymax, zmax] of the boxes, the axes of the project */
+  extent: number[];
+  size_min: number[];
+  size_max: number[];
+  /** the enclosing grid: the cells and their size */
+  cells: number[];
+  cell: number[];
+  parents: number;
+  /** the whole file was read (not the first blocks of it) */
+  whole: boolean;
 }
 
 export interface BlocksInfo {
@@ -78,6 +165,9 @@ export interface BlocksInfo {
   check3: Check3 | null;
   warnings: string[];
   error: BlocksError | null;
+  /** `list` — the model is read as a list of blocks (`blocks.layout`); absent or `grid` — parents and sub-blocks */
+  layout?: "grid" | "list";
+  list?: ListSummary | null;
 }
 
 /** What the user typed for one file; the three numbers of a triple are texts, empty — «как в файле». */
@@ -94,6 +184,10 @@ export interface BlocksDraft {
   empty: string;
   /** a text file: "" — found by the file */
   delimiter: string;
+  /** how far an edge of a block may be from its line of the grid, m (ADR 0030 decision 4); "" — by the columns */
+  tol?: string;
+  /** «Импортировать списком блоков» (ADR 0030 decision 14): the model is kept as a list of boxes, no grid of parents */
+  layout?: "grid" | "list";
 }
 
 const NONE: [string, string, string] = ["", "", ""];
@@ -142,6 +236,7 @@ const INTEGER: Record<TripleKey, boolean> = { corner: false, size: false, counts
 export const MAX_DIV = 128;
 
 export interface DraftErrors {
+  tol?: string;
   corner?: string;
   size?: string;
   counts?: string;
@@ -174,7 +269,7 @@ function parseTriple(key: TripleKey, texts: readonly string[]): { value: number[
   const v = parsed as number[];
   if (INTEGER[key] && !v.every((x) => Number.isInteger(x) && x >= 1)) return { value: null, error: `${title}: нужны целые числа от 1.` };
   if (key === "size" && !v.every((x) => x > 0)) return { value: null, error: `${title}: размер должен быть больше нуля.` };
-  if (key === "div" && !v.every((x) => x <= MAX_DIV)) return { value: null, error: `${title}: не больше ${MAX_DIV} по оси (степени двойки: 1, 2, 4 … 128).` };
+  if (key === "div" && !v.every((x) => x <= MAX_DIV)) return { value: null, error: `${title}: целое число, не больше ${MAX_DIV} по оси (например 5 или 10; не обязательно степень двойки).` };
   return { value: v, error: null };
 }
 
@@ -186,9 +281,20 @@ export function parseRotation(text: string): { value: number | null; error: stri
   return { value: v, error: null };
 }
 
+/** The tolerance typed: a number of metres above zero; empty — by the type of the columns. */
+export function parseTol(text: string | undefined): { value: number | null; error: string | null } {
+  const v = parseNumber(text ?? "");
+  if (v === undefined) return { value: null, error: `«${(text ?? "").trim()}» — не число. Допуск пишите в метрах, например 0,005.` };
+  if (v === null) return { value: null, error: null };
+  if (!(v > 0)) return { value: null, error: "Допуск — число метров больше нуля, например 0,005 (не больше четверти подъячейки)." };
+  return { value: v, error: null };
+}
+
 export function draftErrors(d: BlocksDraft | null | undefined): DraftErrors {
   const out: DraftErrors = {};
   if (!d) return out;
+  const t = parseTol(d.tol).error;
+  if (t) out.tol = t;
   for (const k of TRIPLES) {
     const e = parseTriple(k, d[k]).error;
     if (e) out[k] = e;
@@ -206,8 +312,9 @@ export const hasErrors = (e: DraftErrors): boolean => Object.keys(e).length > 0;
 
 export interface BlocksWire {
   roles?: Partial<Record<Geo, string>>;
-  grid?: { corner?: number[]; size?: number[]; counts?: number[]; div?: number[]; rotation?: number };
+  grid?: { corner?: number[]; size?: number[]; counts?: number[]; div?: number[]; rotation?: number; tol?: number };
   centres?: "model";
+  layout?: "list";
   empty?: number[];
   fields?: Record<string, { unit?: string; role?: FieldRole; skip?: boolean }>;
   delimiter?: string;
@@ -248,8 +355,11 @@ export function blocksWire(draft: BlocksDraft, info: BlocksInfo | null): BlocksW
   }
   const turn = parseRotation(draft.rotation).value;
   if (turn !== null) grid.rotation = turn;
+  const tol = parseTol(draft.tol).value;
+  if (tol !== null) grid.tol = tol;
   if (Object.keys(grid).length) out.grid = grid;
   if (draft.centres === "model") out.centres = "model";
+  if (draft.layout === "list") out.layout = "list";
   const codes = parseCodes(draft.empty);
   if (!codes.error && codes.codes.length) out.empty = codes.codes;
   if (draft.delimiter) out.delimiter = draft.delimiter;
@@ -262,13 +372,13 @@ export const n = (v: number, digits = 3): string => v.toLocaleString("ru-RU", { 
 const SUPER: Record<string, string> = { "-": "\u207b", "0": "\u2070", "1": "\u00b9", "2": "\u00b2", "3": "\u00b3", "4": "\u2074", "5": "\u2075", "6": "\u2076", "7": "\u2077", "8": "\u2078", "9": "\u2079" };
 
 /** «2,4·10⁻¹⁰»: a small distance as a power of ten (a plain number would be a row of zeros). */
-function small(v: number): string {
+export function small(v: number): string {
   if (v === 0) return "0";
   if (v >= 1e-3) return n(v, 6);
   const [mantissa, exponent] = v.toExponential(1).split("e");
   return `${mantissa.replace(".", ",")}\u00b710${[...String(Number(exponent))].map((c) => SUPER[c] ?? c).join("")}`;
 }
-const triple = (v: readonly number[], sep = " × "): string => v.map((x) => n(x)).join(sep);
+export const triple = (v: readonly number[], sep = " × "): string => v.map((x) => n(x)).join(sep);
 
 /** «443 × 558 × 102 родителей по 10 × 10 × 10 м; начало 23 436 265,92; …; поворот 30°; деление 8 × 4 × 4» */
 export function gridText(g: GridMeta): string {
@@ -281,7 +391,7 @@ export function gridText(g: GridMeta): string {
 /** The check of three centres (ТЗ 8.7.2): the first, the middle and the last block of the file against the grid. */
 export function check3Text(info: BlocksInfo): { ok: boolean; text: string } | null {
   const c = info.check3;
-  if (!c) return null;
+  if (!c || info.layout === "list") return null; // a list has no grid to compare the centres with
   const rows = c.rows.map((r) => n(r + 1, 0)).join(", ");
   const dist = small(c.dist);
   return c.ok
@@ -327,6 +437,7 @@ export function findingsText(f: Findings): string[] {
 export function headline(info: BlocksInfo): string {
   const rows = `${info.rows_exact ? "" : "около "}${n(info.rows, 0)}`;
   const parts = [`${info.label}`, `блоков ${rows}`];
+  if (info.layout === "list") return [...parts, "список блоков"].join(" · ");
   if (info.parents) parts.push(`родителей ${n(info.parents, 0)}`);
   if (info.sub) parts.push("с субблоками");
   return parts.join(" · ");
@@ -347,3 +458,6 @@ export const DELIMITERS: { id: string; title: string }[] = [
 ];
 
 export const isTextFormat = (format: string): boolean => format === "csv" || format === "csv_micromine";
+
+// the refusal «blocks_unaligned» and the list of blocks (ADR 0030): the panel of the choice, its texts — `unaligned.ts`
+export * from "./unaligned";

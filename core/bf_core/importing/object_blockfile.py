@@ -41,24 +41,26 @@ import sqlalchemy as sa
 
 from bf_core.api.errors import ApiError
 from bf_core.blocks import checks as bcheck
-from bf_core.blocks import geometry as geo
 from bf_core.blocks import schema as bs
-from bf_core.blocks.grid_infer import OK, GridScan, Unaligned
+from bf_core.blocks.grid_diag import Sample, choices_of, diagnose
+from bf_core.blocks.grid_infer import OK, GridScan, Unaligned, shifted_note
+from bf_core.blocks.list_layout import ListScan
 from bf_core.formats import blocks_roles as br
 from bf_core.formats.blocks_text import CHUNK_ROWS, BlockSource, TextColumn, empty_to_nan, text_is_empty
 from bf_core.formats.errors import FormatError
 from bf_core.jobs.context import JobError
 
+from .blockfile_cells import PORTION, Cells, _arrange, _cells  # noqa: F401  (Cells: the module's contract)
 from .blockfile_parts import (
     WATCHED,
     FieldPlan,
     Resolved,
     Spool,
     Tick,
-    _err,
     _n,
-    busy,
     check_roles,
+    column_quanta,
+    column_types,
     plan_fields,
     resolve,
 )
@@ -70,7 +72,6 @@ __all__ = [
     "memory", "open_source", "write_blockfile",
 ]  # fmt: skip
 
-PORTION = bs.ROW_GROUP_V2  # rows written and taken from the spool at a time
 INSPECT_ROWS = 2_000_000
 MAX_NOTES = 40
 DATAMINE_SUFFIXES = (".dm", ".fbm")
@@ -102,8 +103,8 @@ class BlockFile(Blocks):
 # --- reading -----------------------------------------------------------------------------------------------------
 
 
-def _read(source: BlockSource, res: Resolved, plans: list[FieldPlan], opts: Any, spool: Spool, scan: GridScan,
-          tick: Tick, notes: list[str]) -> int:  # fmt: skip
+def _read(source: BlockSource, res: Resolved, plans: list[FieldPlan], opts: Any, spool: Spool,
+          scan: GridScan | ListScan, tick: Tick, notes: list[str]) -> int:  # fmt: skip
     """Pass 1: the portions of the file into the spool and the scan of the grid; the rows read."""
     from bf_core.formats.numbers import number_text
 
@@ -162,97 +163,6 @@ def _free_check(folder: Path, rows: int, columns: int) -> None:
                        "Освободите место на диске с проектом и повторите импорт.")  # fmt: skip
 
 
-@dataclass
-class Cells:
-    """Pass 2: the rows (P, s, w) of the blocks in the order of the file; `valid` — the raw rows that are blocks."""
-
-    p: np.ndarray
-    s: np.ndarray | None
-    w: np.ndarray | None
-    valid: np.ndarray  # the raw row numbers (ascending) of the rows that are blocks
-    invalid: int
-    check3: Any
-
-
-def _cells(inferred: Any, spool: Spool, rows: int, res: Resolved, tick: Tick) -> Cells:
-    sub = inferred.sub
-    p = np.empty(rows, dtype=np.uint64)
-    bad = np.empty(rows, dtype=np.int8)
-    s = np.empty((rows, 3), dtype=np.uint8) if sub else None
-    w = np.empty((rows, 3), dtype=np.uint8) if sub else None
-    lost = Unaligned()
-    names = ("x", "y", "z", "dx", "dy", "dz") if res.sized else ("x", "y", "z")
-
-    def geometry(a: int, b: int) -> tuple[np.ndarray, np.ndarray | None]:
-        c = np.column_stack([spool.read(k, a, b) for k in names[:3]])
-        return c, (np.column_stack([spool.read(k, a, b) for k in names[3:]]) if res.sized else None)
-
-    for a in range(0, rows, PORTION):
-        b = min(rows, a + PORTION)
-        c, d = geometry(a, b)
-        cells = inferred.rows_of(c, d)
-        lost.add(a, cells)
-        p[a:b], bad[a:b] = cells.p, cells.bad
-        if s is not None and w is not None and cells.s is not None and cells.w is not None:
-            s[a:b], w[a:b] = cells.s, cells.w
-        tick(0.45 + 0.05 * b / rows, "Сетка и ячейки")
-    lost.raise_if()
-    valid = np.flatnonzero(bad == OK)
-    if not len(valid):
-        raise _err("block_model_invalid", "В файле нет ни одного блока с центром и размером.",
-                   "Проверьте столбцы центров и размеров.")  # fmt: skip
-    three = sorted({int(valid[0]), int(valid[len(valid) // 2]), int(valid[-1])})
-    rows3 = [geometry(r, r + 1) for r in three]
-    centres3 = np.vstack([c for c, _ in rows3])  # type: ignore[misc]
-    sizes3 = np.vstack([d for _, d in rows3]) if res.sized else None  # type: ignore[misc]
-    check3 = inferred.check3(centres3, sizes3, three)
-    if len(valid) != rows:  # rows without a centre or a size are not blocks
-        p, s, w = p[valid], None if s is None else s[valid], None if w is None else w[valid]
-    return Cells(p, s, w, valid, lost.invalid, check3)
-
-
-# --- sorting, repeated rows ---------------------------------------------------------------------------------------
-
-
-@dataclass
-class Arranged:
-    """The blocks in the order of the model: `sel` — their raw rows; the repeated ones are left out and counted."""
-
-    sel: np.ndarray
-    p: np.ndarray
-    s: np.ndarray | None
-    w: np.ndarray | None
-    counts: dict[str, int]
-    examples: dict[str, list[dict[str, Any]]]
-
-
-def _arrange(cells: Cells, rows: int, tick: Tick) -> Arranged:
-    p, s, w = cells.p, cells.s, cells.w
-    order = busy(lambda: bs.sort_rows(p, s), tick, 0.5, "Сортировка")
-    sel = order if len(cells.valid) == rows else cells.valid[order]
-    p, s, w = p[order], None if s is None else s[order], None if w is None else w[order]
-    del order
-    key = geo.row_keys(p, s)
-    same = np.zeros(len(key), dtype=bool)
-    same[1:] = key[1:] == key[:-1]
-    del key
-    counts = {"duplicate": 0, "overlap": 0}
-    examples: dict[str, list[dict[str, Any]]] = {"duplicate": [], "overlap": []}
-    if same.any():
-        head = np.maximum.accumulate(np.where(same, 0, np.arange(len(same))))
-        exact = same if w is None else same & (w == w[head]).all(axis=1)
-        for kind, mask in (("duplicate", exact), ("overlap", same & ~exact)):
-            at = np.flatnonzero(mask)
-            counts[kind] = len(at)
-            for i in at[: bs.MAX_EXAMPLES]:
-                sub = None if s is None or w is None else [*map(int, s[i]), *map(int, w[i])]
-                examples[kind].append({"check": kind, "row": int(sel[i]), "p": int(p[i]),
-                                       "other_row": int(sel[head[i]]), "sub": sub})  # fmt: skip
-        keep = ~same
-        sel, p, s, w = sel[keep], p[keep], None if s is None else s[keep], None if w is None else w[keep]
-    return Arranged(sel, p, s, w, counts, examples)
-
-
 # --- the import --------------------------------------------------------------------------------------------------
 
 
@@ -279,7 +189,14 @@ def import_model(
     res = resolve(source.names, source.kinds, opts)
     plans = plan_fields(res, source.kinds, opts)
     notes: list[str] = []
-    scan = GridScan(opts.hint(source.hint), centres=opts.centres)
+    quanta, f4 = column_quanta(source, res.geometry)
+    listed = opts.layout == "list"  # a list of blocks (ADR 0030): `blockfile_list.write_list` is pass 2 and the write
+    if listed and not res.sized:
+        from bf_core.blocks.list_layout import sizes_needed
+
+        raise sizes_needed()
+    scan: GridScan | ListScan = (ListScan(opts.hint(source.hint), centres=opts.centres) if listed else
+                                 GridScan(opts.hint(source.hint), centres=opts.centres, quanta=quanta, f4=f4))
     spool = Spool(workdir / "spool")
     writer: bm.CellsWriterV2 | None = None
     staged: bm.StagedCells | None = None
@@ -288,14 +205,27 @@ def import_model(
         tick(0.0, "Чтение")
         rows = _read(source, res, plans, opts, spool, scan, tick, notes)
         spool.flush()
+        if listed:
+            from .blockfile_list import write_list
+
+            notes = [*notes, *check_roles(plans, opts.fields)]
+            return write_list(source, res, plans, opts, spool, scan, rows, notes, engine=engine, store=store,  # type: ignore[arg-type]
+                              name=name, label=label, tick=tick, log=log, folder=folder, state=state, job_id=job_id,
+                              author=author)  # fmt: skip
+        assert isinstance(scan, GridScan)
         inferred = scan.finish()
         notes = [*inferred.warnings, *notes, *check_roles(plans, opts.fields)]
-        cells = _cells(inferred, spool, rows, res, tick)
+        cells = _cells(scan, inferred, spool, rows, res, tick, column_types(source, res.geometry))
         if not cells.check3.ok:
             notes.append(f"Центры трёх блоков (строки {', '.join(str(r + 1) for r in cells.check3.rows)}) расходятся "
                          f"с вычисленными на {cells.check3.dist:.3g} м.")  # fmt: skip
         if cells.invalid:
             notes.append(f"Строк без центра или с размером ≤ 0: {_n(cells.invalid)} — пропущены.")
+        if cells.shifted:
+            notes.append(shifted_note(cells.shifted, cells.max_shift))
+        # what the fit moved (only when it did: a model of exact numbers keeps the source of 0.5.0)
+        moved = {"tol": [*inferred.tol], "shifted": cells.shifted, "max_shift": cells.max_shift}
+        fit = {"params": moved} if cells.shifted else {}
         arr = _arrange(cells, rows, tick)
         del cells
         if arr.counts["overlap"]:
@@ -349,7 +279,8 @@ def import_model(
 
         with dialect.write_tx(engine) as conn:
             bm_id = bm.commit_block_model(
-                conn, store, staged, name=name, source={"format": source.format, "file": label},
+                conn, store, staged, name=name,
+                source={"format": source.format, "file": label, **fit},
                 warnings=notes[:MAX_NOTES], folder=folder, state=state, job_id=job_id, author=author,
             )  # fmt: skip
             final = conn.execute(sa.select(objects.c.name).where(objects.c.id == bm_id)).scalar_one()
@@ -413,8 +344,12 @@ def is_blockfile(path: str | Path, chosen: Mapping[str, Any] | None = None) -> b
     return roles.has_centre and roles.has_size and br.looks_like_block_model(peek[1])
 
 
-def memory(path: Path, size: int) -> int:
-    """MB the job needs: the keys and rows of the sort (≈ 70 bytes a block) and the portions of the writing."""
+LIST_BYTES = 130  # a list of blocks keeps the centres and sizes of all rows (≈ 100 bytes a block) and a reserve
+
+
+def memory(path: Path, size: int, listed: bool = False) -> int:
+    """MB the job needs: the keys and rows of the sort (≈ 70 bytes a block; a list of blocks — `LIST_BYTES`: the boxes
+    of all the rows are held for the sort and the overlaps) and the portions of the writing."""
     from bf_core.formats.blocks_text import peek_names
 
     rows = size // 40  # a text row of a block file
@@ -426,7 +361,7 @@ def memory(path: Path, size: int) -> int:
             rows = max(0, size - h.data_offset) // max(h.record_size, 1)
     except (FormatError, OSError):
         pass
-    return int(1024 + rows * 70 / 2**20)
+    return int(1024 + rows * (LIST_BYTES if listed else 70) / 2**20)
 
 
 def write_blockfile(
@@ -450,7 +385,7 @@ def write_blockfile(
     except ApiError as exc:  # the grid, the fields or the writer refused the file
         if exc.code in ("disk_full", "out_of_memory"):
             raise JobError(exc.code, exc.message, exc.hint) from exc
-        raise FormatError(exc.code, exc.message, exc.hint) from exc
+        raise FormatError(exc.code, exc.message, exc.hint, exc.extra) from exc  # `diag`, `choices` go with it
     out = BlockFile(format=source.format, warnings=done.warnings)
     out.ids.append(done.model_id)
     out.counts.append({"kind": "block_model", "name": done.name, "cells": done.rows, "fields": len(done.fields),
@@ -520,7 +455,7 @@ def _inspect(source: BlockSource, opts: BlockOptions, tick: Tick | None, sample:
         "rows_exact": source.rows is not None,
         "columns": [], "roles": {a: found.geometry[a] for a in br.GEOMETRY}, "grid": None, "sub": False, "parents": 0,
         "empty_candidates": [], "units": {}, "fields": [], "check3": None, "warnings": [], "error": None,
-        "encoding": source.encoding,
+        "encoding": source.encoding, "layout": opts.layout, "list": None,
     }  # fmt: skip
     try:
         res = resolve(source.names, source.kinds, opts)
@@ -533,7 +468,16 @@ def _inspect(source: BlockSource, opts: BlockOptions, tick: Tick | None, sample:
     out["columns"] = [{"name": n, "type": source.kinds[n], "role": by_role.get(n)} for n in source.names]
     geometry = {k: c for k, c in res.geometry.items() if c}
     plans = plan_fields(res, source.kinds, opts)
-    scan = GridScan(opts.hint(source.hint), centres=opts.centres)
+    quanta, f4 = column_quanta(source, res.geometry)
+    listed = opts.layout == "list"
+    if listed and not res.sized:  # a list is boxes: without the sizes there is nothing to keep
+        from bf_core.blocks.list_layout import sizes_needed
+
+        err = sizes_needed()
+        out["error"] = {"code": err.code, "message": err.message, "hint": err.hint}
+        return out
+    scan: GridScan | ListScan = (ListScan(opts.hint(source.hint), centres=opts.centres) if listed else
+                                 GridScan(opts.hint(source.hint), centres=opts.centres, quanta=quanta, f4=f4))
     cs: list[np.ndarray] = []
     ds: list[np.ndarray] = []
     stats = {p.column: _Stat() for p in plans if not p.text}
@@ -560,26 +504,38 @@ def _inspect(source: BlockSource, opts: BlockOptions, tick: Tick | None, sample:
     if read >= sample and (source.rows is None or source.rows > read):
         notes.append(f"Сетка выведена по первым {_n(read)} блокам; при импорте файл читается весь.")
     try:
-        inferred = scan.finish()
+        inferred: Any = scan.finish()
         notes[:0] = inferred.warnings
         c_all = np.concatenate(cs)
         d_all = np.concatenate(ds) if ds else None
-        cells = inferred.rows_of(c_all, d_all)
-        lost = Unaligned()
-        lost.add(0, cells)
-        lost.raise_if()
-        valid = np.flatnonzero(cells.bad == OK)
-        three = sorted({int(valid[0]), int(valid[len(valid) // 2]), int(valid[-1])})
-        check = inferred.check3(c_all[three], None if d_all is None else d_all[three], three)
+        if isinstance(scan, ListScan):  # a list of blocks: every block lies; the enclosing grid, no check of centres
+            from .blockfile_list import list_view
+
+            out.update(list_view(inferred, c_all, d_all, read, source.rows is None or read >= (source.rows or 0)))
+            n_invalid = out.pop("_invalid")
+        else:
+            cells = inferred.rows_of(c_all, d_all)
+            lost = Unaligned()
+            lost.add(0, cells)
+            if lost.count:  # why the blocks do not lie, and what the user may do (ADR 0030 decisions 5–6)
+                picked = Sample(len(c_all))
+                picked.add(0, c_all, d_all)
+                diag = diagnose(scan, inferred, *picked.arrays(), rows=read,
+                                columns=column_types(source, res.geometry), lost=lost)  # fmt: skip
+                lost.raise_if(diag, choices_of(diag, inferred.grid.rotation))
+            valid = np.flatnonzero(cells.bad == OK)
+            three = sorted({int(valid[0]), int(valid[len(valid) // 2]), int(valid[-1])})
+            check = inferred.check3(c_all[three], None if d_all is None else d_all[three], three)
+            n_invalid = lost.invalid
+            out["grid"] = inferred.grid.to_meta()
+            out["sub"] = inferred.sub
+            out["parents"] = int(np.unique(cells.p[valid]).size)
+            out["check3"] = check.as_dict()
     except ApiError as exc:
-        out["error"] = {"code": exc.code, "message": exc.message, "hint": exc.hint, **exc.extra}
+        out["error"] = {**exc.extra, "code": exc.code, "message": exc.message, "hint": exc.hint}
         return out
-    out["grid"] = inferred.grid.to_meta()
-    out["sub"] = inferred.sub
-    out["parents"] = int(np.unique(cells.p[valid]).size)
-    out["check3"] = check.as_dict()
-    if lost.invalid:
-        notes.append(f"Строк без центра или с размером ≤ 0: {_n(lost.invalid)} — будут пропущены.")
+    if n_invalid:
+        notes.append(f"Строк без центра или с размером ≤ 0: {_n(n_invalid)} — будут пропущены.")
     out["empty_candidates"] = sorted({c for st in stats.values() for c in st.empty})
     for p in plans:  # the roles the sample refuses: the same rule as the import (`check_roles`)
         stat = stats.get(p.column)

@@ -41,7 +41,7 @@ v1 не переписываются; первая запись v2 (поле к�
 | Точка | p = O + R_z(φ)·q; O = `grid.corner` (минимум локальных координат), φ = `grid.rotation` ∈ (−180°; 180°], против часовой при виде сверху; sin/cos кратных 90° — точные (`GridV2.sin_cos`) |
 | Сетка | `counts` [nx, ny, nz], nx·ny·nz ≤ 2·10⁹ (`MAX_GRID_V2`; сетка v1 — ≤ 2·10⁸, `MAX_CELLS`), `size` [dx, dy, dz] или `tensors` (переменный шаг OMF: показ, фильтр, отчёт, экспорт; субблоки, заполнение, регуляризация — 422 `variable_grid {param: "grid.tensors"}`) |
 | P | P = i + nx·(j + ny·k), uint64 (ADR 0017; Мортон ТЗ 6.5/8.7.2 — вопрос № 62) |
-| Субблоки | `div` [2^Lx, 2^Ly, 2^Lz], L ≤ 7; строка — (P, s, w): s = sx sy sz (смещение в подъячейках, 0…div−1), w = wx wy wz (размер, ≥ 1, s + w ≤ div), uint8; родитель целиком — s = 0, w = div. Центр строки в локальных осях: q_a = (i_a + (s_a + w_a/2)/div_a)·d_a |
+| Субблоки | `div` [nx, ny, nz] — любое целое 1…128 по оси (ADR 0030: 5, 3, 2·3 …; не только 2^L — «уровни» L есть, только если все `div` степени двойки); строка — (P, s, w): s = sx sy sz (смещение в подъячейках, 0…div−1), w = wx wy wz (размер, ≥ 1, s + w ≤ div), uint8; родитель целиком — s = 0, w = div. Центр строки в локальных осях: q_a = (i_a + (s_a + w_a/2)/div_a)·d_a |
 | Порядок строк | (P, sz, sy, sx) строго по возрастанию — все файлы модели (`schema.sort_rows`, `schema.ascending`) |
 | Объём строки | Π_a(w_a·d_a/div_a) · FRAC, если у модели есть поле `role: "frac"` (не больше одного); FRAC пусто — блок не входит в объём (пропуск не ноль: объём `null`) |
 | `rows`, `parents`, `sub`, `full` | строк файлов; занятых родителей; есть столбцы sx…wz; прототип (0 строк), у которого все родители считаются занятыми (№ 66, по умолчанию false) |
@@ -71,6 +71,19 @@ v1 не переписываются; первая запись v2 (поле к�
 `stats/blocks_cache.py`, снимает 17.10; экспорт OMF — 17.15 (`exporting/omf_job.py`: поворот Z пишется, субблоки —
 `omf_subblocks`).
 
+### Список блоков — meta v3 (ADR 0030 реш. 8–12, Д-45 А6)
+
+`{"v": 3, "layout": "list", …}` — всё как v2, но: `grid` — охватывающая сетка (`div` [1, 1, 1], постоянный шаг),
+`sub` и `full` — false, `parents` ≤ `rows` (занятые ячейки центров), `checks.overlaps.method = "boxes"`. Файл `cells`:
+`idx` u64 (ячейка охватывающей сетки с центром блока), `cx cy cz dx dy dz` f8 (центр и размер, локальные оси модели:
+проектная точка центра — `grid.to_project`), затем поля; строки по (idx, cz, cy, cx), те же группы строк, файлы `fld:`
+в тех же группах. `GET /blocks[/{id}]` даёт `meta_v: 3` и `layout: "list"` (у v1/v2 ключа нет). `Model.open(…, layout=ANY)`
+пускает список только операции, которая читает боксы: отчёт, экспорт DAT/CSV/Parquet, фильтры, калькулятор, плотность,
+категории (без мажоритарного фильтра), проверка, показ (`blocks` BFA1: 6 граней блока, совпавшие грани соседей скрыты,
+выше лимита — укрупнение по ячейкам 2^ℓ), блок под точкой, регуляризация; остальные — 422 `block_list_unsupported`
+«Операция «…» недоступна для модели-списка блоков» + подсказка «Регуляризуйте модель: Блочные модели → Регуляризация»
+(срез, оценка, ресурсы, карьер, заполнение, кодирование, сравнение, статистика по сетке, OMF).
+
 ## 3. Интерфейсы Python
 
 ```python
@@ -81,8 +94,8 @@ class SubblockSpec:
     @classmethod
     def of(cls, raw: Sequence | None) -> SubblockSpec          # 422 subblock_div {param: "grid.div.N"}
     @classmethod
-    def of_levels(cls, levels: Sequence[int]) -> SubblockSpec  # L 0…7 → 2^L
-    levels: tuple[int, int, int]; sub: bool                    # свойства
+    def of_levels(cls, levels: Sequence[int]) -> SubblockSpec  # L 0…7 → 2^L (прототип и заполнение — по-прежнему 2^L)
+    levels: tuple[int, int, int] | None; sub: bool             # None — div не 2^L (ADR 0030); свойства
     def bad_rows(self, s, w) -> np.ndarray[bool]               # n×3 → строки не по подъячейкам
 
 @dataclass(frozen=True)
@@ -177,7 +190,7 @@ updated_at, stale, stale_reason, …public_meta}`. `size` — байты все�
 {"id": 12, "name": "Модель", "folder": null, "version": 3, "extent": [950.5, 2000.25, -300.0, 1130.4, 2161.9, -250.0],
  "crs": null, "size": 81920, "stale": false, "stale_reason": null, "meta_v": 2,
  "grid": {"corner": [1000.5, 2000.25, -300.0], "counts": [30, 20, 20], "size": [5.0, 5.0, 2.5], "order": "F",
-          "rotation": 30.0, "div": [8, 8, 4], "variable": false, "levels": [3, 3, 2]},
+          "rotation": 30.0, "div": [8, 8, 4], "variable": false, "levels": [3, 3, 2]},   # levels: null при div [5, 5, 3]
  "cells": 5210, "rows": 5210, "parents": 1200, "sub": true, "full": false,
  "fields": [{"name": "AU", "kind": "number", "dtype": "f8", "unit": "г/т", "description": null, "role": "grade",
              "stats": {"count": 5000, "missing": 210, "min": 0.01, "max": 12.3, "mean": 1.1, "std": 0.9},
@@ -206,12 +219,19 @@ updated_at, stale, stale_reason, …public_meta}`. `size` — байты все�
 
 ```json
 {"roles": {"x": "XC", "y": "YC", "z": "ZC", "dx": "XINC", "dy": "YINC", "dz": "ZINC"},
- "grid": {"corner": [x, y, z], "size": [dx, dy, dz], "counts": [nx, ny, nz], "rotation": 0, "div": [1, 1, 1]} ,
+ "grid": {"corner": [x, y, z], "size": [dx, dy, dz], "counts": [nx, ny, nz], "rotation": 0, "div": [1, 1, 1], "tol": 0.005} ,
  "centres": "project", "empty": [-99], "fields": {"AU": {"unit": "г/т", "role": "grade", "skip": false}}}
 ```
 
 `roles` — столбцы центра и размера (нет `dx…dz` — регулярная модель); `grid` — null: выводится (`grid_infer`:
-min(центр) − размер/2, шаг по уникальным центрам, начало кратно размеру; DM — XMORIG… из файла); `centres` —
+min(центр) − размер/2, шаг по уникальным центрам, начало кратно размеру; DM — XMORIG… из файла). `div` — любое целое
+1…128 по оси (ADR 0030: 5, 3, 2·3 …, не только 2^L); не задан — выводится как НОК знаменателей дробей родителя
+(`grid_lattice`; родитель — самый большой блок, а если блоки так не ложатся, то 2×, 3×, 4× от него; начало — по модам
+остатков целых блоков). `tol` — допуск привязки, м: насколько грань блока может отстоять от линии сетки (0 < tol ≤ ¼
+подъячейки, иначе 422 `bad_param {param: "grid.tol"}`); не задан — по типу столбцов (Micromine N с d знаками — 0,5·10⁻ᵈ
+для центра плюс половина того же для размера, F — единица последнего бита, R/CSV/Datamine — 1e−6 м); блоки, сдвинутые
+больше 1e−6 м, считаются: предупреждение «Центры уточнены до сетки: N блоков, наибольший сдвиг … м» и
+`source.params {tol, shifted, max_shift}` модели. `centres` —
 `project` | `model` (в каких осях записаны центры, для повёрнутой модели); `empty` — коды пустого (по умолчанию []
 — мастер предлагает −99, если встречается); `fields` — единица, роль, пропуск поля.
 
@@ -226,10 +246,49 @@ min(центр) − размер/2, шаг по уникальным центр�
 ```
 
 Итог задания — запись `files[]`: `{file, format, kind: "block_model", object_id, rows, parents, sub, checks}`.
-Отказ файла (строка журнала и `failed[]`): 422 `blocks_unaligned {count, rows ≤ 20}` (блок за началом сетки,
-субблок через границу родителя или не по подъячейкам), `rotation_mismatch {rows, dist}` (три центра — первая,
-средняя, последняя строки — дальше 1e−6 м от вычисленных), `rotation_unsupported`, `subblock_div`,
-`variable_grid`, `block_model_too_large`, `too_many_labels`, `disk_full`. Дубликаты (остаётся первая строка),
+Отказ файла (строка журнала и `failed[]`): 422 `blocks_unaligned` (блок за началом сетки, субблок через границу
+родителя или не по подъячейкам деления; ADR 0030), `rotation_mismatch {rows, dist, choices}` (три центра — первая,
+средняя, последняя строки — дальше допуска, по умолчанию 1e−6 м, от вычисленных), `rotation_unsupported`, `subblock_div`,
+`variable_grid`, `block_model_too_large`, `too_many_labels`, `disk_full`.
+
+`blocks_unaligned` называет причину и даёт выбор (тот же объект — в `inspect` (`files[].blocks.error`), в `failed[]`
+задания и в `FormatError.extra`; тело ≤ 16 КБ, побитно одинаково при повторе):
+
+```json
+{"code": "blocks_unaligned",
+ "message": "Блоков, которые нельзя уложить в сетку модели: 626 791 (не по подъячейкам деления родителя — 626 791). По Z 412 различных высот, общего деления родителя нет — субблоки произвольного размера.",
+ "hint": "Строки данных (с 1): 4, 9, 12 и другие. Субблоки должны делить родителя … Задайте родителя и начало сетки вручную или отмените импорт файла.",
+ "count": 626791, "rows": [3, 8, 11], "by_reason": {"off_grid": 0, "crosses_parent": 0, "off_subcells": 626791},
+ "diag": {"rows": 1012620, "sample": 200000, "columns": {"x": "R 8", "dx": "N 10.2"},
+          "axes": [{"axis": "X", "parent": 10.0, "origin": 0.0, "sizes": [{"v": 10.0, "n": 400000}], "distinct": 2,
+                    "fractions": [{"v": 2.0, "q": 5}], "div": 5 | null, "residues": [{"v": 0.0, "n": 700000}],
+                    "quantum": 1e-06, "suggest_tol": null | 0.01, "overflow": false,
+                    "fit": {"total": n, "aligned": n, "before": n, "crosses": n, "off": n}}],
+          "candidates": [{"size": [10, 10, 20], "corner": [x, y, z], "div": [5, 5, 20], "tol": [1e-06, 1e-06, 0.01],
+                          "aligned": 0.62, "crosses": 0.0, "off_grid": 0.0, "off_sub": 0.38, "current": false}],
+          "causes": ["div_too_fine" | "off_lattice" | "two_origins" | "rounded" | "crosses_parent" | "off_grid"],
+          "text": ["По Z 412 различных высот, общего деления родителя нет — субблоки произвольного размера."]},
+ "choices": [{"id": "grid", "label": "Задать сетку вручную",
+              "grid": {"corner": [x, y, z], "size": [10, 10, 20], "div": [5, 5, 20], "tol": 0.01, "rotation": 0.0},
+              "aligned": 0.62},
+             {"id": "list", "label": "Импортировать списком блоков",
+              "note": "показ, фильтры, калькулятор, отчёт, экспорт; оценка и карьер — после регуляризации"},
+             {"id": "cancel", "label": "Не импортировать этот файл"}]}
+```
+
+`diag` считается только при отказе (`blocks/grid_diag.py`): по статистике всего файла (различные пары «нижняя грань —
+размер» каждой оси со счётчиками) и по выборке ≤ 200 000 строк с равным шагом (совместное попадание кандидатов).
+`aligned`/`crosses`/`off_grid`/`off_sub` — доли блоков выборки. «Задать сетку вручную» заполняет поля сетки мастера
+кандидатом `choices[0].grid` (поле «Допуск, м» — `grid.tol`) и перечитывает файл; «Не импортировать» убирает файл из
+выбора. «Импортировать списком блоков» (ADR 0030 реш. 14–18, 27.4в–г) ставит `options[путь].blocks.layout = "list"` и
+перечитывает файл: `inspect` отвечает `files[].blocks.layout: "list"`, `sub: false`, `grid` — охватывающая сетка (`div`
+[1, 1, 1]), `list` `{rows, extent [xmin…zmax], size_min, size_max, cells, cell, parents, whole}`, `check3.ok = true`,
+`error: null` (сводка «Список блоков: N, охват …»); без столбцов размеров — 422 `block_list_sizes`; `blocks.grid`:
+`rotation`, `corner` (точка поворота), `size` (ячейка охватывающей сетки, не меньше самого большого блока), `centres`;
+`blocks.grid.tol`, `div`, `counts` игнорируются. Задание кладёт модель `block_model` с meta v3 (§2), в журнале — «Модель
+импортирована списком блоков». У `rotation_mismatch` те же `choices` без `diag` (форма сетки — от выведенной сетки),
+с `rows` и `dist` в теле ошибки. `FormatError(code, message, hint, extra)` несёт `extra`
+в `failed[]` рядом с `code, message, hint`. Дубликаты (остаётся первая строка),
 перекрытия, пустые и постоянные поля, объём — в `meta.checks`. Стадии: «Чтение», «Сортировка», «Запись».
 
 ## 6. Прототип

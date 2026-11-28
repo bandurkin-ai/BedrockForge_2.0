@@ -106,7 +106,8 @@ class Plan:
     def params(self) -> dict[str, Any]:
         """`source.params` of the model: enough to repeat the request."""
         return {"size": list(self.grid.size or ()), "extent": list(self.extent), "pad": list(self.pad),
-                "rotation": self.grid.rotation, "levels": list(self.grid.sub.levels), "full": self.full}  # fmt: skip
+                "rotation": self.grid.rotation, "levels": list(self.grid.sub.levels or ()) or None,
+                "full": self.full}  # fmt: skip
 
 
 def make_plan(

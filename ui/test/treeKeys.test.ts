@@ -5,6 +5,15 @@ import { toggleExpanded, treeKey, type KeyRow } from "../src/shell/tree";
 const rows: KeyRow[] = [{ level: 1, expanded: true }, { level: 2, expanded: true }, { level: 3 }, { level: 2 }, { level: 1, expanded: false }];
 
 describe("tree keyboard (ТЗ 7.35 Д-03, WAI-ARIA tree)", () => {
+  it("Shift+↑/↓ extend the chosen range, Ctrl+Space switches the row in the chosen objects (Д-44 А5)", () => {
+    expect(treeKey("ArrowDown", rows, 1, { shift: true })).toEqual({ kind: "extend", index: 2 });
+    expect(treeKey("ArrowUp", rows, 1, { shift: true })).toEqual({ kind: "extend", index: 0 });
+    expect(treeKey("ArrowUp", rows, 0, { shift: true })).toBeNull();
+    expect(treeKey("ArrowDown", rows, 4, { shift: true })).toBeNull();
+    expect(treeKey(" ", rows, 2, { ctrl: true })).toEqual({ kind: "toggle", index: 2 });
+    expect(treeKey(" ", rows, 2)).toEqual({ kind: "check", index: 2 });
+  });
+
   it("↑/↓, Home/End move between visible rows", () => {
     expect(treeKey("ArrowDown", rows, 0)).toEqual({ kind: "focus", index: 1 });
     expect(treeKey("ArrowDown", rows, 4)).toBeNull();

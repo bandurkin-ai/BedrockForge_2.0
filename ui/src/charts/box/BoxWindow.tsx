@@ -15,6 +15,7 @@ import { ChartWindow } from "../ChartWindow";
 import { ChartToolbar } from "../core/ChartToolbar";
 import { DomainSource, fieldLabel, keepField, useStatsFields } from "../core/Pickers";
 import { SampleFilterForm } from "../SampleFilterForm";
+import { ColorField } from "../../shell/PropsParts";
 import css from "../core/Chart.module.css";
 import { BoxChart } from "./BoxChart";
 import { boxCalculator, boxCsv, boxHeader, boxNotes, boxRequest, boxTable } from "./model";
@@ -61,7 +62,7 @@ export function BoxWindow(props: ChartWindowProps<"box">) {
           <input type="checkbox" checked={s.view.outliers} onChange={(e) => setView({ outliers: e.target.checked })} /> Выбросы
         </label>
         <label className={css.check}>
-          <input type="color" value={s.view.color} aria-label="Цвет ящика" onChange={(e) => setView({ color: e.target.value })} /> Цвет (без доменов)
+          <ColorField value={s.view.color} label="Цвет ящика" onCommit={(color) => setView({ color })} /> Цвет (без доменов)
         </label>
       </fieldset>
     </>

@@ -2,6 +2,11 @@
 docs/progress/e17-api.md «Модель»): `upgrade` checks a stored meta and turns a v1 meta into v2 without losses
 (rows = parents = `cells`, no sub-blocks, every field in the file `cells`, f8 | cat); `public_meta` — the part of
 `GET /blocks[/{id}]` the meta gives; `files_of` — the blobs a reader opens. No numpy here: the grid is `GridV2`.
+
+meta v3 (ADR 0030 decision 8, Д-45 А6) is a v2 meta with `layout: "list"` — a block model that does not lie in any
+grid, kept as a list of boxes (`blocks/list_layout.py`): the grid is the enclosing one (`div` [1, 1, 1], `sub` false),
+`parents` — the occupied cells of the centres (≤ `rows`: several blocks may have the centre in one cell). v1 and v2
+are `layout: "grid"`.
 """
 
 from __future__ import annotations
@@ -27,6 +32,15 @@ from .schema import (
     bad_model,
     check_fields,
 )
+
+META_V3 = 3
+LAYOUT_GRID, LAYOUT_LIST = "grid", "list"
+LIST_COLUMNS = ("cx", "cy", "cz", "dx", "dy", "dz")  # the centre and the size of a block of a list, local axes, f8
+
+
+def layout_of(meta: Mapping[str, Any]) -> str:
+    """`grid` (v1, v2) or `list` (v3) of a stored meta or a public one."""
+    return LAYOUT_LIST if meta.get("layout") == LAYOUT_LIST else LAYOUT_GRID
 
 
 def _choice(value: Any, allowed: Sequence[Any], label: str) -> Any:
@@ -82,8 +96,11 @@ def _count_of(meta: Mapping[str, Any], key: str) -> int:
 def upgrade(meta: Mapping[str, Any]) -> dict[str, Any]:
     """`objects.meta` v1 or v2 → checked meta v2 (idempotent). v1: rows = parents = `cells`, no sub-blocks,
     every field in the file `cells`, `source` {op: import, …v1 keys} (a v1 model without a source keeps null)."""
-    if not isinstance(meta, Mapping) or meta.get("v", 1) not in (1, META_V2):
+    if not isinstance(meta, Mapping) or meta.get("v", 1) not in (1, META_V2, META_V3):
         raise bad_model("Неизвестная версия описания блочной модели.", "Обновите программу.")
+    listed = meta.get("v", 1) == META_V3
+    if listed and meta.get("layout") != LAYOUT_LIST:
+        raise bad_model("Описание блочной модели v3 без признака «список блоков».", "Обновите программу.")
     grid = GridV2.of(meta.get("grid"))
     raw_fields = meta.get("fields") or []
     if meta.get("v", 1) == 1:
@@ -99,8 +116,10 @@ def upgrade(meta: Mapping[str, Any]) -> dict[str, Any]:
     rows, parents, sub, full = _count_of(meta, "rows"), _count_of(meta, "parents"), meta.get("sub"), meta.get("full")
     if not isinstance(sub, bool) or not isinstance(full, bool):
         raise bad_model("Признаки субблоков и прототипа заданы неверно.")
-    if parents > rows or (not sub and parents != rows) or (sub and not grid.sub.sub) or (full and rows):
+    if parents > rows or (not sub and parents != rows and not listed) or (sub and not grid.sub.sub) or (full and rows):
         raise bad_model("Число строк, родителей и субблоков модели не согласовано.")
+    if listed and (sub or full or grid.sub.sub or grid.tensors is not None):
+        raise bad_model("У списка блоков не бывает субблоков, прототипа и переменного шага сетки.")
     fields = [check_field_v2(f, sub=sub) for f in raw_fields]
     check_fields(fields)  # the names, once more over all the files
     if sum(f["role"] == "frac" for f in fields) > 1:
@@ -116,7 +135,8 @@ def upgrade(meta: Mapping[str, Any]) -> dict[str, Any]:
         raise bad_model("Входы модели заданы неверно.")
     algo = meta.get("algo")
     return {
-        "v": META_V2, "grid": grid.to_meta(), "rows": rows, "parents": parents, "sub": sub, "full": full,
+        "v": META_V3 if listed else META_V2, **({"layout": LAYOUT_LIST} if listed else {}),
+        "grid": grid.to_meta(), "rows": rows, "parents": parents, "sub": sub, "full": full,
         "fields": fields, "checks": None if checks is None else dict(checks),
         "groups": None if groups is None else [{k: int(g[k]) for k in ("rows", "k0", "k1")} for g in groups],
         "source": _source(meta.get("source"), MODEL_OPS, "Модель"),
@@ -145,18 +165,22 @@ BRIEF_FIELD = ("name", "kind", "dtype", "unit", "role")
 
 def public_meta(meta: Mapping[str, Any], *, brief: bool = False) -> dict[str, Any]:
     """The part of `GET /blocks[/{id}]` a meta gives (e17-api.md «Модель»): `meta_v` — the stored version, `cells`
-    = `rows` (the name of Э11), the grid with `variable` and `levels`; `brief` (the tree) — no tensors, no checks,
-    fields without stats, labels and sources."""
+    = `rows` (the name of Э11), the grid with `variable` and `levels` (null — not 2^L), `layout: "list"` of a list of
+    blocks (ADR 0030; absent — a grid); `brief` (the tree) — no tensors, no checks, fields without stats, labels and
+    sources."""
     m = upgrade(meta)
     grid = dict(m["grid"])
     grid["variable"] = "tensors" in grid
-    grid["levels"] = list(GridV2.of(m["grid"]).sub.levels)
+    levels = GridV2.of(m["grid"]).sub.levels
+    grid["levels"] = None if levels is None else list(levels)  # None — a division that is not 2^L (ADR 0030)
     if brief:
         grid.pop("tensors", None)
     fields = [{k: f.get(k) for k in BRIEF_FIELD} for f in m["fields"]] if brief else m["fields"]
     out = {"meta_v": int(meta.get("v", 1)), "grid": grid, "cells": m["rows"], "rows": m["rows"],
            "parents": m["parents"], "sub": m["sub"], "full": m["full"], "fields": fields, "source": m["source"],
            "warnings": m["warnings"]}  # fmt: skip
+    if layout_of(m) == LAYOUT_LIST:  # only a list of blocks says it: no `layout` is a grid (v1, v2)
+        out["layout"] = LAYOUT_LIST
     if not brief:
         out.update(checks=m["checks"], groups=m["groups"], inputs=m["inputs"], algo=m["algo"])
     return out

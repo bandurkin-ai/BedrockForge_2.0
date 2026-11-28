@@ -10,24 +10,29 @@ import type { BlockModelInfo } from "./api";
 
 export const blockKey = (id: number): string => `bm:${id}`;
 
-type Row = Pick<BlockModelInfo, "id" | "name" | "grid" | "cells" | "fields">;
+type Row = Pick<BlockModelInfo, "id" | "name" | "grid" | "cells" | "fields"> & { layout?: "grid" | "list" };
 
 /** «40 × 30 × 20» */
 export const gridCounts = (b: Pick<BlockModelInfo, "grid">): string => b.grid.counts.map(count).join(" × ");
 
 /** «40 × 30 × 20, 10 000 ячеек, 3 поля» */
 export function blockSummary(b: Row): string {
+  if (b.layout === "list") {  // no grid of parents: how many blocks (ADR 0030)
+    const list = b.fields.length ? counted(b.fields.length, "поле", "поля", "полей") : "без полей";
+    return `список блоков, ${counted(b.cells, "блок", "блока", "блоков")}, ${list}`;
+  }
   const fields = b.fields.length ? counted(b.fields.length, "поле", "поля", "полей") : "без полей";
   return `${gridCounts(b)}, ${counted(b.cells, "ячейка", "ячейки", "ячеек")}, ${fields}`;
 }
 
-export function blockMenu(b: Pick<BlockModelInfo, "id">) {
+export function blockMenu(b: Pick<BlockModelInfo, "id"> & { layout?: "grid" | "list" }) {
+  const omf = b.layout === "list" ? [] : [{ label: "Экспорт OMF…", command: "omf.export", args: { dataset_ids: String(b.id) } }]; // OMF is the grid of cells
   return [
     { label: "Свойства", local: "properties" as const },
     { label: "Показать в 3D", command: "blocks.show", args: { model_id: b.id } },
     { label: "Скрыть в 3D", command: "blocks.show", args: { model_id: b.id, visible: false } },
     { label: "Настройки…", command: "blocks.settings", args: { model_id: b.id } },
-    { label: "Экспорт OMF…", command: "omf.export", args: { dataset_ids: String(b.id) } },
+    ...omf,
     { label: "Экспорт…", command: "blocks.export", args: { model_id: String(b.id) } },
     SEPARATOR,
     { label: "Переименовать…", command: "object.rename", args: { kind: "blocks", id: b.id } },

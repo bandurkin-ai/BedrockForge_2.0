@@ -59,7 +59,8 @@ export function attachSession(s: EditSession, scene: Scene, onView?: () => void)
     },
     transform: () => scene.projectView(),
   };
-  scene.setTool({ pointer: (e) => s.pointer(e) });
+  // a general tool of the window (a section line) or another tool takes the pointer: what is drawn is finished
+  scene.setTool({ pointer: (e) => s.pointer(e), deactivate: () => alive && s.release() });
 
   const draw = () => {
     frame = 0;

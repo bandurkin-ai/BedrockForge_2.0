@@ -62,10 +62,29 @@ _CODEPAGE_RE = re.compile(rb'codepage="([^"]*)"')
 _VERSION_RE = re.compile(rb'<metadata[^>]*\bversion="([^"]*)"')
 _TITLE_RE = re.compile(r'<meta-object[^>]*type="title"[^>]*>\s*<data([^>]*)/?>')
 _ATTR_RE = re.compile(r'\b(title|description)="([^"]*)"')
-_STANDARD_RE = re.compile(rb"[ \t]*(\d+)[ \t]+VARIABLES\r\n")
-# "NAME  T WIDTH DEC", optionally followed by "|description". In BOCU-1 files printable characters of
-# the name are bytes >= 0x80, so the type letter (0x41-0x5A) cannot be mistaken for a name byte.
-_VARIABLE_RE = re.compile(rb"^(.*?)\s*([A-Z])\s+(\d+)\s+(\d+)\s*(?:\|(.*))?$", re.DOTALL)
+# Bytes that may precede the header: a UTF-8 BOM, blanks, line ends, NULs (a file saved by an editor or exported).
+_LEAD = b"\xef\xbb\xbf \t\r\n\x00"
+# `N VARIABLES` at the start of a Standard header: any letter case, LF or CRLF, blanks before the line end.
+_STANDARD_RE = re.compile(rb"[ \t]*(\d+)[ \t]*VARIABLES[ \t]*\r?\n", re.IGNORECASE)
+_VARIABLES_RE = re.compile(rb"VARIABLES[ \t]*\r?\n", re.IGNORECASE)
+_EXACT_VARIABLES_RE = re.compile(re.escape(VARIABLES_TAG))
+
+
+def _find_variables(data: bytes) -> re.Match[bytes] | None:
+    """The `VARIABLES` line of an extended header, after the first page. The exact tag Micromine writes
+    (`VARIABLES\\r\\n`, upper case) comes first: the XML before it may be longer than a page and may hold the word
+    «variables» in a title or a description. Only a file without it is looked at again, tolerantly."""
+    return _EXACT_VARIABLES_RE.search(data, PAGE) or _VARIABLES_RE.search(data, PAGE)
+
+
+# The first line of an extended file; Micromine versions differ in the words and the case.
+_MAGIC_RE = re.compile(rb"THIS IS MICROMINE[A-Z ]*DATA FILE", re.IGNORECASE)
+# A field line is `NAME(10 bytes)` + `TYPE` + `WIDTH` + `DECIMALS`: the width follows the type directly
+# (`C255  0`, `N 12  8`, `R  8  0`), a description may follow after "|".
+_TAIL_RE = re.compile(rb"\s*(\d+)\s+(\d+)\s*(?:\|(.*))?$", re.DOTALL)
+# The same for a name that is not padded to 10 bytes (or longer than that): found by the type letter. In BOCU-1
+# files printable characters of the name are bytes >= 0x80, so the letter (0x41-0x5A) is not a name byte.
+_VARIABLE_RE = re.compile(rb"^(.*?)\s*([A-Z])\s*(\d+)\s+(\d+)\s*(?:\|(.*))?$", re.DOTALL)
 
 # Micromine code page names -> Python codecs. ibm-5347 is Windows-1251 (Cyrillic).
 _CODECS = {
@@ -150,42 +169,89 @@ def _fail(code: str, message: str, hint: str = _HINT_BROKEN) -> FormatError:
     return FormatError(code, message, hint)
 
 
+def header_start(data: bytes) -> int | None:
+    """Offset of the Micromine header in the first bytes of a file (after a BOM, blanks, NULs), or None.
+
+    The header is the magic line of an extended file or `N VARIABLES` of a Standard one."""
+    stripped = data.lstrip(_LEAD)
+    lead = len(data) - len(stripped)
+    if _MAGIC_RE.match(stripped) or _STANDARD_RE.match(stripped):
+        return lead
+    return None
+
+
+def _split_variable(line: bytes) -> tuple[bytes, str, int, int, bytes] | None:
+    """(raw name, type, width, decimals, raw description) of one VARIABLES line; None when it cannot be read.
+
+    By position first: the name is the first NAME_WIDTH bytes and the type letter follows it, so names with
+    digits, spaces and letters (`Тип руды`, `Au 5`) cannot be mistaken for the type and width."""
+    kind = line[NAME_WIDTH : NAME_WIDTH + 1].decode("latin-1")
+    tail = _TAIL_RE.match(line, NAME_WIDTH + 1) if kind in FIELD_TYPES else None
+    if tail:
+        return line[:NAME_WIDTH].rstrip(b" \t\x00"), kind, int(tail.group(1)), int(tail.group(2)), tail.group(3) or b""
+    m = _VARIABLE_RE.match(line)
+    if m:
+        return m.group(1), m.group(2).decode("ascii"), int(m.group(3)), int(m.group(4)), m.group(5) or b""
+    return None
+
+
+def _variable_error(number: int, line: bytes, codec: str | None) -> FormatError:
+    """The line of the VARIABLES block that cannot be read: its number, text in the code page of the header, bytes."""
+    codec = codec or FALLBACK_CODEC
+    shown = "".join(c if c.isprintable() else " " for c in decode_text(line[:60], codec))
+    return _fail(
+        "broken",
+        f"Строка {number} блока VARIABLES не читается: «{shown}» (байты: {line[:24].hex(' ')}). "
+        "Ожидается: имя поля в 10 байт, тип (C, N, R …), ширина и число десятичных знаков.",
+        "Если буквы в названии поля искажены, выберите кодировку файла в мастере импорта (например, Windows-1251). "
+        + _HINT_BROKEN,
+    )
+
+
 def parse_header(data: bytes, encoding: str | None = None, complete: bool = True) -> DatHeader:
     """Header from the first bytes of a file. `encoding` overrides the code page of the file.
 
     `complete=False`: `data` is only the start of the file — raises _NeedMore when the header is longer.
     """
     warnings: list[str] = []
+    if not data:
+        raise _fail("empty_file", "Файл пуст.", "Проверьте, что файл скопирован полностью.")
+    lead = header_start(data)
+    if lead is None:
+        raise _fail(
+            "not_micromine",
+            "Файл не является таблицей Micromine: нет строки «THIS IS MICROMINE EXTENDED DATA FILE» "
+            f"и строки «<число> VARIABLES» в начале. Начало файла: {data[:16].hex(' ')}.",
+            "Если это текстовая таблица, сохраните её с расширением .csv или .txt.",
+        )
+    if lead:
+        data = data[lead:]  # a BOM or blanks before the header: offsets below count from the header
     standard = _STANDARD_RE.match(data)
-    if data.startswith(MAGIC):
+    if _MAGIC_RE.match(data):
         if not data.startswith(MAGIC_LINE) and len(data) >= len(MAGIC_LINE):
             odd = data[len(MAGIC) : len(MAGIC_LINE)].hex(" ")
             warnings.append(f"Неизвестный вариант заголовка Micromine (байты {odd}): файл прочитан как расширенный DAT")
-        vars_pos = data.find(VARIABLES_TAG, PAGE)
-        if vars_pos < 0:
+        tag = _find_variables(data)
+        if tag is None:
             if not complete:
                 raise _NeedMore
             raise _fail("truncated", "Файл обрезан: после заголовка Micromine нет блока VARIABLES.")
+        vars_pos = tag.start()
         # "<N>   VARIABLES": the header before it is padded with zero bytes (to 4096 or 8192).
         count_token = data[PAGE:vars_pos].replace(b"\x00", b" ").split()
         if not count_token or not count_token[-1].isdigit():
             raise _fail("broken", "В заголовке Micromine не найдено число полей перед VARIABLES.")
         count = int(count_token[-1])
-        pos = vars_pos + len(VARIABLES_TAG)
+        pos = tag.end()
+        eol = b"\r\n" if tag.group().endswith(b"\r\n") else b"\n"
         extended = True
-    elif standard:
+    else:
+        assert standard is not None
         count = int(standard.group(1))
         pos = standard.end()
+        eol = b"\r\n" if standard.group().endswith(b"\r\n") else b"\n"
         vars_pos = 0
         extended = False
-    elif not data:
-        raise _fail("empty_file", "Файл пуст.", "Проверьте, что файл скопирован полностью.")
-    else:
-        raise _fail(
-            "not_micromine",
-            "Файл не является таблицей Micromine: нет строки «THIS IS MICROMINE EXTENDED DATA FILE».",
-            "Если это текстовая таблица, сохраните её с расширением .csv или .txt.",
-        )
     if count > MAX_FIELDS:
         raise _fail("too_large", f"В заголовке указано {count} полей — больше допустимых {MAX_FIELDS}.")
 
@@ -208,21 +274,26 @@ def parse_header(data: bytes, encoding: str | None = None, complete: bool = True
             title, description = attrs.get("title", ""), attrs.get("description", "")
 
     lines: list[tuple[bytes, str, int, int, bytes]] = []
-    for _ in range(count):
-        end = data.find(b"\r\n", pos)
+    for number in range(1, count + 1):
+        end = data.find(eol, pos)
         if end < 0:
             if not complete:
                 raise _NeedMore
             raise _fail("truncated", "Файл обрезан: блок VARIABLES короче, чем указано в заголовке.")
-        m = _VARIABLE_RE.match(data[pos:end])
-        if not m:
-            shown = data[pos:end][:40].decode("latin-1")
-            raise _fail("broken", f"Строка описания поля не читается: «{shown}».")
-        pos = end + 2
-        width = int(m.group(3))
+        line = data[pos:end]
+        parsed = _split_variable(line)
+        if parsed is None:
+            shown_codec = None
+            if encoding is not None:
+                shown_codec = codec_of(encoding)
+            elif codepage:
+                shown_codec = codec_of(codepage)
+            raise _variable_error(number, line, shown_codec)
+        pos = end + len(eol)
+        width = parsed[2]
         if width > MAX_WIDTH:
             raise _fail("too_large", f"Ширина поля {width} байт больше допустимой {MAX_WIDTH}.")
-        lines.append((m.group(1), m.group(2).decode("ascii"), width, int(m.group(4)), m.group(5) or b""))
+        lines.append(parsed)
 
     declared = True
     if encoding is not None:
@@ -255,7 +326,7 @@ def parse_header(data: bytes, encoding: str | None = None, complete: bool = True
             )
         fields.append(Field(name, kind, width, decimals, decode_text(note, codec) if note else ""))
     # Records are not flagged in the header: they start right after the last variable line.
-    return DatHeader(extended, codepage, codec, fields, pos, title, description, xml, declared, warnings)
+    return DatHeader(extended, codepage, codec, fields, pos + lead, title, description, xml, declared, warnings)
 
 
 def read_header(path: str | Path, encoding: str | None = None) -> DatHeader:
@@ -300,9 +371,7 @@ def build_header(fields: list[Field], encoding: str, xml: str | None) -> bytes:
         out += head.ljust(PAGE * max(1, -(-(len(head) + 1) // PAGE)), b"\x00")
     out += f"{len(fields):<4}VARIABLES\r\n".encode("ascii")
     for f in fields:
-        line = encode_text(f.name, encoding).ljust(NAME_WIDTH) + f"{f.kind} {f.width:>2} {f.decimals:>2}".encode(
-            "ascii"
-        )
+        line = encode_text(f.name, encoding).ljust(NAME_WIDTH) + f"{f.kind}{f.width:>3} {f.decimals:>2}".encode("ascii")
         if f.description:
             line += b"|" + encode_text(f.description, encoding)
         out += line + b"\r\n"

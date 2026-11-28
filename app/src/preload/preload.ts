@@ -18,7 +18,8 @@ contextBridge.exposeInMainWorld("bf", {
   pickSave: (defaultName: string, kind?: string) => ipcRenderer.invoke("bf:pick-save", String(defaultName), kind === undefined ? undefined : String(kind)),
   pickOpen: () => ipcRenderer.invoke("bf:pick-open"),
   pickFolder: () => ipcRenderer.invoke("bf:pick-folder"),
-  pickFiles: (kind: string, multi: boolean) => ipcRenderer.invoke("bf:pick-files", String(kind), Boolean(multi)),
+  pickFiles: (kind: string, multi: boolean, defaultPath?: string) =>
+    ipcRenderer.invoke("bf:pick-files", String(kind), Boolean(multi), typeof defaultPath === "string" ? defaultPath : undefined),
   showInFolder: (file: string) => ipcRenderer.send("bf:show-in-folder", String(file)),
   pathForFile: (file: File) => webUtils.getPathForFile(file),
   claudeSeal: () => ipcRenderer.invoke("bf:claude-seal"),

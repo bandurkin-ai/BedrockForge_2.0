@@ -102,7 +102,8 @@ def _memory(params: dict[str, Any]) -> int:
         elif path.suffix.lower() == ".omf":
             size = ob.memory(path, size)
         elif obf.is_blockfile(path, chosen.get(option_key(path))):
-            size = obf.memory(path, size) * 2**20
+            blocks = (chosen.get(option_key(path)) or {}).get("blocks") or {}
+            size = obf.memory(path, size, listed=blocks.get("layout") == "list") * 2**20
         elif path.suffix.lower() in IMAGE_SUFFIXES:
             try:
                 from bf_core.formats.raster_image import probe
@@ -293,7 +294,7 @@ def _chunks(path: Path, tick: Callable[[int], None]) -> Iterator[bytes]:
             yield chunk
 
 
-def _result(files: list[dict[str, Any]], failed: list[dict[str, str]], rest: list[dict[str, str]]) -> dict[str, Any]:
+def _result(files: list[dict[str, Any]], failed: list[dict[str, Any]], rest: list[dict[str, str]]) -> dict[str, Any]:
     ids = [i for f in files for i in (f.get("object_ids") or [f["object_id"]])]
     out: dict[str, Any] = {"files": files, "objects": ids, "failed": failed, "rest": rest}
     for key in ("layers", "lines", "points", "vertices", "rasters", "wireframes", "triangles"):
@@ -350,7 +351,7 @@ def import_objects(ctx: JobContext) -> dict[str, Any]:
     options = options_by_file(p.get("options"))  # keys as paths are spelled here, whatever the caller sent
     folder = p.get("folder") or None
     done: list[_Done] = []
-    failed: list[dict[str, str]] = []
+    failed: list[dict[str, Any]] = []
     temps: list[Path] = []
     try:
         for k, g in enumerate(groups):
@@ -445,7 +446,9 @@ def import_objects(ctx: JobContext) -> dict[str, Any]:
             del read  # keep the memory for the next file
         if not done:
             first = failed[0]
-            raise JobError(first["code"], f"«{first['file']}»: {first['message']}", first["hint"])
+            # every refused file with its `diag`/`choices` stays in the error: the window of the job offers the choice
+            message = f"«{first['file']}»: {first['message']}"
+            raise JobError(first["code"], message, first["hint"], extra={"failed": failed})
 
         # The source files — the last step before the final transaction (ТЗ 6.7); still cancellable.
         total = sum(_size(item.path) for item in done) or 1

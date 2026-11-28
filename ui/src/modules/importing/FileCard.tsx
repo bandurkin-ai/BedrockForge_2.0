@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { MismatchNotice } from "./MismatchNotice";
 import { blockers, KIND_TITLES, type FileEntry, type TableKind, type Wizard } from "./wizard";
 import css from "./ImportWizard.module.css";
 
@@ -114,7 +115,8 @@ export function FileCard({ wizard, file }: { wizard: Wizard; file: FileEntry }) 
           </tbody>
         </table>
       )}
-      {c && (
+      {c?.mismatch && <MismatchNotice wizard={wizard} file={file} />}
+      {c && !c.mismatch && (
         <>
           <label className={css.kind}>
             Тип таблицы
