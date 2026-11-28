@@ -24,7 +24,8 @@ from typing import Any
 import numpy as np
 
 from bf_core.api.errors import ApiError
-from bf_core.blocks import geometry, restrict
+from bf_core.blocks import list_layout as ll
+from bf_core.blocks import restrict
 from bf_core.blocks.fill import columns as fc
 from bf_core.blocks.fill import frac
 from bf_core.blocks.model import Chunk
@@ -68,6 +69,9 @@ def build(b: Build, body: Mapping[str, Any], path: str) -> Weights:
     del xyz, tri
     inside = body["side"] == "inside"
     centre = body.get("by", "frac") == "centre"
+    if not centre and b.model.listed:  # a list of blocks: «по центру» (ADR 0030 decision 11)
+        centre = True
+        b.warn(f"Каркас «{name}»: у модели-списка блоков доля считается по центру блока (0 или 1).")
     m = int(body.get("m") or 4)
     if mesh.index.ncx == 0:
         b.warn(f"Каркас «{name}» не пересекает сетку модели в плане: внутри него блоков нет.")
@@ -77,7 +81,7 @@ def build(b: Build, body: Mapping[str, Any], path: str) -> Weights:
     hi = np.asarray(mesh.hi)
 
     def run(chunk: Chunk) -> np.ndarray:
-        boxes = geometry.row_boxes(grid, chunk.p, chunk.s, chunk.w)  # local, n × 6
+        boxes = ll.boxes(grid, chunk)  # local, n × 6
         near = (boxes[:, :3] <= hi).all(axis=1) & (boxes[:, 3:] >= lo).all(axis=1)
         share = np.zeros(chunk.n, dtype=np.float64)  # the share inside; a box off the body — none of it
         at = np.flatnonzero(near)

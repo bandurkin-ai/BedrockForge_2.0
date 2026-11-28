@@ -118,10 +118,10 @@ class BmField(Provider):
             return _model_reason(ctx, r.meta or {})
         if op in ("calc", "density", "classify") and ctx.store is not None:
             from bf_core.blocks import fields_ops
-            from bf_core.blocks.model import Model
+            from bf_core.blocks.model import ANY, Model
 
             try:
-                model = Model.open(ctx.conn, ctx.store, key[0])
+                model = Model.open(ctx.conn, ctx.store, key[0], ANY)
                 stale, why = fields_ops.stale_of(ctx.conn, ctx.store, model, f)
             except ApiError:
                 return "Нет входов: файлы модели недоступны.", True

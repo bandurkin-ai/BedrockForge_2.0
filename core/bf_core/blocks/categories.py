@@ -179,6 +179,8 @@ def prepare(model: Model, spec: Spec, overrides: Sequence[Weights] = (), extra_f
     `spec.overrides` in order (the leaf «каркас» of `restrict.LEAVES`, 17.20), `extra_fields` — what they read."""
     from .calc_job import expr_api_error, schema_of
 
+    if spec.majority and getattr(model, "listed", False):
+        model.require_grid("Мажоритарный фильтр")  # it votes among the neighbouring parents of the grid
     if len(overrides) != len(spec.overrides):
         raise ValueError("one function for every wireframe of a category is needed")
     schema = schema_of(model)

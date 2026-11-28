@@ -59,10 +59,10 @@ def _changed(request: Request, bm_id: int) -> None:
 def _open(conn: Any, folder: Any, bm_id: int) -> tuple[Any, Any]:
     from bf_core.storage.blobs import BlobStore
 
-    from .model import Model
+    from .model import ANY, Model
 
     store = BlobStore(folder)
-    return store, Model.open(conn, store, bm_id)
+    return store, Model.open(conn, store, bm_id, ANY)
 
 
 @router.get("/{bm_id}/fields")

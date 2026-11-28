@@ -272,9 +272,13 @@ def diagnose(scan: GridScan, found: InferredGrid, c: np.ndarray, d: np.ndarray |
     }  # fmt: skip
 
 
+LIST_CHOICE = {"id": "list", "label": "Импортировать списком блоков",
+               "note": "показ, фильтры, калькулятор, отчёт, экспорт; оценка и карьер — после регуляризации"}
+
+
 def choices_of(diag: Mapping[str, Any], rotation: float = 0.0) -> list[dict[str, Any]]:
-    """What the user may do (ADR 0030 decision 6): set the grid by hand — the best candidate fills the form —, or not
-    import the file. «Импортировать списком блоков» is the choice of the next stage and is not offered yet."""
+    """What the user may do (ADR 0030 decisions 6, 14): set the grid by hand — the best candidate fills the form —,
+    import the model as a list of blocks (nothing is chosen for the user), or not import the file."""
     out: list[dict[str, Any]] = []
     cand = diag.get("candidates") or []
     if cand:
@@ -285,7 +289,7 @@ def choices_of(diag: Mapping[str, Any], rotation: float = 0.0) -> list[dict[str,
                     "aligned": best["aligned"]})  # fmt: skip
     else:
         out.append({"id": "grid", "label": "Задать сетку вручную", "grid": None, "aligned": 0.0})
-    out.append({"id": "cancel", "label": "Не импортировать этот файл"})
+    out += [dict(LIST_CHOICE), {"id": "cancel", "label": "Не импортировать этот файл"}]
     return out
 
 
@@ -296,6 +300,6 @@ def current_choices(found: InferredGrid) -> list[dict[str, Any]]:
     grid = {"corner": [_r(v, 9) for v in g.corner], "size": [_r(v) for v in g.regular()],
             "div": [int(v) for v in g.sub.div], "tol": _r(max(found.tol), 9),
             "rotation": float(g.rotation)}  # fmt: skip
-    return [{"id": "grid", "label": "Задать сетку вручную", "grid": grid, "aligned": None},
+    return [{"id": "grid", "label": "Задать сетку вручную", "grid": grid, "aligned": None}, dict(LIST_CHOICE),
             {"id": "cancel", "label": "Не импортировать этот файл"}]  # fmt: skip
 

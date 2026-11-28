@@ -64,7 +64,7 @@ from . import restrict
 from . import schema as bs
 from .fields_store import FieldsWriter, commit_fields, version_conflict
 from .filters import schema as fs
-from .model import CHUNK, Model
+from .model import ANY, CHUNK, Model
 
 if TYPE_CHECKING:
     from bf_core.calc import Program
@@ -281,7 +281,7 @@ def run_calc(
     clock = _Clock(tick)
     clock(0.02, STAGE_READ)
     with dialect.read_tx(engine) as conn:
-        model = Model.open(conn, store, spec.model_id)
+        model = Model.open(conn, store, spec.model_id, ANY)
         if model.version != spec.expected_version:
             raise version_conflict(model.version)
         prog, dtype = compile_for(model, spec.expr, spec.dtype)

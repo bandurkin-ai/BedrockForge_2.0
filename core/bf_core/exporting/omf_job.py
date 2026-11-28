@@ -53,6 +53,8 @@ def _reason(message: str, hint: str) -> dict[str, str]:
 
 TOO_LARGE = _reason(f"Модель больше {_n(MAX_CELLS)} ячеек: в OMF не записывается.", "Разделите модель на части.")
 SUBBLOCKS = "omf_subblocks"
+LIST_BLOCKS = _reason("Модель — список блоков: в OMF она не записывается.",
+                      "Регуляризуйте модель и экспортируйте результат.")
 CLOUD = _reason("Облако точек в OMF не записывается (точки OMF не переносятся).", "Экспортируйте облако в LAS.")
 
 
@@ -95,9 +97,12 @@ def exportable(conn: sa.Connection) -> dict[str, list[dict[str, Any]]]:
     for b in bm.list_block_models(conn):
         big = int(b["cells"]) > MAX_CELLS or _grid_cells(b["grid"]) > MAX_CELLS
         sub = bool(b.get("sub"))
-        why = _reason(*subblocks_message(str(b["name"]))) if sub else TOO_LARGE if big else None
+        listed = b.get("layout") == "list"  # a list of blocks is no grid of cells (ADR 0030 decision 8)
+        why = (LIST_BLOCKS if listed else _reason(*subblocks_message(str(b["name"]))) if sub
+               else TOO_LARGE if big else None)  # fmt: skip
         models.append({"id": b["id"], "name": b["name"], "folder": b["folder"], "cells": b["cells"],
-                       "available": why is None, "reason": why, "code": SUBBLOCKS if sub else None})  # fmt: skip
+                       "available": why is None, "reason": why,
+                       "code": "block_list_unsupported" if listed else SUBBLOCKS if sub else None})  # fmt: skip
     return {
         "wireframes": [
             {
@@ -277,6 +282,10 @@ def write_objects(
                 shas = {role: bm.cells_sha(conn, int(bm_id), role) for role in {f["file"] for f in specs.values()}}
                 shas[bs.ROLE] = bm.cells_sha(conn, int(bm_id))
             label[0] = f"Блочная модель «{info['name']}»"
+            if info.get("layout") == "list":  # OMF is the grid of cells (ADR 0030 decision 8)
+                from bf_core.blocks.model import list_unsupported
+
+                raise list_unsupported(str(info["name"]), "Экспорт OMF")
             if info.get("sub"):
                 raise subblocks_error(str(info["name"]))
 

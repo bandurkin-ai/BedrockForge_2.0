@@ -41,14 +41,14 @@ def report(svc: Svc, s: Sched, bm_id: int, body: Payload) -> dict[str, Any]:
     from . import calc_job, restrict
     from . import report as rp
     from .filters import schema as fs
-    from .model import Model
+    from .model import ANY, Model
 
     if not isinstance(body, dict):
         raise ApiError(422, "bad_request", "Неверные данные запроса.", "Повторите действие из окна отчёта.")
     spec = rp.parse(bm_id, body)
     project = svc.require_current()
     with dialect.read_tx(project.engine) as conn:
-        model = Model.open(conn, BlobStore(project.folder), bm_id)
+        model = Model.open(conn, BlobStore(project.folder), bm_id, ANY)
         rp.make_plan(model, spec)
         tree = calc_job.rules_tree(conn, spec.filter_id, spec.restrict)
     if tree is not None:

@@ -425,7 +425,7 @@ def _size(conn: sa.Connection, ids: Sequence[int]) -> dict[int, int]:
 
 def _public(row: Mapping[str, Any], size: int | None, brief: bool) -> dict[str, Any]:
     meta = dict(row["meta"] or {})
-    if meta.get("v", 1) == bs.META_V2:  # e17-api.md §4: the meta gives the grid, the fields, the checks…
+    if meta.get("v", 1) in (bs.META_V2, bmeta.META_V3):  # e17-api.md §4: the meta gives the grid, the fields, checks
         head = {k: row[k] for k in ("name", "folder", "extent", "crs")}
         return {**head, "id": int(row["id"]), "version": int(row["version"]), "size": size,
                 **bmeta.public_meta(meta, brief=brief), "created_at": row["created_at"].isoformat(),
@@ -537,7 +537,7 @@ def read_cells(
     def empty(n: str) -> np.ndarray:
         return np.empty(0, np.float64 if fmap[n]["kind"] == bs.NUMBER else np.int32)
 
-    v2 = info.get("meta_v") == bs.META_V2
+    v2 = info.get("meta_v") in (bs.META_V2, bmeta.META_V3)
     local = [n for n in names if not v2 or fmap[n]["file"] == bs.ROLE]
     parts = list(iter_cells(store, cells_sha(conn, bm_id), local, specs=fmap if v2 else None))
     idx = np.concatenate([p[0] for p in parts]) if parts else np.empty(0, np.uint64)
