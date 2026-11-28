@@ -6,7 +6,9 @@ export interface CoreInfo {
   version: string;
 }
 
-export type SaveKind = "dat" | "csv" | "xlsx" | "str" | "dxf" | "las" | "jpg" | "png" | "tif" | "bmp" | "tridb" | "dwg" | "obj" | "stl" | "dtm" | "omf" | "parquet" | "any";
+/** The kinds of files of the open dialog (`pickFiles`). */
+export type PickKind = "tables" | "prj" | "objects" | "lines" | "rasters" | "wireframes" | "trenches" | "program" | "las" | "xyz" | "omf" | "blocks" | "variogram";
+export type SaveKind ="dat" | "csv" | "xlsx" | "str" | "dxf" | "las" | "jpg" | "png" | "tif" | "bmp" | "tridb" | "dwg" | "obj" | "stl" | "dtm" | "omf" | "parquet" | "any";
 
 /** Assistant «Claude» (ADR 0029): the key is encrypted by the main process (safeStorage), never by the window. */
 export interface ClaudeSealResult {
@@ -48,8 +50,10 @@ export interface BfBridge {
   /** Files for import: "tables" (DAT, CSV, Excel), "prj", "objects" (everything of «Импорт файлов»), "lines"
    * (lines and points), "rasters" (images and their georeference), "wireframes" (TRIDB, DXF, DWG, OBJ, STL,
    * Surpac DTM, Datamine), "trenches" (polylines of trenches), "program"
-   * (a program of the user: .exe — «Настройка › Внешние программы»); [] when cancelled. */
-  pickFiles(kind: "tables" | "prj" | "objects" | "lines" | "rasters" | "wireframes" | "trenches" | "program" | "las" | "xyz" | "omf" | "blocks" | "variogram", multi: boolean): Promise<string[]>;
+   * (a program of the user: .exe — «Настройка › Внешние программы»); [] when cancelled. `defaultPath` — the folder the
+   * dialog opens in (the folder of the file chosen last: `shell/lastFolder.ts`); one that is not an absolute path of an
+   * existing folder is dropped by the shell without a word. */
+  pickFiles(kind: PickKind, multi: boolean, defaultPath?: string): Promise<string[]>;
   showInFolder(file: string): void;
   /** Disk path of a file dropped from Explorer. */
   pathForFile(file: File): string;

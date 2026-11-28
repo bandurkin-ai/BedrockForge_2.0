@@ -6,8 +6,8 @@
  * the core is shown at its field. Only the newest reading of the source is applied.
  */
 import { useEffect, useRef, useState } from "react";
-import { bridge } from "../../../bridge";
 import { useApp } from "../../../shell/AppContext";
+import { pickFilesIn } from "../../../shell/lastFolder";
 import { errorText } from "../../../shell/props";
 import { useSnap } from "./useSnap";
 import css from "../../../shell/PropsParts.module.css";
@@ -101,7 +101,7 @@ export function ImportForm({ request, list }: { request: FormRequest; list: read
   const { answer, error, busy } = useInspect(source);
 
   const pick = async () => {
-    const [file] = (await bridge()?.pickFiles("tables", false)) ?? [];
+    const [file] = await pickFilesIn("tables", false);
     if (file) {
       setPath(file);
       setSheet(null);

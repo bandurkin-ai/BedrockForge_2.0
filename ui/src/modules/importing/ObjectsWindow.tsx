@@ -7,6 +7,7 @@ import { bridge } from "../../bridge";
 import { useApp } from "../../shell/AppContext";
 import { Icon } from "../../shell/Icon";
 import { openLogWindow, opLogStore, startOpLog, stopOpLog } from "../../shell/opLog";
+import { pickFilesIn } from "../../shell/lastFolder";
 import { useStore } from "../../shell/useStore";
 import { closeWindow, windowStore } from "../../shell/windows";
 import { syncOda } from "../../shell/odaTool";
@@ -40,7 +41,7 @@ export function ObjectsWindow({ winId, paths, pick, cloud }: { winId: string; pa
   }, [wizard, paths]);
 
   const add = async () => {
-    const files = (await bridge()?.pickFiles(cloud ?? pick ?? "objects", true)) ?? [];
+    const files = await pickFilesIn(cloud ?? pick ?? "objects", true, `wizard:${winId}`);
     if (files.length) await wizard.add(files);
   };
   const start = async () => {
