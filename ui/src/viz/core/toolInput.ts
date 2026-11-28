@@ -31,6 +31,11 @@ export interface ToolPointer {
 /** An editing tool: `true` — the event is taken (the view neither turns nor picks). */
 export interface ToolHandler {
   pointer(e: ToolPointer): boolean;
+  /**
+   * Another tool or a general tool of the view (a section line, `Scene.setDrawing`) takes the pointer: the tool ends
+   * what it holds (a line being drawn is finished, a drag is dropped). Called once per hand-over.
+   */
+  deactivate?(): void;
 }
 
 /** What the scene does with the events no tool took. */
