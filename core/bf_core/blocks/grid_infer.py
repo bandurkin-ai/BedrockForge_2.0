@@ -18,14 +18,12 @@ the counts, the turn φ about Z, `div` — and the rest is inferred:
 * the turn φ is about Z only; the centres are `project` (the axes of the project: q = R_z(−φ)·(p − O)) or `model`
   (written in the unturned frame of the model: q = c − O, the project point is O + R_z(φ)·q).
 
-Two passes over the file, in chunks of the caller (a model of 20 million blocks never sits here whole):
-`GridScan.add` for every chunk → `finish()` → `InferredGrid.rows_of` for every chunk (the same arrays).
-`Unaligned` collects the refused blocks over the chunks: 422 `blocks_unaligned {count, rows ≤ 20}`; the three centres
-(first, middle, last row) are compared with the cells' centres by `InferredGrid.check3`: 422 `rotation_mismatch
-{rows, dist}` for a turned model, ≤ 1e−6 м. `infer` does all of it for arrays in memory.
-
-Row numbers (`rows` in the errors, `Check3.rows`) are 0-based numbers of the data rows; the messages show them from 1.
-Float64 throughout; an empty centre or size (NaN, size ≤ 0) is never a block — it is marked `INVALID`, not turned to 0.
+Two passes over the file, in chunks of the caller: `GridScan.add` for every chunk → `finish()` →
+`InferredGrid.rows_of` for every chunk (the same arrays). `Unaligned` collects the refused blocks: 422
+`blocks_unaligned` (`grid_diag` adds the reason and the choices); the three centres (first, middle, last row) are
+compared with the cells' centres by `InferredGrid.check3`: 422 `rotation_mismatch {rows, dist}` for a turned model.
+`infer` does all of it for arrays in memory. Row numbers (`rows`, `Check3.rows`) are 0-based, the messages show them
+from 1. Float64 throughout; an empty centre or size (NaN, size ≤ 0) is never a block — `INVALID`, not turned to 0.
 """
 
 from __future__ import annotations
@@ -168,7 +166,9 @@ class Unaligned:
         if len(self.rows) < MAX_ROWS:
             self.rows.extend(int(first_row + i) for i in np.flatnonzero(refused)[: MAX_ROWS - len(self.rows)])
 
-    def error(self) -> ApiError | None:
+    def error(self, diag: dict[str, Any] | None = None, choices: list[dict[str, Any]] | None = None) -> ApiError | None:
+        """422 `blocks_unaligned {count, rows ≤ 20, by_reason, diag?, choices?}` (ADR 0030 decision 6). `diag` and
+        `choices` — `grid_diag.diagnose` / `choices_of`: why the blocks do not lie and what the user may do."""
         if not self.count:
             return None
         parts = []
@@ -176,18 +176,27 @@ class Unaligned:
                              (OFF_SUBCELLS, "не по подъячейкам деления родителя")):  # fmt: skip
             if self.by_reason[reason]:
                 parts.append(f"{text} — {_spaced(self.by_reason[reason])}")
-        message = f"Блоков, которые нельзя уложить в сетку модели: {_spaced(self.count)} ({'; '.join(parts)})."
+        lead = diag["text"][0] if diag and diag.get("text") else ""
+        message = f"Блоков, которые нельзя уложить в сетку модели: {_spaced(self.count)} ({'; '.join(parts)}). {lead}"
         hint = (
             f"Строки данных (с 1): {_rows_text(self.rows)}"
             + (" и другие" if self.count > len(self.rows) else "")
             + ". Субблоки должны делить родителя на целое число подъячеек (до 128 по оси) и не выходить за его "
-            "границы, а блоки — лежать в сетке от её начала. Проверьте начало и размер родителя в мастере или "
-            "пересохраните модель в исходной программе."
+            "границы, а блоки — лежать в сетке от её начала. Задайте родителя и начало сетки вручную или отмените "
+            "импорт файла."
         )
-        return _err("blocks_unaligned", message, hint, {"count": self.count, "rows": list(self.rows)})
+        extra: dict[str, Any] = {"count": self.count, "rows": list(self.rows),
+                                 "by_reason": {"off_grid": self.by_reason[OFF_GRID],
+                                               "crosses_parent": self.by_reason[CROSSES_PARENT],
+                                               "off_subcells": self.by_reason[OFF_SUBCELLS]}}  # fmt: skip
+        if diag is not None:
+            extra["diag"] = diag
+        if choices is not None:
+            extra["choices"] = choices
+        return _err("blocks_unaligned", message.strip(), hint, extra)
 
-    def raise_if(self) -> None:
-        err = self.error()
+    def raise_if(self, diag: dict[str, Any] | None = None, choices: list[dict[str, Any]] | None = None) -> None:
+        err = self.error(diag, choices)
         if err is not None:
             raise err
 
@@ -358,23 +367,52 @@ class GridScan:
                     raise _err("bad_param", f"Допуск {h.tol:g} м по оси {'XYZ'[a]} больше четверти подъячейки "
                                f"({parent[a] / div[a]:g} м).", "Уменьшите допуск: он не должен быть больше четверти "
                                "подъячейки, иначе блок можно отнести к соседней.", {"param": "grid.tol"})  # fmt: skip
+        return self.assemble(parent, div, origin_q.tolist(), tols, warnings=warnings, parent_guess=parent_guess)
+
+    def axis_pairs(self, a: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, bool]:
+        """(low edges, sizes, counts, overflow) of the distinct (low edge, size) pairs of an axis, local axes (for the
+        diagnosis of a refusal, `grid_diag`)."""
+        lo, sz, n = self._pairs[a].items()
+        return lo, sz, n, self._pairs[a].overflow
+
+    def extent(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """(lowest, highest edge, biggest, smallest size) per axis in the local axes (sizes 0 for a regular model)."""
+        return self._lo.copy(), self._hi.copy(), self._smax.copy(), self._smin.copy()
+
+    def assemble(
+        self,
+        parent: Sequence[float],
+        div: Sequence[int],
+        origin_q: Sequence[float],
+        tols: Sequence[float],
+        *,
+        warnings: list[str] | None = None,
+        parent_guess: bool = False,
+        manual: bool = True,
+    ) -> InferredGrid:
+        """The grid for a parent, a division, a corner (local axes) and a tolerance of every axis. `manual` — the
+        counts and the corner said by the hint stay as they are; False (a candidate of the diagnosis) — they are
+        taken from the data."""
+        h, frame = self.hint, self._frame
+        assert frame is not None
+        origin = np.asarray(origin_q, dtype=np.float64)
         counts_n = [
-            max(1, int(math.ceil((float(self._hi[a]) - float(origin_q[a])) / parent[a] - tols[a] / parent[a])))
+            max(1, int(math.ceil((float(self._hi[a]) - float(origin[a])) / parent[a] - tols[a] / parent[a])))
             for a in range(3)
         ]  # fmt: skip
-        if h.counts is not None:
+        if manual and h.counts is not None:
             counts_n = [int(v) for v in h.counts]
-        frame = self._frame
-        if h.corner is not None:
+        if manual and h.corner is not None:
             corner = tuple(float(v) for v in h.corner)
         elif self.centres == "project":
-            corner = tuple(float(v) for v in frame.to_project(origin_q.reshape(1, 3))[0])
+            corner = tuple(float(v) for v in frame.to_project(origin.reshape(1, 3))[0])
         else:
-            corner = tuple(float(v) for v in origin_q)
+            corner = tuple(float(v) for v in np.asarray(frame.corner) + origin)
         corner = tuple(_snap(v) for v in corner)  # type: ignore[assignment]
-        rotation = h.rotation
-        grid = GridV2.of({"corner": list(corner), "counts": counts_n, "size": parent, "rotation": rotation, "div": div})
-        return InferredGrid(grid, self.centres, parent_guess, warnings, (tols[0], tols[1], tols[2]))
+        grid = GridV2.of({"corner": list(corner), "counts": counts_n, "size": list(parent),
+                          "rotation": h.rotation, "div": list(div)})  # fmt: skip
+        return InferredGrid(grid, self.centres, parent_guess, warnings if warnings is not None else [],
+                            (tols[0], tols[1], tols[2]), (float(origin[0]), float(origin[1]), float(origin[2])))
 
 
 @dataclass
@@ -387,6 +425,7 @@ class InferredGrid:
     parent_guess: bool = False
     warnings: list[str] = field(default_factory=list)
     tol: tuple[float, float, float] = (TOL, TOL, TOL)  # m per axis: how far an edge may be from its sub-cell line
+    origin: tuple[float, float, float] = (0.0, 0.0, 0.0)  # the corner in the local axes of pass 1
 
     @property
     def sub(self) -> bool:
@@ -485,9 +524,16 @@ class InferredGrid:
                 f"{worst:.6g} м при допуске {'1e-6' if limit == TOL else f'{limit:.6g}'} м.",
                 "Проверьте угол поворота вокруг Z, начало модели и оси, в которых записаны центры (проекта или "
                 "модели), в мастере импорта.",
-                {"rows": list(check.rows), "dist": worst},
+                {"rows": list(check.rows), "dist": worst, "choices": self._choices()},
             )  # fmt: skip
         return check
+
+    def _choices(self) -> list[dict[str, Any]]:
+        """What the user may do after a refusal that names no blocks (`rotation_mismatch`): set the grid by hand — the
+        form starts from this grid — or leave the file out (ADR 0030 decision 6)."""
+        from . import grid_diag
+
+        return grid_diag.current_choices(self)
 
     def three_rows(self, n: int) -> list[int]:
         """The rows checked: first, middle, last (0-based)."""
@@ -538,7 +584,13 @@ def infer(
     cells = found.rows_of(c, d)
     lost = Unaligned()
     lost.add(0, cells)
-    lost.raise_if()
+    if lost.count:  # the refusal names its reason and what the user may do (ADR 0030)
+        from . import grid_diag
+
+        sample = grid_diag.Sample(len(c))
+        sample.add(0, c, d)
+        diag = grid_diag.diagnose(scan, found, *sample.arrays(), rows=len(c), lost=lost)
+        lost.raise_if(diag, grid_diag.choices_of(diag, found.grid.rotation))
     valid = None
     if lost.invalid:
         valid = cells.bad == OK

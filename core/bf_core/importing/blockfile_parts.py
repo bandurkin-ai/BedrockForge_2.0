@@ -93,6 +93,26 @@ def column_quanta(source: Any, geometry: Mapping[str, str | None]) -> tuple[tupl
     return (quanta[0], quanta[1], quanta[2]), (f4[0], f4[1], f4[2])
 
 
+def column_types(source: Any, geometry: Mapping[str, str | None]) -> dict[str, str]:
+    """The type of the columns of the centre and the size for the diagnosis of a refusal: «R 8» (a double of 8 bytes),
+    «N 10.2» (a number written as text of 10 characters with 2 decimals), «F 4»; a text file or Datamine — «число»."""
+    fields = {f.name: f for f in getattr(getattr(source, "header", None), "fields", [])}
+    out: dict[str, str] = {}
+    for role in ("x", "y", "z", "dx", "dy", "dz"):
+        name = geometry.get(role)
+        if not name:
+            continue
+        f = fields.get(name)
+        decimals = getattr(f, "decimals", None)
+        if f is None or decimals is None:
+            out[role] = "число"
+        elif f.kind == "N":
+            out[role] = f"N {f.width}.{decimals}"
+        else:
+            out[role] = f"{f.kind} {f.width}"
+    return out
+
+
 @dataclass
 class BlockOptions:
     """`options[<путь>].blocks` (docs/progress/e17-api.md §5) and the encoding and delimiter of a text file. `roles`

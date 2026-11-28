@@ -23,11 +23,13 @@ import {
   shownChoice,
   TRIPLE_TITLES,
   turnNote,
+  unalignedOf,
   type BlocksDraft,
   type BlocksInfo,
   type Choice,
   type TripleKey,
 } from "./model";
+import { UnalignedChoice } from "./UnalignedChoice";
 import css from "../../importing/ImportWizard.module.css";
 
 const AXES = ["X", "Y", "Z"];
@@ -46,6 +48,7 @@ export function BlocksStep({ wizard, file, options }: Props) {
   const check = check3Text(info);
   const turn = turnNote(info, draft);
   const stem = file.block_models?.[0]?.name ?? file.file.replace(/\.[^.]+$/, "");
+  const unaligned = unalignedOf(info.error); // a refusal with a diagnosis: the panel of the choice (ADR 0030)
   return (
     <div className={css.importStep} data-testid="blocks-step" data-format={info.format}>
       <div data-testid="blocks-headline">
@@ -66,7 +69,8 @@ export function BlocksStep({ wizard, file, options }: Props) {
           </label>
         )}
       </div>
-      {info.error && (
+      {unaligned && <UnalignedChoice wizard={wizard} file={file} options={options} un={unaligned} />}
+      {info.error && !unaligned && (
         <div className={css.error} role="alert" data-testid="blocks-error" data-code={info.error.code}>
           {info.error.message} {info.error.code === "blocks_unaligned" ? "" : info.error.hint}
           {info.error.code === "blocks_unaligned" && (
@@ -243,6 +247,7 @@ function GridPart({ info, draft, errors, onApply }: { info: BlocksInfo; draft: B
       ))}
       <div className={css.options}>
         <RotationField value={draft?.rotation ?? ""} placeholder={g ? n(g.rotation) : ""} error={errors.rotation} onApply={(rotation) => onApply({ rotation })} />
+        <TolField value={draft?.tol ?? ""} error={errors.tol} onApply={(tol) => onApply({ tol })} />
         <label>
           Оси центров в файле
           <select value={draft?.centres ?? "project"} aria-label="Оси центров" onChange={(e) => onApply({ centres: e.target.value as "project" | "model" })}>
@@ -266,6 +271,29 @@ function RotationField({ value, placeholder, error, onApply }: { value: string; 
       <label>
         Поворот вокруг Z, °
         <input value={draft} placeholder={placeholder || "0"} style={{ width: 80 }} aria-label="Поворот вокруг Z" aria-invalid={error ? true : undefined} onChange={(e) => setDraft(e.target.value)} onBlur={apply} onKeyDown={(e) => e.key === "Enter" && apply()} />
+      </label>
+      {error && (
+        <span className={css.error} role="alert">
+          {error}
+        </span>
+      )}
+    </>
+  );
+}
+
+/** How far an edge of a block may be from its line of the grid: empty — by the type of the columns (a number written with
+ * two decimals — 0,005 m); at most a quarter of a sub-cell, the core says so. */
+function TolField({ value, error, onApply }: { value: string; error?: string; onApply: (v: string) => void }) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  const apply = () => {
+    if (draft.trim() !== value.trim()) onApply(draft.trim());
+  };
+  return (
+    <>
+      <label title="Насколько грань блока может отстоять от линии сетки. Пусто — по типу столбцов файла; не больше четверти подъячейки.">
+        Допуск, м
+        <input value={draft} placeholder="по столбцам" style={{ width: 90 }} aria-label="Допуск привязки" aria-invalid={error ? true : undefined} onChange={(e) => setDraft(e.target.value)} onBlur={apply} onKeyDown={(e) => e.key === "Enter" && apply()} />
       </label>
       {error && (
         <span className={css.error} role="alert">

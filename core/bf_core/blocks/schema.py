@@ -301,7 +301,7 @@ def centers(grid: Mapping[str, Any], idx: Any) -> np.ndarray:
 
 META_V2 = 2
 MAX_GRID_V2 = 2_000_000_000  # ТЗ 8.7.2: nx·ny·nz ≤ 2·10⁹
-MAX_LEVEL = 7  # L per axis of the prototype and the filling (div = 2^L); a model's div is any whole ≤ 2^MAX_LEVEL
+MAX_LEVEL = 7  # L per axis of the prototype and the filling (div = 2^L); the div of a model — any whole ≤ 128
 ROW_GROUP_V2 = 1 << 20
 MAX_LABELS_V2 = 32_767  # cat of the new files: int16 codes
 MAX_DESCRIPTION = 500
@@ -406,9 +406,8 @@ def _sin_cos(deg: float) -> tuple[float, float]:
 
 @dataclass(frozen=True)
 class SubblockSpec:
-    """Sub-cells of a parent, div = (nx, ny, nz), each a whole 1…128 (ADR 0030: 5, 3, 2·3 … — not only 2^L). A
-    sub-block is (s, w) per axis in sub-cells: offset s ∈ [0; div), size w ≥ 1, s + w ≤ div — any aligned box
-    (ТЗ 8.7.2); a whole parent — s = 0, w = div."""
+    """Sub-cells of a parent, div = whole 1…128 per axis (ADR 0030: 5, 3, 6 … — not only 2^L). A sub-block is
+    (s, w) per axis in sub-cells: s ∈ [0; div), w ≥ 1, s + w ≤ div — any aligned box; a parent: s = 0, w = div."""
 
     div: tuple[int, int, int] = (1, 1, 1)
 
@@ -440,9 +439,8 @@ class SubblockSpec:
     @property
     def levels(self) -> tuple[int, int, int] | None:
         """L per axis (div = 2^L); None — a division that is not a power of two on some axis (5, 3, 6 …)."""
-        if any(d & (d - 1) for d in self.div):
-            return None
-        return (self.div[0].bit_length() - 1, self.div[1].bit_length() - 1, self.div[2].bit_length() - 1)
+        lv = tuple(d.bit_length() - 1 for d in self.div)
+        return None if any(d & (d - 1) for d in self.div) else (lv[0], lv[1], lv[2])
 
     @property
     def sub(self) -> bool:

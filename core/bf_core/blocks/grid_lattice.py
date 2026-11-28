@@ -256,8 +256,7 @@ def fit_axis(
     before = rel < -tol
     rho = np.maximum(rel - np.floor((rel + tol) / parent) * parent, 0.0)
     crosses = ~before & (rho + size > parent + 2 * tol)  # the low edge and the size are each off by up to `tol`
-    keep = ~before & ~crosses
-    k = np.flatnonzero(keep)
+    k = np.flatnonzero(~before)  # the lattice is made of every block after the corner, those over a border too
     if not len(k):
         return AxisFit(parent, origin, div or 1, total, 0, int(n[before].sum()), int(n[crosses].sum()), 0)
     values = np.concatenate([np.round(rho[k], 7), np.round(size[k], 7)])
@@ -266,9 +265,9 @@ def fit_axis(
     wsum = np.bincount(inverse, weights=weights, minlength=len(uniq))
     got, on = lattice_of(uniq, wsum, parent, tol, div)
     both = on[inverse[: len(k)]] & on[inverse[len(k) :]]
-    aligned = int(n[k][both].sum())
-    return AxisFit(parent, origin, got, total, aligned, int(n[before].sum()), int(n[crosses].sum()),
-                   int(n[k][~both].sum()))  # fmt: skip
+    here = ~crosses[k]
+    return AxisFit(parent, origin, got, total, int(n[k][both & here].sum()), int(n[before].sum()),
+                   int(n[crosses].sum()), int(n[k][~both & here].sum()))  # fmt: skip
 
 
 # --- the parent and the corner of an axis ----------------------------------------------------------------------
