@@ -412,7 +412,7 @@ class Tridb:
         stays open for the others. `progress(fraction, message)` may raise to cancel."""
         found = entry if isinstance(entry, MeshEntry) else next((e for e in self.entries if e.key == entry), None)
         if found is not None and found.error:
-            raise FormatError(**found.error)
+            raise FormatError(found.error["code"], found.error["message"], found.error.get("hint", ""))
         if found is None or found.key not in self._items:
             raise fail("broken", "Такого каркаса в файле TRIDB нет.", "Обновите состав файла.")
         tick = progress or no_progress

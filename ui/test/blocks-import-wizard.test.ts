@@ -115,7 +115,9 @@ describe("the composition of a block file", () => {
     const page = text(html(w));
     expect(page).toContain("Блоков, которые нельзя уложить в сетку модели: 103");
     expect(page).toContain("Строки данных (с 1): 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 и другие");
-    expect(page).toContain("Проверьте начало и размер родителя в мастере");
+    expect(page).toContain("Модель не ложится в сетку");
+    expect(page).toContain("Задать сетку вручную");
+    expect(page).toContain("Не импортировать этот файл");
     expect(page).toContain("Сетку по файлу определить не удалось");
     expect(canStartObjects(w.store.get())).toBe(false);
   });

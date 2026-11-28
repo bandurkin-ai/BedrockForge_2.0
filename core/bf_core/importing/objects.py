@@ -293,7 +293,7 @@ def _chunks(path: Path, tick: Callable[[int], None]) -> Iterator[bytes]:
             yield chunk
 
 
-def _result(files: list[dict[str, Any]], failed: list[dict[str, str]], rest: list[dict[str, str]]) -> dict[str, Any]:
+def _result(files: list[dict[str, Any]], failed: list[dict[str, Any]], rest: list[dict[str, str]]) -> dict[str, Any]:
     ids = [i for f in files for i in (f.get("object_ids") or [f["object_id"]])]
     out: dict[str, Any] = {"files": files, "objects": ids, "failed": failed, "rest": rest}
     for key in ("layers", "lines", "points", "vertices", "rasters", "wireframes", "triangles"):
@@ -350,7 +350,7 @@ def import_objects(ctx: JobContext) -> dict[str, Any]:
     options = options_by_file(p.get("options"))  # keys as paths are spelled here, whatever the caller sent
     folder = p.get("folder") or None
     done: list[_Done] = []
-    failed: list[dict[str, str]] = []
+    failed: list[dict[str, Any]] = []
     temps: list[Path] = []
     try:
         for k, g in enumerate(groups):

@@ -33,15 +33,22 @@ def _first(fields: int) -> list[str]:
     return ["AU", "DENSITY", *[f"F{i}" for i in range(2, fields)]]
 
 
-def write_dat(path: Path, rows: int, fields: int = 20) -> dict[str, Any]:
-    from tools.gen.blockmodel import sub_chunks, sub_model
+def _model(rows: int, div: tuple[int, int, int], size: tuple[float, float, float] | None) -> dict[str, Any]:
+    from tools.gen.blockmodel import sub_model
+
+    return sub_model(rows, div) if size is None else sub_model(rows, div, size=size)
+
+
+def write_dat(path: Path, rows: int, fields: int = 20, div: tuple[int, int, int] = DIV,
+              size: tuple[float, float, float] | None = None) -> dict[str, Any]:
+    from tools.gen.blockmodel import sub_chunks
 
     from bf_core.blocks import geometry as geo
     from bf_core.blocks.schema import GridV2
     from bf_core.formats.micromine_header import Field, build_header, default_xml
 
     t0 = time.perf_counter()
-    grid = GridV2.of(sub_model(rows, DIV))
+    grid = GridV2.of(_model(rows, div, size))
     first = _first(fields)
     names = ["EAST", "NORTH", "RL", "_EAST", "_NORTH", "_RL", *first]
     head = [Field(n, "R", 8, 2) for n in names]
@@ -52,7 +59,7 @@ def write_dat(path: Path, rows: int, fields: int = 20) -> dict[str, Any]:
     n = 0
     with path.open("wb") as fh:
         fh.write(build_header(head, "cp1251", default_xml(names, "ibm-5347")))
-        for p, s, w, vals in sub_chunks(rows, DIV, 0.25, 1 << 18, 1, fields):
+        for p, s, w, vals in sub_chunks(rows, div, 0.25, 1 << 18, 1, fields):
             c = geo.centres(grid, p, s, w)
             d = geo.row_widths(grid, p, s, w)
             cols = [c[:, 0], c[:, 1], c[:, 2], d[:, 0], d[:, 1], d[:, 2], *[vals[f] for f in first]]
@@ -69,15 +76,16 @@ def write_dat(path: Path, rows: int, fields: int = 20) -> dict[str, Any]:
             "seconds": round(time.perf_counter() - t0, 1)}  # fmt: skip
 
 
-def write_dm(path: Path, rows: int, fields: int = 20) -> dict[str, Any]:
-    from tools.gen.blockmodel import sub_chunks, sub_model
+def write_dm(path: Path, rows: int, fields: int = 20, div: tuple[int, int, int] = DIV,
+             size: tuple[float, float, float] | None = None) -> dict[str, Any]:
+    from tools.gen.blockmodel import sub_chunks
 
     from bf_core.blocks import geometry as geo
     from bf_core.blocks.schema import GridV2
     from tests.formats.dm_builder import WORDS, F, build
 
     t0 = time.perf_counter()
-    model = sub_model(rows, DIV)
+    model = _model(rows, div, size)
     grid = GridV2.of(model)
     first = _first(fields)
     spec = [F(n) for n in ("IJK", "XC", "YC", "ZC", "XINC", "YINC", "ZINC", *first)]
@@ -109,7 +117,7 @@ def write_dm(path: Path, rows: int, fields: int = 20) -> dict[str, Any]:
 
     with path.open("wb") as fh:
         fh.write(head)  # the counts of the pages are patched at the end
-        for p, s, w, vals in sub_chunks(rows, DIV, 0.25, 1 << 18, 1, fields):
+        for p, s, w, vals in sub_chunks(rows, div, 0.25, 1 << 18, 1, fields):
             c = geo.centres(grid, p, s, w)
             d = geo.row_widths(grid, p, s, w)
             mat = np.column_stack([p.astype(np.float64), c, d, *[vals[f] for f in first]])
@@ -130,7 +138,10 @@ def make(params: dict[str, Any], work: Path, kind: str) -> None:
     from . import blocks_common as bc
 
     path = work / f"model.{kind}"
-    meta = (write_dat if kind == "dat" else write_dm)(path, int(params["rows"]), int(params.get("fields", 20)))
+    div = tuple(int(v) for v in params.get("div", DIV))
+    size = tuple(float(v) for v in params["size"]) if params.get("size") else None
+    meta = (write_dat if kind == "dat" else write_dm)(path, int(params["rows"]), int(params.get("fields", 20)), div,
+                                                        size)  # fmt: skip
     bc.Ctx.create(work).close()
     (work / "file.json").write_text(json.dumps({"path": path.name, **meta}), encoding="utf-8")
 
@@ -178,7 +189,10 @@ def imported(params: dict[str, Any], work: Path) -> dict[str, Any]:
             name = STAGE_KEYS.get(key, key)
             named[name] = named.get(name, 0.0) + seconds
         info.update({f"stage_{k}_s": round(v, 2) for k, v in named.items()})
-        info.update(format=source.format, parents=res.parents, sub=res.sub, fields=len(res.fields))
+        info.update(format=source.format, parents=res.parents, sub=res.sub, fields=len(res.fields),
+                    div=list(res.grid["div"]))
+        if params.get("div"):  # the division found is the one the file was written with
+            assert info["div"] == [int(v) for v in params["div"]], (info["div"], params["div"])
         model = ctx.model(res.model_id)
         assert res.rows == model.rows == made["rows"], (res.rows, model.rows, made["rows"])
         bad = [c["n"] if isinstance(c, dict) else c for c in (res.checks["duplicates"], res.checks["overlaps"])]

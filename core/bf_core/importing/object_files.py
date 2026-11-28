@@ -357,13 +357,15 @@ def summarize(g: Group, read: Any, elevation: float | None = None, shift: float 
     }  # fmt: skip
 
 
-def _failure(path: Path, exc: BaseException) -> dict[str, str]:
+def _failure(path: Path, exc: BaseException) -> dict[str, Any]:
+    extra: dict[str, Any] = {}
     if isinstance(exc, FormatError):
-        code, message, hint = exc.code, exc.message, exc.hint
+        code, message, hint, extra = exc.code, exc.message, exc.hint, exc.extra
     else:
         reason = getattr(exc, "strerror", None) or str(exc)
         code, message, hint = "file_unreadable", f"Файл не читается ({reason}).", "Проверьте путь и доступ к файлу."
-    return {"path": str(path), "file": path.name, "code": code, "message": message, "hint": hint}
+    # `extra` (a block file the grid cannot hold: `diag`, `choices` — ADR 0030) goes beside the four fields
+    return {**extra, "path": str(path), "file": path.name, "code": code, "message": message, "hint": hint}
 
 
 def _size(path: Path) -> int:
