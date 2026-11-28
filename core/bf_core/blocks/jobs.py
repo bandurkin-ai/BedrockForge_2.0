@@ -168,14 +168,14 @@ def run_regularize(
     """The body of `blocks.regularize` (the handler, the tests and the bench in the process)."""
     from bf_core.blocks import regularize as rg
     from bf_core.blocks.fill import commit, inputs
-    from bf_core.blocks.model import CHUNK, Model
+    from bf_core.blocks.model import ANY, CHUNK, Model
 
     store = BlobStore(Path(folder))
     clock = Clock(tick, {S_READ: "read", S_OVERLAP: "overlap", S_WRITE: "write"})
     clock(0.01, S_READ)
     rebuild = params.get("rebuild")
     with dialect.read_tx(engine) as conn:
-        model = Model.open(conn, store, int(params["model_id"]))
+        model = Model.open(conn, store, int(params["model_id"]), ANY)
         # «устарел» compares the files of ALL the fields of the source (`fill.inputs.model_sha`), not the cells only
         source_inputs = {"model": inputs.inputs_of(conn, [], model.id)["model"]}
         if rebuild is not None:  # a model that is gone or changed is a refusal before the work

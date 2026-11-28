@@ -115,7 +115,8 @@ def column_types(source: Any, geometry: Mapping[str, str | None]) -> dict[str, s
 
 @dataclass
 class BlockOptions:
-    """`options[<путь>].blocks` (docs/progress/e17-api.md §5) and the encoding and delimiter of a text file. `roles`
+    """`options[<путь>].blocks` (docs/progress/e17-api.md §5) and the encoding and delimiter of a text file. `layout` —
+    `grid` | `list` (ADR 0030 decision 14: a list of blocks only when the user chose it). `roles`
     — the columns the user chose (a role absent or None is found by name, "" — there is no such column); `grid` —
     corner, size, counts, rotation, div (what is absent is read from the file or inferred); `centres` — `project` |
     `model`; `empty` — the codes of «пусто»; `fields` — {column: {unit, role, skip}}."""
@@ -128,6 +129,7 @@ class BlockOptions:
     encoding: str | None = None
     delimiter: str | None = None
     name: str | None = None
+    layout: str = "grid"  # `blocks.layout`: "grid" (parents and sub-blocks) | "list" (a list of boxes, ADR 0030)
 
     @classmethod
     def of(
@@ -150,8 +152,12 @@ class BlockOptions:
                 raise _err("blocks_options", f"Код пустого «{v}» не число.", "Введите числа, например -99.")
             empty.append(float(value))
         fields = {str(k): dict(v or {}) for k, v in dict(raw.get("fields") or {}).items()}
+        layout = str(raw.get("layout") or "grid")
+        if layout not in ("grid", "list"):
+            raise _err("bad_param", f"Способ импорта «{layout}» неизвестен.",
+                       "Допустимо: «grid» — сетка, «list» — список блоков.", {"param": "blocks.layout"})  # fmt: skip
         return cls(roles, dict(raw.get("grid") or {}), centres, empty, fields, raw.get("encoding") or encoding,
-                   raw.get("delimiter") or None, raw.get("name") or name)  # fmt: skip
+                   raw.get("delimiter") or None, raw.get("name") or name, layout)  # fmt: skip
 
     def hint(self, base: GridHint | None) -> GridHint:
         """The hint of the file (its grid line, a Datamine header) overridden by what the wizard says."""

@@ -59,7 +59,7 @@ export interface CheckExample {
 export interface Checks {
   at?: string;
   duplicates: number;
-  overlaps: { n: number; method: "exact" | "volume" | string };
+  overlaps: { n: number; method: "exact" | "volume" | "boxes" | string };
   /** the names of the fields without a single value */
   empty: string[];
   /** the names of the fields with one value in all the blocks */
@@ -70,6 +70,8 @@ export interface Checks {
 }
 
 export interface BlockV2 {
+  /** `list` — a list of blocks (`meta v3`) */
+  layout?: "grid" | "list";
   sub?: boolean;
   parents?: number;
   rows?: number;
@@ -92,7 +94,25 @@ export const divTail = (levels: readonly number[] | null | undefined, div: reado
 /** A division with an axis that is not a power of two (3, 5, 6 …): it has no levels. */
 export const isFreeDiv = (div: readonly number[]): boolean => div.some((d) => d > 1 && (d & (d - 1)) !== 0);
 
+/** A list of blocks (ADR 0030): the structure, the blocks and the enclosing grid — no sub-blocks, no parents. */
+export function listFacts(b: BlockModelInfo): Fact[] {
+  const total = b.grid.counts.reduce((a, c) => a * c, 1);
+  const facts: Fact[] = [
+    { label: "Структура", value: "список блоков (без сетки субблоков)" },
+    { label: "Блоков", value: count(b.cells) },
+    { label: "Охватывающая сетка", value: `${gridCounts(b)} (${counted(total, "ячейка", "ячейки", "ячеек")}), ячейка ${stepText(b)} — только для поиска блока под точкой` },
+    { label: "Угол сетки", value: b.grid.corner.map((v, i) => `${AXES[i]} ${num(v, 3)}`).join(", ") },
+    ...extentFacts(b.extent),
+  ];
+  const turn = v2(b).grid.rotation;
+  if (typeof turn === "number" && turn !== 0) facts.splice(4, 0, { label: "Поворот", value: `${num(turn, 4)}° вокруг Z, против часовой стрелки при виде сверху` });
+  if (b.crs) facts.push({ label: "Система координат", value: b.crs });
+  if (typeof b.size === "number") facts.push({ label: "Файл ячеек", value: bytes(b.size) });
+  return facts;
+}
+
 export function gridFacts(b: BlockModelInfo): Fact[] {
+  if (b.layout === "list") return listFacts(b);
   const total = b.grid.counts.reduce((a, c) => a * c, 1);
   const share = total > 0 ? ` (${num((100 * b.cells) / total, 1)} %)` : "";
   const m = v2(b);

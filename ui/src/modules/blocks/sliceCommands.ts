@@ -52,6 +52,7 @@ export async function runSlice(app: App, a: Record<string, unknown>): Promise<st
   const keys = viewStore.get();
   const cur = styleIn(keys, model.id).slice;
   const on = a.on !== false;
+  if (on && model.layout === "list") throw no("block_list_unsupported", `Срез недоступен для модели-списка блоков «${model.name}».`, "Регуляризуйте модель: Блочные модели → Регуляризация.");
   let plane: SlicePlane = planeFromCall(a, cur.plane, model) ?? cur.plane;
   if (!given(a, "plane") && given(a, "at")) {
     const keep = plane !== "section" ? axisOf(plane) : null;

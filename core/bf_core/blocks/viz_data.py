@@ -45,7 +45,7 @@ from . import restrict
 from . import schema as bs
 from .filters import schema as fs
 from .lod import View, view
-from .model import CHUNK, Chunk, Model, field_not_found
+from .model import ANY, CHUNK, Chunk, Model, field_not_found
 from .model import P as COL_P
 from .model import S as COL_S
 from .model import W as COL_W
@@ -68,13 +68,16 @@ def field_spec(model: Model, name: str, param: str) -> dict[str, Any]:
 # --- the model, the columns -------------------------------------------------------------------------------------------
 
 
-def open_model(project: Any, model_id: int, common: Common) -> tuple[Model, restrict.Restrictor, dict[str, Any] | None]:
-    """The model, the restrictor of the filter and the quick restrictor together, and their tree."""
+def open_model(
+    project: Any, model_id: int, common: Common, layout: Sequence[str] = ("grid",)
+) -> tuple[Model, restrict.Restrictor, dict[str, Any] | None]:
+    """The model, the restrictor of the filter and the quick restrictor together, and their tree. A list of blocks is
+    opened by the shell and the block under a point only (`layout=ANY`): the slice and the polygons need the grid."""
     from .filters import store as filters
 
     store = BlobStore(project.folder)
     with dialect.read_tx(project.engine) as conn:
-        model = Model.open(conn, store, model_id)
+        model = Model.open(conn, store, model_id, layout, "Срез" if layout == ("grid",) else None)
         tree = restrict.combine(None if common.filter_id is None else filters.rules_of(conn, common.filter_id),
                                 common.restrict)  # fmt: skip
         r = restrict.prepare(model, tree, conn=conn, store=store)
@@ -323,7 +326,7 @@ def encode_blocks(model: Model, v: View, spec: ViewSpec, cl: Classes, passed: in
     f = v.faces
     origin = np.zeros(3)
     if len(f):
-        lo, hi = local_extent(f)
+        lo, hi = getattr(v, "extent", None) or local_extent(f)  # a list of blocks gives its own (list_shell.ListView)
         origin = np.round((lo + hi) / 2)
     g = model.grid
     head = {"kind": "blocks", "format": 1, "model": model.id, "version": model.version, "mode": spec.mode,
@@ -391,7 +394,7 @@ def threads() -> int:
 
 def shell_bytes(project: Any, model_id: int, spec: ViewSpec, tok: Token) -> bytes:
     """BFA1 `blocks` of the request (module docstring)."""
-    model, r, tree = open_model(project, model_id, spec.common)
+    model, r, tree = open_model(project, model_id, spec.common, ANY)
     if spec.colour.kind != "none":
         field_spec(model, str(spec.colour.field), "colour.field")  # 404 block_field_not_found before the slot
     key = response_key(project, model, tree, spec)
@@ -401,12 +404,24 @@ def shell_bytes(project: Any, model_id: int, spec: ViewSpec, tok: Token) -> byte
             return hit
     with heavy(tok):
         names = [str(spec.colour.field)] if spec.colour.kind != "none" else []
-        rows = Rows(project, model, r, names)
+        rows: Rows
+        if model.listed:  # no grid of parents: the boxes (list_shell.py)
+            from . import list_shell as ls
+
+            rows = ls.ListRows(project, model, r, names)
+        else:
+            rows = Rows(project, model, r, names)
         tok.check()
         passed = rows.passed_all(tok, spec.extent)
         cl = classes_of(model, rows, spec.colour, passed, tok)
-        v = view(model.grid, rows.idx, rows.s, rows.w, passed, cl.klass, limit=spec.limit, shell=spec.mode == "shell",
-                 kind=cl.kind, values=cl.values, klass_of=cl.klass_of, threads=threads(), tick=tok.tick)  # fmt: skip
+        if model.listed:
+            v = ls.view(model.grid, rows.idx, rows.lc, rows.ld, passed, cl.klass, limit=spec.limit,  # type: ignore[attr-defined]
+                        shell=spec.mode == "shell", kind=cl.kind, values=cl.values, klass_of=cl.klass_of,
+                        threads=threads(), tick=tok.tick)  # fmt: skip
+        else:
+            v = view(model.grid, rows.idx, rows.s, rows.w, passed, cl.klass, limit=spec.limit,
+                     shell=spec.mode == "shell", kind=cl.kind, values=cl.values, klass_of=cl.klass_of,
+                     threads=threads(), tick=tok.tick)  # fmt: skip
         out = encode_blocks(model, v, spec, cl, int(np.count_nonzero(passed)), list(r.warnings))
     if key is not None:
         RESPONSES.put(key, out)

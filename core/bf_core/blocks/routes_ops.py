@@ -86,9 +86,9 @@ def _nothing(chunk: Any) -> Any:
 def _open(conn: sa.Connection, folder: Any, model_id: int) -> Any:
     from bf_core.storage.blobs import BlobStore
 
-    from .model import Model
+    from .model import ANY, Model
 
-    return Model.open(conn, BlobStore(folder), model_id)
+    return Model.open(conn, BlobStore(folder), model_id, ANY)
 
 
 # --- the prototype ----------------------------------------------------------------------------------------------------

@@ -61,7 +61,7 @@ def refuse(c: np.ndarray, d: np.ndarray, hint: GridHint | None = None, quanta: A
 def the_way_out(c: np.ndarray, d: np.ndarray, diag: dict[str, Any], quanta: Any = None) -> None:
     """The grid of the first choice, given as the hint of the wizard, holds every block."""
     ch = choices_of(diag)
-    assert [x["id"] for x in ch] == ["grid", "cancel"] and ch[0]["aligned"] == 1.0
+    assert [x["id"] for x in ch] == ["grid", "list", "cancel"] and ch[0]["aligned"] == 1.0
     g = ch[0]["grid"]
     hint = GridHint(corner=tuple(g["corner"]), size=tuple(g["size"]), div=tuple(g["div"]), tol=g["tol"],
                     rotation=g["rotation"])  # fmt: skip
@@ -197,17 +197,19 @@ def test_the_sample_is_the_same_rows_in_any_portions() -> None:
     assert whole.step == 10 and len(whole.arrays()[0]) == 100 and whole.arrays()[1] is None
 
 
-def test_the_choices_are_the_grid_by_hand_and_to_leave_the_file_out() -> None:
+def test_the_choices_are_the_grid_by_hand_the_list_and_to_leave_the_file_out() -> None:
     c, d = hard_model()
     _, found, _, diag = refuse(c, d)
     ch = choices_of(diag, rotation=30.0)
-    assert [x["id"] for x in ch] == ["grid", "cancel"]
-    assert ch[0]["label"] == "Задать сетку вручную" and ch[1]["label"] == "Не импортировать этот файл"
+    assert [x["id"] for x in ch] == ["grid", "list", "cancel"]  # the list is between the two (ADR 0030 decision 14)
+    assert ch[0]["label"] == "Задать сетку вручную" and ch[2]["label"] == "Не импортировать этот файл"
+    assert ch[1]["label"] == "Импортировать списком блоков" and ch[1]["note"]
     assert set(ch[0]["grid"]) == {"corner", "size", "div", "tol", "rotation"} and ch[0]["grid"]["rotation"] == 30.0
     cur = current_choices(found)
-    assert cur[0]["grid"]["size"] == pytest.approx(list(found.grid.regular()), abs=1e-6) and cur[1]["id"] == "cancel"
+    assert [x["id"] for x in cur] == ["grid", "list", "cancel"]
+    assert cur[0]["grid"]["size"] == pytest.approx(list(found.grid.regular()), abs=1e-6)
     nothing = choices_of({"candidates": []})
-    assert nothing[0]["grid"] is None and nothing[1]["id"] == "cancel"
+    assert nothing[0]["grid"] is None and [x["id"] for x in nothing] == ["grid", "list", "cancel"]
 
 
 # --- the file: inspect, the job ------------------------------------------------------------
@@ -231,7 +233,7 @@ def test_inspect_gives_the_reason_and_the_choices(project) -> None:  # type: ign
     err = info["error"]
     assert err["code"] == "blocks_unaligned" and info["grid"] is None
     assert err["diag"]["causes"] == ["off_lattice"] and err["diag"]["columns"]["x"] == "R 8"
-    assert [c["id"] for c in err["choices"]] == ["grid", "cancel"] and err["count"] > 0
+    assert [c["id"] for c in err["choices"]] == ["grid", "list", "cancel"] and err["count"] > 0
     entry = obf.inspect_entry(path)
     assert entry["blocks"]["error"]["diag"]["rows"] == info["rows"] and entry["totals"]["block_models"] == 0
 
@@ -246,7 +248,7 @@ def test_the_job_refusal_carries_diag_and_choices_into_the_failure(
         obf.import_model(obf.open_source(path, opts), opts, engine=project.engine, store=project.store,
                          workdir=project.tmp / "work", name="М", label=path.name, tick=lambda f, m: None)  # fmt: skip
     assert e.value.code == "blocks_unaligned" and e.value.extra["diag"]["causes"] == ["off_lattice"]
-    assert e.value.extra["diag"]["rows"] == 3000 and [c["id"] for c in e.value.extra["choices"]] == ["grid", "cancel"]
+    assert e.value.extra["diag"]["rows"] == 3000 and [c["id"] for c in e.value.extra["choices"]] == ["grid", "list", "cancel"]
     failure = _failure(path, FormatError(e.value.code, e.value.message, e.value.hint, e.value.extra))
     assert failure["code"] == "blocks_unaligned" and failure["file"] == "hard.dat" and "diag" in failure
     assert FormatError("broken", "m").extra == {} and FormatError("broken", "m").as_dict()["code"] == "broken"
@@ -265,9 +267,9 @@ def test_the_job_writes_a_failure_with_the_diagnosis(project) -> None:  # type: 
     with pytest.raises(FormatError) as e:
         obf.write_blockfile(ctx, project.engine, project.store, group, None, lambda f, m: None, None)
     assert e.value.code == "blocks_unaligned" and e.value.extra["diag"]["causes"] == ["off_lattice"]
-    assert [c["id"] for c in e.value.extra["choices"]] == ["grid", "cancel"] and e.value.as_dict()["count"] > 0
+    assert [c["id"] for c in e.value.extra["choices"]] == ["grid", "list", "cancel"] and e.value.as_dict()["count"] > 0
     failure = _failure(path, e.value)
-    assert failure["file"] == "hard.dat" and failure["diag"]["rows"] == 3000 and failure["choices"][1]["id"] == "cancel"
+    assert failure["file"] == "hard.dat" and failure["diag"]["rows"] == 3000 and failure["choices"][2]["id"] == "cancel"
     assert json.dumps(failure, ensure_ascii=False)  # whole JSON: it goes into the result of the job
 
 
@@ -279,7 +281,7 @@ def test_a_wrong_angle_offers_the_grid_by_hand_too() -> None:
         infer(c, d, GridHint(rotation=20.0))
     assert e.value.code == "rotation_mismatch" and "diag" not in e.value.extra
     ch = e.value.extra["choices"]
-    assert [x["id"] for x in ch] == ["grid", "cancel"] and ch[0]["grid"]["rotation"] == 20.0
+    assert [x["id"] for x in ch] == ["grid", "list", "cancel"] and ch[0]["grid"]["rotation"] == 20.0
     assert ch[0]["grid"]["size"] == [8.0, 8.0, 4.0] and ch[0]["grid"]["div"] == [8, 4, 4]
 
 

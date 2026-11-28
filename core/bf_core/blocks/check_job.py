@@ -41,13 +41,13 @@ def run_check(engine: sa.Engine, folder: Any, params: dict[str, Any], *, tick: T
     """The body of `blocks.check` (the handler and the tests). `params` — {model_id}; 404 `block_model_not_found`."""
     from . import checks
     from .fields_store import version_conflict
-    from .model import Model
+    from .model import ANY, Model
     from .store import not_found
 
     store = BlobStore(Path(folder))
     tick(0.0, "Чтение")
     with dialect.read_tx(engine) as conn:
-        model = Model.open(conn, store, int(params["model_id"]))
+        model = Model.open(conn, store, int(params["model_id"]), ANY)
 
     def progress(fraction: float | None, message: str | None = None) -> None:
         tick(0.02 + 0.93 * (fraction or 0.0), message)

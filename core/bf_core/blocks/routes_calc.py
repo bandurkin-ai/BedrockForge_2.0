@@ -46,11 +46,11 @@ def _body(raw: Any) -> dict[str, Any]:
 def _open(svc: ProjectService, model_id: int, *, writable: bool = False) -> tuple[Any, Any]:
     from bf_core.storage.blobs import BlobStore
 
-    from .model import Model
+    from .model import ANY, Model
 
     project = svc.require_current(writable=writable)
     with dialect.read_tx(project.engine) as conn:
-        return project, Model.open(conn, BlobStore(project.folder), model_id)
+        return project, Model.open(conn, BlobStore(project.folder), model_id, ANY)
 
 
 @router.post("/calc/check")

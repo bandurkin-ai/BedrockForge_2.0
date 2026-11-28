@@ -46,7 +46,7 @@ from bf_core.storage.blobs import BlobStore
 from . import calc_job, geometry, restrict
 from . import schema as bs
 from .filters import schema as fs
-from .model import Chunk, Model
+from .model import ANY, Chunk, Model, list_unsupported
 
 KIND = "blocks.export"
 TITLE = "Экспорт блочной модели"
@@ -226,6 +226,8 @@ def grid_line(model: Model) -> tuple[list[float] | None, str | None]:
     """(x0, dx, y0, dy, z0, dz) of the line of the grid of a CSV Micromine, x0 y0 z0 — the centre of the first parent;
     None and the reason when the line cannot say it (a turn, a variable step)."""
     g = model.grid
+    if model.listed:
+        return None, "Строка сетки не записана: модель — список блоков."
     if g.rotation != 0.0:
         return None, "Строка сетки не записана: модель повёрнута. При импорте укажите угол поворота."
     if g.tensors is not None or g.size is None:
@@ -236,6 +238,9 @@ def grid_line(model: Model) -> tuple[list[float] | None, str | None]:
 
 def grid_note(model: Model) -> str:
     g = model.grid
+    if model.listed:
+        return (f"BedrockForge block model (list of blocks): corner {list(g.corner)}, cell {list(g.size or ())}, "
+                f"rotation {g.rotation}")
     size = list(g.size) if g.size is not None else "variable"
     return (f"BedrockForge block model: corner {list(g.corner)}, counts {list(g.counts)}, size {size}, "
             f"rotation {g.rotation}, div {list(g.sub.div)}")  # fmt: skip
@@ -249,10 +254,12 @@ def request(conn: sa.Connection, folder: Path, model_id: int, body: Mapping[str,
 
     spec = parse(model_id, body)
     target = check_target(spec, folder)
-    model = Model.open(conn, BlobStore(folder), model_id)
+    model = Model.open(conn, BlobStore(folder), model_id, ANY)
     fields = [str(f["name"]) for f in selected(model, spec.fields)]
     check_filter_fields(model, calc_job.rules_tree(conn, spec.filter_id, spec.restrict))
     if spec.format == "omf":
+        if model.listed:
+            raise list_unsupported(model.name, "Экспорт OMF")
         if model.sub:
             raise omf_job.subblocks_error(model.name)
         if _grid_cells(model) > omf_job.MAX_CELLS:
@@ -300,7 +307,10 @@ def batch_of(model: Model, specs: Sequence[Mapping[str, Any]], ch: Chunk, mask: 
 
     p, s, w = pick(ch.p), pick(ch.s), pick(ch.w)
     assert p is not None
-    geo = np.concatenate([geometry.centres(model.grid, p, s, w), geometry.row_widths(model.grid, p, s, w)], axis=1)
+    if ch.lc is not None and ch.ld is not None:
+        geo = np.concatenate([model.grid.to_project(pick(ch.lc)), pick(ch.ld)], axis=1)
+    else:
+        geo = np.concatenate([geometry.centres(model.grid, p, s, w), geometry.row_widths(model.grid, p, s, w)], axis=1)
     cols: list[np.ndarray] = []
     for f in specs:
         values = pick(ch.cols[str(f["name"])])
@@ -343,7 +353,7 @@ def run_export(engine: sa.Engine, folder: Any, params: Mapping[str, Any], *, tic
     store = BlobStore(folder)
     go(0.0, "Подготовка экспорта")
     with dialect.read_tx(engine) as conn:
-        model = Model.open(conn, store, spec.model_id)
+        model = Model.open(conn, store, spec.model_id, ANY)
         tree = calc_job.rules_tree(conn, spec.filter_id, spec.restrict)
         check_filter_fields(model, tree)
         r = restrict.prepare(model, tree, conn=conn, store=store)
@@ -419,6 +429,7 @@ def _run_omf(model: Model, specs: Sequence[Mapping[str, Any]], r: restrict.Restr
     from bf_core.exporting import omf_job
     from bf_core.formats.omf_write import OmfWriter
 
+    model.require_grid("Экспорт OMF")
     if model.sub:
         raise omf_job.subblocks_error(model.name)
     if _grid_cells(model) > omf_job.MAX_CELLS:

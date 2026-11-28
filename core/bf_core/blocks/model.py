@@ -16,6 +16,12 @@ files `fld:` are read in step with `cells` (the same groups of rows; another siz
 what it returns (8 bytes a number, 4 a category, per row) and nothing else — the row groups go back to the system.
 The names of the fields are looked up without case and come out as they are stored.
 
+A list of blocks (meta v3, `layout: "list"`, ADR 0030 decision 8; `blocks/list_layout.py`): `Model.open` refuses it
+(422 `block_list_unsupported`, «Регуляризуйте модель») unless the caller names `layout=ANY` — the operations that
+read boxes: the report, the export, the filters, the calculator, the density, the categories, the display and the
+regularization. For it `p()` is the cell of the centre (`idx`), `subs()` is None, `iter` gives chunks whose `lc`, `ld`
+(centres and sizes, local axes, float64) are set, and `centres/local/boxes/volume` come from the columns `cx … dz`.
+
 `Reader` is the same without the grid and the connection: what `stats/blocks_cache.py` needs to fill the cache.
 """
 
@@ -37,10 +43,19 @@ from . import geometry
 from . import meta as bmeta
 from . import schema as bs
 from .fields_store import decode
+from .meta import LAYOUT_GRID, LAYOUT_LIST, LIST_COLUMNS
 from .schema import SUB_COLUMNS, GridV2
 from .store import broken, cells_sha, not_found
 
 CHUNK = 1 << 20
+ANY = (LAYOUT_GRID, LAYOUT_LIST)  # `Model.open(layout=ANY)`: the operation reads a list of blocks too
+
+
+def list_unsupported(name: str, what: str | None = None) -> ApiError:
+    """422 `block_list_unsupported`: the operation needs the grid of parents and sub-blocks (ADR 0030 decision 8)."""
+    label = f"Операция «{what}»" if what else "Эта операция"
+    return ApiError(422, "block_list_unsupported", f"{label} недоступна для модели-списка блоков «{str(name)[:80]}».",
+                    "Регуляризуйте модель: Блочные модели → Регуляризация.")  # fmt: skip
 
 
 def field_not_found(name: str, param: str | None = None) -> ApiError:
@@ -72,6 +87,8 @@ class Chunk:
     s: np.ndarray | None
     w: np.ndarray | None
     cols: dict[str, np.ndarray]
+    lc: np.ndarray | None = None  # a list of blocks: centres, local axes, float64 [n, 3] (`p` — the cell of the centre)
+    ld: np.ndarray | None = None  # … and the sizes along the axes of the model, float64 [n, 3]
 
     @property
     def n(self) -> int:
@@ -88,8 +105,8 @@ class Reader:
     `file`, every field is in `cells`), `rows`, `sub`. No state beyond that — safe to share between threads."""
 
     def __init__(self, store: BlobStore, shas: Mapping[str, str], fields: Sequence[Mapping[str, Any]], rows: int,
-                 sub: bool = False) -> None:  # fmt: skip
-        self.store, self.shas, self.rows, self.sub = store, dict(shas), int(rows), sub
+                 sub: bool = False, listed: bool = False) -> None:  # fmt: skip
+        self.store, self.shas, self.rows, self.sub, self.listed = store, dict(shas), int(rows), sub, listed
         self.specs = {str(f["name"]): f for f in fields}
 
     def spec(self, name: str) -> Mapping[str, Any]:
@@ -120,14 +137,17 @@ class Reader:
         return path
 
     def pieces(self, names: Sequence[str] = (), *, p: bool = True, sub: bool = False, start: int = 0,
-               stop: int | None = None) -> Iterator[tuple[int, int, np.ndarray | None, np.ndarray | None,
-                                                          np.ndarray | None, dict[str, np.ndarray]]]:  # fmt: skip
+               stop: int | None = None, geo: bool = False) -> Iterator[tuple[int, int, np.ndarray | None,
+                                                                             np.ndarray | None, np.ndarray | None,
+                                                                             dict[str, np.ndarray]]]:  # fmt: skip
         """(first row, rows, P, s, w, {field: values}) of every row group that meets rows [start, stop), cut to them.
-        `p` — read P; `sub` — read s and w too (a model without sub-blocks gives None)."""
+        `p` — read P; `sub` — read s and w too (a model without sub-blocks gives None). `geo` — a list of blocks:
+        `s` and `w` are then the centres and the sizes (`cx … dz`, float64 n×3), not the sub-blocks."""
         import pyarrow.parquet as pq
 
         stop = self.rows if stop is None else min(int(stop), self.rows)
         want_sub = sub and self.sub
+        want_geo = geo and self.listed
         by_file: dict[str, list[Mapping[str, Any]]] = {}
         for n in self.canonical(names):
             spec = self.specs[n]
@@ -153,6 +173,8 @@ class Reader:
                 head = [bs.IDX] if p else []
                 if want_sub:
                     head += list(SUB_COLUMNS)
+                if want_geo:
+                    head += list(LIST_COLUMNS)
                 cols: dict[str, np.ndarray] = {}
                 got: dict[str, Any] = {}
                 for role, specs in {bs.ROLE: [], **by_file}.items():
@@ -172,13 +194,18 @@ class Reader:
                     flat = [np.asarray(got[c].to_numpy(zero_copy_only=False)).astype(np.uint8, copy=False)[cut]
                             for c in SUB_COLUMNS]  # fmt: skip
                     ss, ww = np.column_stack(flat[:3]), np.column_stack(flat[3:])
+                if want_geo:
+                    boxes = [np.asarray(got[c].to_numpy(zero_copy_only=False)).astype(np.float64, copy=False)[cut]
+                             for c in LIST_COLUMNS]  # fmt: skip
+                    ss, ww = np.column_stack(boxes[:3]), np.column_stack(boxes[3:])
                 yield off + lo, hi - lo, pp, ss, ww, cols
                 off += size
 
     def fill(self, names: Sequence[str] = (), *, p: bool = False, sub: bool = False, start: int = 0,
-             stop: int | None = None, p_dtype: Any = np.uint64) -> dict[str, Any]:  # fmt: skip
+             stop: int | None = None, p_dtype: Any = np.uint64, geo: bool = False) -> dict[str, Any]:  # fmt: skip
         """Rows [start, stop) into arrays of that size straight from the row groups: `{field: values}`, `"\\0p"` —
-        P (of `p_dtype`), `"\\0s"`, `"\\0w"` — s and w (no list of parts, no concatenation)."""
+        P (of `p_dtype`), `"\\0s"`, `"\\0w"` — s and w (no list of parts, no concatenation); `geo` of a list of
+        blocks — `"\\0c"`, `"\\0d"`: the centres and the sizes, float64 n×3."""
         stop = self.rows if stop is None else min(int(stop), self.rows)
         start = min(max(int(start), 0), stop)
         n = stop - start
@@ -190,12 +217,18 @@ class Reader:
         if sub and self.sub:
             out[S] = np.empty((n, 3), dtype=np.uint8)
             out[W] = np.empty((n, 3), dtype=np.uint8)
+        if geo and self.listed:
+            out[LC] = np.empty((n, 3), dtype=np.float64)
+            out[LD] = np.empty((n, 3), dtype=np.float64)
         done = 0
-        for first, k, pp, ss, ww, cols in self.pieces(names, p=p, sub=sub, start=start, stop=stop):
+        for first, k, pp, ss, ww, cols in self.pieces(names, p=p, sub=sub, start=start, stop=stop, geo=geo):
             m = first - start
             if pp is not None:
                 out[P][m : m + k] = pp
-            if ss is not None:
+            if ss is not None and geo and self.listed:
+                out[LC][m : m + k] = ss
+                out[LD][m : m + k] = ww
+            elif ss is not None:
                 out[S][m : m + k] = ss
                 out[W][m : m + k] = ww
             for name, values in cols.items():
@@ -210,6 +243,7 @@ class Reader:
 
 
 P, S, W = "\0p", "\0s", "\0w"
+LC, LD = "\0c", "\0d"  # a list of blocks: the centres and the sizes
 
 
 class Model:
@@ -221,14 +255,19 @@ class Model:
         self.grid: GridV2 = bmeta.grid_of(meta)
         self.rows, self.parents = int(meta["rows"]), int(meta["parents"])
         self.sub, self.full = bool(meta["sub"]), bool(meta["full"])
+        self.layout: str = bmeta.layout_of(meta)
+        self.listed = self.layout == LAYOUT_LIST  # a list of blocks (module docstring)
         self.fields: list[dict[str, Any]] = meta["fields"]
         self.store = store
         self._shas = dict(shas)
-        self.reader = Reader(store, self._shas, self.fields, self.rows, self.sub)
+        self.reader = Reader(store, self._shas, self.fields, self.rows, self.sub, self.listed)
 
     @classmethod
-    def open(cls, conn: sa.Connection, store: BlobStore, model_id: int) -> Model:
-        """The model `model_id` (meta v1 or v2): its row of `objects` and the SHA-256 of every file of it."""
+    def open(cls, conn: sa.Connection, store: BlobStore, model_id: int, layout: Sequence[str] = (LAYOUT_GRID,),
+             what: str | None = None) -> Model:  # fmt: skip
+        """The model `model_id` (meta v1, v2 or v3): its row of `objects` and the SHA-256 of every file of it. A list
+        of blocks is opened only by a caller that says `layout=ANY`; otherwise 422 `block_list_unsupported` (`what` —
+        the name of the operation for the message)."""
         row = conn.execute(
             sa.select(objects.c.name, objects.c.version, objects.c.meta).where(
                 objects.c.kind == bs.KIND, objects.c.id == model_id, objects.c.state == "ready"
@@ -237,8 +276,16 @@ class Model:
         if row is None:
             raise not_found()
         meta = bmeta.upgrade(row.meta)
+        if bmeta.layout_of(meta) not in layout:
+            raise list_unsupported(row.name, what)
         shas = {role: cells_sha(conn, model_id, role) for role in bmeta.files_of(meta)}
         return cls(model_id, row.name, int(row.version), meta, shas, store)
+
+    def require_grid(self, what: str | None = None) -> None:
+        """422 `block_list_unsupported` when the model is a list of blocks (an operation opened with ANY that does
+        not read boxes in one of its parts)."""
+        if self.listed:
+            raise list_unsupported(self.name, what)
 
     # --- the fields ---------------------------------------------------------------------------------------
 
@@ -264,6 +311,13 @@ class Model:
         out: np.ndarray = self.reader.fill(p=True, start=start, stop=stop)[P]
         return out
 
+    def geo(self, start: int = 0, stop: int | None = None) -> tuple[np.ndarray, np.ndarray]:
+        """A list of blocks: (centres, sizes) float64 [n, 3] of rows [start, stop), local axes."""
+        if not self.listed:
+            raise RuntimeError("only a list of blocks has the columns cx … dz")
+        got = self.reader.fill(geo=True, start=start, stop=stop)
+        return got[LC], got[LD]
+
     def subs(self, start: int = 0, stop: int | None = None) -> tuple[np.ndarray, np.ndarray] | None:
         """(s, w) uint8 [n, 3] of rows [start, stop); None — a model without sub-blocks (s = 0, w = div)."""
         if not self.sub:
@@ -284,6 +338,7 @@ class Model:
         chunk = int(chunk)
         pend: list[tuple[np.ndarray, np.ndarray | None, np.ndarray | None, dict[str, np.ndarray]]] = []
         have, first = 0, 0
+        listed = self.listed  # `ss`, `ww` of a piece are then the centres and the sizes of a list of blocks
 
         def merged() -> Chunk:
             if len(pend) == 1:
@@ -293,9 +348,9 @@ class Model:
                 ss = None if pend[0][1] is None else np.concatenate([x[1] for x in pend])  # type: ignore[misc]
                 ww = None if pend[0][2] is None else np.concatenate([x[2] for x in pend])  # type: ignore[misc]
                 cc = {k: np.concatenate([x[3][k] for x in pend]) for k in pend[0][3]}
-            return Chunk(first, pp, ss, ww, cc)
+            return Chunk(first, pp, None, None, cc, ss, ww) if listed else Chunk(first, pp, ss, ww, cc)
 
-        for _off, m, pp, ss, ww, cols in self.reader.pieces(names, p=True, sub=True):
+        for _off, m, pp, ss, ww, cols in self.reader.pieces(names, p=True, sub=True, geo=True):
             assert pp is not None
             pos = 0
             while pos < m:
@@ -324,20 +379,42 @@ class Model:
         r = np.asarray(rows, dtype=np.intp)
         return p[r], None if s is None else s[r], None if w is None else w[r]
 
+    def _geo(self, rows: np.ndarray | None) -> tuple[np.ndarray, np.ndarray]:
+        lc, ld = self.geo()
+        if rows is None:
+            return lc, ld
+        r = np.asarray(rows, dtype=np.intp)
+        return lc[r], ld[r]
+
     def centres(self, rows: np.ndarray | None = None) -> np.ndarray:
         """Centres of the rows (all, or the indices `rows`) in the axes of the project: float64 [n, 3]."""
+        if self.listed:
+            return self.grid.to_project(self._geo(rows)[0])
         return geometry.centres(self.grid, *self._rows(rows))
 
     def local(self, rows: np.ndarray | None = None) -> np.ndarray:
         """Centres in the local axes of the model (before the turn and the corner): float64 [n, 3]."""
+        if self.listed:
+            return self._geo(rows)[0]
         return geometry.row_local_centres(self.grid, *self._rows(rows))
 
     def boxes(self, rows: np.ndarray | None = None) -> np.ndarray:
         """(lo, hi) of the rows in the local axes: float64 [n, 6]."""
+        if self.listed:
+            lc, ld = self._geo(rows)
+            return np.concatenate([lc - ld / 2, lc + ld / 2], axis=1)
         return geometry.row_boxes(self.grid, *self._rows(rows))
 
     def volume(self, rows: np.ndarray | None = None) -> np.ndarray:
         """Volumes of the rows: Π(w·d/div)·FRAC when the model has a FRAC field (NaN FRAC — NaN volume, not 0)."""
+        if self.listed:
+            frac = self.role_field("frac")
+            _lc, ld = self._geo(rows)
+            vol = (ld[:, 0] * ld[:, 1]) * ld[:, 2]
+            if frac is None:
+                return vol
+            vals = self.columns([str(frac["name"])])[str(frac["name"])]
+            return vol * (vals if rows is None else vals[np.asarray(rows, dtype=np.intp)])
         p, s, w = self._rows(rows)
         frac = self.role_field("frac")
         values = None

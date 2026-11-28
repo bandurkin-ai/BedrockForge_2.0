@@ -534,6 +534,10 @@ def check_cells(
     `tick(fraction, message)` is called per portion and may raise to cancel."""
     from .model import Reader
 
+    if meta.get("layout") == "list":  # a list of blocks: the overlaps of the boxes (ADR 0030 decision 12)
+        from . import list_layout
+
+        return list_layout.check_cells(store, shas, meta, limit, tick)
     grid = GridV2.of(meta["grid"])
     flds = list(meta.get("fields") or [])
     here = [f for f in flds if (f.get("file") or ROLE) == ROLE]

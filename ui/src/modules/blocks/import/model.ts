@@ -129,6 +129,23 @@ export interface BlocksError {
   by_reason?: { off_grid: number; crosses_parent: number; off_subcells: number };
   diag?: Diag;
   choices?: UnalignedOption[];
+  /** `rotation_mismatch`: the largest distance of the three centres of the file from the computed ones, m */
+  dist?: number;
+}
+
+/** `list` of the inspection of a list of blocks (ADR 0030 decision 8): what the model holds. */
+export interface ListSummary {
+  rows: number;
+  /** [xmin, ymin, zmin, xmax, ymax, zmax] of the boxes, the axes of the project */
+  extent: number[];
+  size_min: number[];
+  size_max: number[];
+  /** the enclosing grid: the cells and their size */
+  cells: number[];
+  cell: number[];
+  parents: number;
+  /** the whole file was read (not the first blocks of it) */
+  whole: boolean;
 }
 
 export interface BlocksInfo {
@@ -148,6 +165,9 @@ export interface BlocksInfo {
   check3: Check3 | null;
   warnings: string[];
   error: BlocksError | null;
+  /** `list` — the model is read as a list of blocks (`blocks.layout`); absent or `grid` — parents and sub-blocks */
+  layout?: "grid" | "list";
+  list?: ListSummary | null;
 }
 
 /** What the user typed for one file; the three numbers of a triple are texts, empty — «как в файле». */
@@ -166,6 +186,8 @@ export interface BlocksDraft {
   delimiter: string;
   /** how far an edge of a block may be from its line of the grid, m (ADR 0030 decision 4); "" — by the columns */
   tol?: string;
+  /** «Импортировать списком блоков» (ADR 0030 decision 14): the model is kept as a list of boxes, no grid of parents */
+  layout?: "grid" | "list";
 }
 
 const NONE: [string, string, string] = ["", "", ""];
@@ -292,6 +314,7 @@ export interface BlocksWire {
   roles?: Partial<Record<Geo, string>>;
   grid?: { corner?: number[]; size?: number[]; counts?: number[]; div?: number[]; rotation?: number; tol?: number };
   centres?: "model";
+  layout?: "list";
   empty?: number[];
   fields?: Record<string, { unit?: string; role?: FieldRole; skip?: boolean }>;
   delimiter?: string;
@@ -336,6 +359,7 @@ export function blocksWire(draft: BlocksDraft, info: BlocksInfo | null): BlocksW
   if (tol !== null) grid.tol = tol;
   if (Object.keys(grid).length) out.grid = grid;
   if (draft.centres === "model") out.centres = "model";
+  if (draft.layout === "list") out.layout = "list";
   const codes = parseCodes(draft.empty);
   if (!codes.error && codes.codes.length) out.empty = codes.codes;
   if (draft.delimiter) out.delimiter = draft.delimiter;
@@ -367,7 +391,7 @@ export function gridText(g: GridMeta): string {
 /** The check of three centres (ТЗ 8.7.2): the first, the middle and the last block of the file against the grid. */
 export function check3Text(info: BlocksInfo): { ok: boolean; text: string } | null {
   const c = info.check3;
-  if (!c) return null;
+  if (!c || info.layout === "list") return null; // a list has no grid to compare the centres with
   const rows = c.rows.map((r) => n(r + 1, 0)).join(", ");
   const dist = small(c.dist);
   return c.ok
@@ -413,6 +437,7 @@ export function findingsText(f: Findings): string[] {
 export function headline(info: BlocksInfo): string {
   const rows = `${info.rows_exact ? "" : "около "}${n(info.rows, 0)}`;
   const parts = [`${info.label}`, `блоков ${rows}`];
+  if (info.layout === "list") return [...parts, "список блоков"].join(" · ");
   if (info.parents) parts.push(`родителей ${n(info.parents, 0)}`);
   if (info.sub) parts.push("с субблоками");
   return parts.join(" · ");
@@ -458,26 +483,59 @@ export const candidateGrid = (c: DiagCandidate, rotation: number): UnalignedGrid
 
 export interface Unaligned {
   error: BlocksError;
+  /** the diagnosis of `blocks_unaligned`; empty for `rotation_mismatch` (the refusal names rows and a distance only) */
   diag: Diag;
+  /** the refusal has a diagnosis (the tables are shown); false — `rotation_mismatch` */
+  detailed: boolean;
   /** «Задать сетку вручную» — the grid it fills the form with (null: the core found none) */
   grid: UnalignedOption | null;
+  /** «Импортировать списком блоков» */
+  list: UnalignedOption | null;
   /** «Не импортировать этот файл» */
   cancel: UnalignedOption;
   /** the core's text of the cause first, else the message */
   lead: string;
 }
 
-/** The refusal of the core that offers a choice: `blocks_unaligned` with a diagnosis; anything else — null. */
+/** The refusals of the core that offer a choice: `blocks_unaligned` with a diagnosis, `rotation_mismatch` with its
+ * choices (rows and the distance, no table); anything else — null. */
 export function unalignedOf(error: BlocksError | null | undefined): Unaligned | null {
-  if (!error || error.code !== "blocks_unaligned" || !error.diag) return null;
+  if (!error) return null;
+  const turned = error.code === "rotation_mismatch" && (error.choices?.length ?? 0) > 0;
+  if (!turned && !(error.code === "blocks_unaligned" && error.diag)) return null;
   const choices = error.choices ?? [];
+  const diag = error.code === "blocks_unaligned" ? error.diag : undefined;
   return {
     error,
-    diag: error.diag,
+    diag: diag ?? { rows: 0, sample: 0, columns: {}, axes: [], candidates: [], causes: [], text: [] },
+    detailed: diag !== undefined,
     grid: choices.find((c) => c.id === "grid") ?? null,
+    list: choices.find((c) => c.id === "list") ?? null,
     cancel: choices.find((c) => c.id === "cancel") ?? { id: "cancel", label: "Не импортировать этот файл" },
-    lead: error.diag.text[0] ?? error.message,
+    lead: diag?.text[0] ?? error.message,
   };
+}
+
+/** The reason of `rotation_mismatch` in the words of the window: the rows of the three centres and how far they are. */
+export function mismatchText(error: BlocksError): string {
+  const rows = (error.rows ?? []).map((r) => n(r + 1, 0)).join(", ");
+  const dist = error.dist === undefined ? "" : ` Наибольшее расхождение: ${small(error.dist)} м.`;
+  return rows ? `Центры блоков в строках ${rows} не совпали с вычисленными по сетке.${dist}` : dist.trim();
+}
+
+/** «Список блоков: 1 012 620; охват X 1 000…1 200, Y …, Z … м; размеры блоков от 2 × 2 × 0,5 до 10 × 10 × 10 м; …» */
+export function listText(info: BlocksInfo): string | null {
+  const l = info.list;
+  if (info.layout !== "list" || !l) return null;
+  const [x0, y0, z0, x1, y1, z1] = l.extent;
+  const span = (a: number, b: number) => `${n(a, 2)}…${n(b, 2)}`;
+  const head = `Список блоков: ${l.whole ? "" : "около "}${n(l.rows, 0)}`;
+  return [
+    head,
+    `охват X ${span(x0, x1)}, Y ${span(y0, y1)}, Z ${span(z0, z1)} м`,
+    `размеры блоков от ${triple(l.size_min)} до ${triple(l.size_max)} м`,
+    `охватывающая сетка ${triple(l.cells)} ячеек по ${triple(l.cell)} м, занято ячеек ${n(l.parents, 0)}`,
+  ].join("; ");
 }
 
 export const CAUSE_TITLES: Record<string, string> = {

@@ -111,6 +111,68 @@ def prep(
 
 
 @njit(cache=True, nogil=True)
+def prep_list(
+    blo,
+    bhi,
+    wd3,
+    q0,
+    size,
+    frac,
+    has_frac,
+    dens,
+    dens_mode,
+    dens_c,
+    vals,
+    tlo,
+    thi,
+    clo,
+    chi,
+    lo,
+    hi,
+):  # type: ignore[no-untyped-def]
+    """`prep` of a list of blocks (ADR 0030 decision 10): the boxes are given as they are — the low and the high edge
+    `blo`, `bhi` and the sizes `wd3` (n×3, local axes) — not computed from (P, s, w); the rest is the same."""
+    nf = vals.shape[0]
+    ss = np.zeros(2 + nf)
+    cc = np.zeros(2 + nf)
+    for r in range(lo, hi):
+        prod = 1.0
+        for a in range(3):
+            wd = wd3[r, a]
+            prod = wd if a == 0 else prod * wd  # (wx·wy)·wz, as geometry.row_volumes
+            t0 = _snap((blo[r, a] - q0[a]) / size[a])
+            t1 = _snap((bhi[r, a] - q0[a]) / size[a])
+            tlo[r, a] = t0
+            thi[r, a] = t1
+            clo[r, a] = np.int32(np.floor(t0))
+            chi[r, a] = np.int32(np.ceil(t1)) - 1
+        fr = frac[r] if has_frac else 1.0
+        if fr != fr:
+            continue
+        vol = prod * fr
+        dn = np.nan
+        if dens_mode == 1:
+            dn = dens[r]
+        elif dens_mode == 2:
+            dn = dens_c
+        _nadd(ss, cc, 0, vol)
+        if dens_mode != 0 and dn == dn:
+            _nadd(ss, cc, 1, vol * dn)
+        for f in range(nf):
+            v = vals[f, r]
+            if v != v:
+                continue
+            if dens_mode == 0:
+                _nadd(ss, cc, 2 + f, vol * v)
+            elif dn == dn:
+                _nadd(ss, cc, 2 + f, (vol * dn) * v)
+    out = np.empty((2 + nf, 2))
+    out[:, 0] = ss
+    out[:, 1] = cc
+    return out
+
+
+@njit(cache=True, nogil=True)
 def accumulate(
     r0,
     r1,

@@ -52,6 +52,12 @@ def _regularize() -> dict[str, float]:
     return warm()
 
 
+def _list() -> dict[str, float]:
+    from bf_core.blocks.list_layout import warm
+
+    return warm()
+
+
 #: name → the warm-up of a module (a function without arguments; the seconds it took, by name)
 WARMS: dict[str, Callable[[], dict[str, float]]] = {
     "calc": _calc,
@@ -61,6 +67,7 @@ WARMS: dict[str, Callable[[], dict[str, float]]] = {
     "kernels": _kernels,
     "view": _view,
     "regularize": _regularize,
+    "list": _list,  # a list of blocks (ADR 0030): the order, the overlaps, the faces
 }
 
 

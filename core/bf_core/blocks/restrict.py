@@ -46,9 +46,9 @@ from bf_core.calc.runtime import ExprDataError
 from bf_core.db import dialect
 from bf_core.storage.blobs import BlobStore
 
-from . import geometry
+from . import list_layout as ll
 from .filters import schema as fs
-from .model import CHUNK, Chunk, Model
+from .model import ANY, CHUNK, Chunk, Model
 
 Weights = Callable[[Chunk], np.ndarray]
 Cancel = Callable[[], None]
@@ -149,9 +149,12 @@ def _surface(b: Build, body: Mapping[str, Any], path: str) -> Weights:
         b.warn(f"У поверхности «{name}» нет треугольников в плане: доля 0.")
         return _zero
     above, frac, grid = body["side"] == "above", body["by"] == "frac", b.model.grid
+    if frac and b.model.listed:  # a list of blocks: «по центру», the share is 0 or 1 (ADR 0030 decision 11)
+        frac = False
+        b.warn(f"Поверхность «{name}»: у модели-списка блоков доля считается по центру блока (0 или 1).")
 
     def run(chunk: Chunk) -> np.ndarray:
-        local = geometry.row_local_centres(grid, chunk.p, chunk.s, chunk.w)
+        local = ll.local_centres(grid, chunk)
         centre = grid.to_project(local)
         dz = index.dz(centre)  # z of the centre − z of the surface; NaN — no surface there
         known = ~np.isnan(dz)
@@ -159,7 +162,7 @@ def _surface(b: Build, body: Mapping[str, Any], path: str) -> Weights:
             b.warn(f"Часть блоков вне плана поверхности «{name}» или над её отверстием: для них доля 0.")
         out = np.zeros(chunk.n, dtype=np.float64)
         if frac:
-            box = geometry.row_boxes(grid, chunk.p, chunk.s, chunk.w)
+            box = ll.boxes(grid, chunk)
             height = box[:, 5] - box[:, 2]
             # the turn is about Z: z_surface − z_bottom = (z_centre − dz) − (z_centre − height/2) = height/2 − dz
             below = np.clip((height * 0.5 - dz) / height, 0.0, 1.0)
@@ -184,9 +187,9 @@ def _slab(b: Build, body: Mapping[str, Any], path: str) -> Weights:
         direction = frame.u if axis == "u" else frame.v
 
     def run(chunk: Chunk) -> np.ndarray:
-        centre = grid.to_project(geometry.row_local_centres(grid, chunk.p, chunk.s, chunk.w))
+        centre = grid.to_project(ll.local_centres(grid, chunk))
         if share:
-            box = geometry.row_boxes(grid, chunk.p, chunk.s, chunk.w)
+            box = ll.boxes(grid, chunk)
             height = box[:, 5] - box[:, 2]
             # the turn is about Z: the block spans centre_z ± height/2 in the project
             top = np.minimum(centre[:, 2] + height * 0.5, hi)
@@ -341,7 +344,7 @@ def test_rules(project: Any, model_id: int, rules: Mapping[str, Any]) -> dict[st
     the report, № 65), the warnings of the leaves."""
     store = BlobStore(project.folder)
     with dialect.read_tx(project.engine) as conn:
-        model = Model.open(conn, store, model_id)
+        model = Model.open(conn, store, model_id, ANY)
         r = prepare(model, rules, conn=conn, store=store)
     passed, weight = 0, 0.0
     for _, f in r.iter(model):

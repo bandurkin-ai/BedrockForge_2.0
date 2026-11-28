@@ -6,7 +6,7 @@
     out   = grade_tonnage(model, plan, restrictor)     # the table, the curve, the counters (and the CSV)
     out   = run_report(engine, folder, params, tick=)  # the job `blocks.report`: the model, the restrictor, the report
 
-Tonnes of a block = volume × FRAC × f × density: the volume of `Model` rows (`geometry.row_volumes`, the FRAC field of
+Tonnes of a block = volume × FRAC × f × density: the volume of `Model` rows (`list_layout.volumes`, the FRAC field of
 the model is in it), `f` ∈ (0; 1] the share the restrictor lets pass (the filter `filter_id` and the quick `restrict`
 together as AND; a block with f = 0 is out — № 65), the density a field or a number. A grade is the mean weighted by
 the tonnes of the blocks that HAVE the grade, the metal Σ tonnes × grade, `missing_tonnes` — the tonnes of the blocks
@@ -50,9 +50,10 @@ from bf_core.db import dialect
 from bf_core.jobs.registry import handler
 from bf_core.storage.blobs import BlobStore
 
-from . import geometry, restrict
+from . import list_layout as ll
+from . import restrict
 from . import schema as bs
-from .model import CHUNK, Model, field_not_found
+from .model import ANY, CHUNK, Model, field_not_found
 
 if TYPE_CHECKING:
     from bf_core.jobs.context import JobContext
@@ -399,7 +400,7 @@ def grade_tonnage(
     for ch, f in r.iter(model, extra=plan.reads, chunk=chunk):
         tick(0.05 + 0.9 * (ch.start + ch.n) / max(model.rows, 1), None)
         cols, n = ch.cols, ch.n
-        vol = geometry.row_volumes(model.grid, ch.p, ch.s, ch.w, cols[plan.frac] if plan.frac else None)
+        vol = ll.volumes(model.grid, ch, cols[plan.frac] if plan.frac else None)
         ok = f > 0.0
         if plan.categories is not None:
             ok &= np.isin(cols[plan.categories[0]], plan.categories[1])
@@ -519,7 +520,7 @@ def run_report(
     store = BlobStore(folder)
     tick(0.02, STAGE_READ)
     with dialect.read_tx(engine) as conn:
-        model = Model.open(conn, store, spec.model_id)
+        model = Model.open(conn, store, spec.model_id, ANY)
         plan = make_plan(model, spec)
         tree = calc_job.rules_tree(conn, spec.filter_id, spec.restrict)
         r = restrict.prepare(model, tree, conn=conn, store=store)
