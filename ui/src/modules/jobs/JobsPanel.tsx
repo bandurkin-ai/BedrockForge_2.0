@@ -4,6 +4,7 @@ import { useApp } from "../../shell/AppContext";
 import { showMessage } from "../../shell/dialogs";
 import { useStore } from "../../shell/useStore";
 import { logOfJob, openLogWindow } from "../../shell/opLog";
+import { ChoiceRows } from "./ChoiceRows";
 import { clearReason, jobLog, jobsStore, refresh, STATUS_TITLES, type Job } from "./state";
 import css from "./Jobs.module.css";
 
@@ -78,6 +79,7 @@ export function JobsPanel() {
                     </button>
                   )}
                   {j.status === "queued" && j.why_waiting && <div className={css.why}>{j.why_waiting}</div>}
+                  <ChoiceRows job={j} run={(command, args) => app.run(command, args)} />
                   {j.status === "failed" && j.error && (
                     <div className={css.failed}>
                       {j.error.message} {j.error.hint}
