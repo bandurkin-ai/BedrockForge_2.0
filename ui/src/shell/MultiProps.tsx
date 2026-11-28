@@ -17,7 +17,7 @@ import { useApp } from "./AppContext";
 import { buildLookup } from "./multiLookup";
 import { applyAll, commonKind, commonValue, fieldsOf, kindCount, parseNumber, readField, whyNoFields, type FieldValue, type Lookup, type MultiField } from "./multiPropsModel";
 import { NO_COLOR, normalizeColor } from "./props";
-import { pushUndo, undoStore } from "./propsUndo";
+import { beginUndoBusy, pushUndo, undoStore } from "./propsUndo";
 import { ColorField, useRun } from "./PropsParts";
 import type { RowRef } from "./selection";
 import { useRegistryVersion, useStore } from "./useStore";
@@ -130,9 +130,18 @@ export function MultiProps({ items }: { items: readonly RowRef[] }) {
   const apply = async (f: MultiField, value: FieldValue): Promise<boolean> => {
     setBusy(true);
     setUndoError(null);
-    const r = await applyAll(run, f, kind, ids, lookup, value);
-    setBusy(false);
-    if (r.done > 0) pushUndo({ text: `«${f.label}»: изменено ${kindCount(kind, r.done)}${r.done < r.total ? ` из ${r.total}` : ""}${r.skipped ? `; пропущено удалённых: ${r.skipped}` : ""}`, steps: r.undo });
+    const end = beginUndoBusy(); // Ctrl+Z and `props.undo` wait: the stack is not touched while the steps run
+    let r: Awaited<ReturnType<typeof applyAll>>;
+    try {
+      r = await applyAll(run, f, kind, ids, lookup, value);
+    } finally {
+      end();
+      setBusy(false);
+    }
+    if (r.done > 0 || r.partial > 0) {
+      const part = r.partial ? `; изменено частично: ${r.partial}` : "";
+      pushUndo({ text: `«${f.label}»: изменено ${kindCount(kind, r.done)}${r.done < r.total ? ` из ${r.total}` : ""}${part}${r.skipped ? `; пропущено удалённых: ${r.skipped}` : ""}`, steps: r.undo });
+    }
     return r.done === r.total;
   };
 

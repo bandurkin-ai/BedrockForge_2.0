@@ -1,13 +1,8 @@
 import type { Command } from "../../shell/commands";
+import { PICK_KINDS } from "../../shell/selection";
 
 /** The rows of the data tree that can be chosen with Ctrl and Shift: the objects of `object.select` and the rows of every other section. */
-const OBJECT_KIND = {
-  type: "string",
-  enum: [
-    "wireframe", "lines", "raster", "blocks", "implicit", "resource_report", "pit_scenario",
-    "set", "view", "series", "filter", "trend", "vario", "est_row", "est_plan", "sim_row", "planned", "swath", "qaqc_data", "qaqc_report", "display", "chart", "result",
-  ],
-} as const;
+const OBJECT_KIND = { type: "string", enum: PICK_KINDS } as const;
 
 /** Panels, themes, palette, settings: implemented on Э1 (handlers are bound by the shell). */
 export const commands: Command[] = [

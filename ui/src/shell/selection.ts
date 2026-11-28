@@ -19,34 +19,17 @@ export interface Selected {
  * as a group (`groupStore`, Д-44 А5 for every section); the four kinds of `OBJECT_MULTI` have the set next to
  * `AppState.selected` (`multiStore`).
  */
-export type TreeKind =
-  | "set"
-  | "view"
-  | "series"
-  | "filter"
-  | "trend"
-  | "vario"
-  | "est_row"
-  | "est_plan"
-  | "sim_row"
-  | "planned"
-  | "swath"
-  | "qaqc_data"
-  | "qaqc_report"
-  | "display"
-  | "chart"
-  | "result"
-  | "implicit"
-  | "pit_scenario"
-  | "resource_report"
-  | "line_file"
-  | "implicit_group"
-  | "implicit_fault"
-  | "implicit_stack"
-  | "series_section";
+export const TREE_KINDS = [
+  "set", "view", "series", "filter", "trend", "vario", "est_row", "est_plan", "sim_row", "planned", "swath", "qaqc_data", "qaqc_report",
+  "display", "chart", "result", "implicit", "pit_scenario", "resource_report", "line_file", "implicit_group", "implicit_fault", "implicit_stack", "series_section",
+] as const;
+export type TreeKind = (typeof TREE_KINDS)[number];
+
+/** Every row of the tree that can be chosen with Ctrl and Shift: the one list of the type, of `tree.select_*` (enum) and of the tests. */
+export const PICK_KINDS = ["wireframe", "lines", "raster", "blocks", ...TREE_KINDS] as const;
 
 /** A row of the tree that can be chosen with Ctrl and Shift. */
-export type PickKind = "wireframe" | "lines" | "raster" | "blocks" | TreeKind;
+export type PickKind = (typeof PICK_KINDS)[number];
 
 export interface RowRef {
   kind: PickKind;
