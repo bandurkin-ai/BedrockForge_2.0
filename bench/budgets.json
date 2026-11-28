@@ -511,6 +511,27 @@
       "limits": {"import_s": 4.65},
       "note": "ADR 0030 (Д-45, А6): ≤ 1,1 × blocks_import_dat. Замер 27.4а (2 потока): импорт 2,2–2,6 с (dat на том же коде 2,46 с, отношение 0,98), 821 МБ; div (5,5,3) найден; Σ AU 1e-9, первые 1000 значений побитно."
     },
+    "blocks_import_list": {
+      "params": {"rows": 1000000, "fields": 20, "threads": 2},
+      "budget_s": 5.0,
+      "budget_mb": 1300,
+      "limits": {"import_s": 4.0},
+      "note": "ADR 0030 реш. 14–18 (Д-45): импорт списком блоков 1 млн × 20 полей. Замер 27.4в (2 потока): 2,6–2,9 с (dat на том же коде 3,1 с), 853–894 МБ."
+    },
+    "blocks_list_view": {
+      "params": {"rows": 1000000, "fields": 20, "threads": 2},
+      "budget_s": 6.0,
+      "budget_mb": 1300,
+      "limits": {"first_s": 3.0, "filter_s": 2.0, "all_s": 1.0},
+      "note": "ADR 0030: показ списка блоков. Замер 27.4г: первый запрос 1,35–2,1 с, фильтр 0,8–1,3 с, все блоки 0,35 с (LOD 1, 197 тыс. граней), повтор 4 мс, 1008 МБ."
+    },
+    "blocks_regularize_list": {
+      "params": {"rows": 1000000, "fields": 20, "threads": 2},
+      "budget_s": 4.0,
+      "budget_mb": 1000,
+      "limits": {"regularize_s": 1.8, "volume_error": 1e-9, "metal_error": 1e-9},
+      "note": "ADR 0030: регуляризация списка блоков (~400 тыс. ячеек). Замер 27.4г: 0,5–2,5 с, 660–845 МБ; объём и металл 1e-9."
+    },
     "blocks_import_dm": {
       "params": {"rows": 1000000, "fields": 20, "threads": 2},
       "budget_s": 5.4,
