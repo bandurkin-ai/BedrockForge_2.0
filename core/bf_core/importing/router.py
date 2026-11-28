@@ -62,6 +62,13 @@ class FileSpec(InspectBody):
     table_name: str | None = Field(default=None, max_length=200)
 
 
+class CheckBody(FileSpec):
+    """`expected` — the kinds the section of the wizard takes (one or several); when the kind is not given and the
+    file looks like another one, the answer carries `mismatch` and nothing is assigned."""
+
+    expected: Kind | list[Kind] | None = None
+
+
 class StartBody(BaseModel):
     set_id: int | None = None
     set_name: str | None = Field(default=None, max_length=200)
@@ -152,13 +159,13 @@ def inspect(svc: Svc, body: InspectBody) -> dict[str, Any]:
 
 
 @dh.post("/import/check")
-def check(svc: Svc, body: FileSpec) -> dict[str, Any]:
+def check(svc: Svc, body: CheckBody) -> dict[str, Any]:
     """Step «колонки»: the whole file is read; kind and mapping are suggested unless given; issues and the
     normalized first rows (ТЗ 7.7 «Предпросмотр»)."""
     svc.require_current()
     from bf_core.formats.errors import FormatError
 
-    from .service import detect_kind, normalize, suggest_components, suggest_mapping
+    from .service import detect_kind, kind_mismatch, normalize, suggest_components, suggest_mapping
 
     path = _file(body.path)
     try:
@@ -166,6 +173,10 @@ def check(svc: Svc, body: FileSpec) -> dict[str, Any]:
     except FormatError as exc:
         raise _format_error(exc) from exc
     kind = body.kind or detect_kind(table.names)
+    expected = [body.expected] if isinstance(body.expected, str) else list(dict.fromkeys(body.expected or []))
+    mismatch = None
+    if not body.kind and kind and expected and kind not in expected:
+        mismatch, kind = kind_mismatch(kind, expected, table.names), None  # nothing is assigned until the person picks
     mapping = body.mapping if body.mapping is not None else (suggest_mapping(kind, table.names) if kind else {})
     components = (
         [c.model_dump() for c in body.components]
@@ -187,6 +198,10 @@ def check(svc: Svc, body: FileSpec) -> dict[str, Any]:
     from .schema import SCHEMAS
 
     out["fields"] = [{"key": f.key, "label": f.label, "required": f.required} for f in SCHEMAS[kind]] if kind else []
+    if mismatch is not None:
+        out["mismatch"] = mismatch
+        out["mapping"] = {}
+        return out
     if kind is None:
         out["issues"] = [
             {"severity": "error", "code": "unknown_kind", "message": "Тип таблицы не распознан: выберите его вручную."}

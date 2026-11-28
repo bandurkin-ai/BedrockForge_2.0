@@ -57,7 +57,7 @@ export function ImportWizard({ winId, paths, mode }: { winId: string; paths?: st
   };
   const pick = async () => {
     const files = (await bridge()?.pickFiles("tables", !trenches)) ?? [];
-    if (files.length) await wizard.add(files);
+    if (files.length) await wizard.add(files, s.step);
   };
   const pickPrj = async () => {
     const [file] = (await bridge()?.pickFiles("prj", false)) ?? [];
@@ -130,7 +130,7 @@ export function ImportWizard({ winId, paths, mode }: { winId: string; paths?: st
             <div className={css.note}>
               {trenches
                 ? "DAT (Micromine), CSV / TXT, Excel. Тип — «Пробы (Assay)» или «Интервальная таблица»; в колонке «Скважина» — имя канавы."
-                : "DAT (Micromine), CSV / TXT, Excel .xlsx / .xlsm / .xls. Файлы другого типа сами перейдут на свой шаг."}
+                : "DAT (Micromine), CSV / TXT, Excel .xlsx / .xlsm / .xls. Если тип файла не подходит шагу, мастер предложит, как его загрузить."}
             </div>
           </>
         ) : (

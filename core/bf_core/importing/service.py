@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -103,7 +104,18 @@ def suggest_components(table: TableRead, mapping: dict[str, str]) -> list[dict[s
 
 
 def detect_kind(columns: list[str]) -> str | None:
-    """collar | survey | assay | interval | event by the names of the columns; None when unsure."""
+    """collar | survey | assay | interval | event by the names of the columns; None when unsure.
+
+    A table with a hole, From and To is an interval table (samples, lithology…) before anything else: X/Y/Z next to
+    From–To are the coordinates of the middle of the sample, not a collar (a collar has no interval).
+    """
+    interval = suggest_mapping("assay", columns)
+    if {"hole_id", "from", "to"} <= interval.keys():
+        mapped = set(interval.values())
+        graded = any(component_symbol(c)[0] for c in columns if c not in mapped)
+        if "sample_id" not in interval and not graded:
+            return "interval"  # from–to without a sample number or grades: lithology, alteration, RQD…
+        return "assay"
     best_kind, best = None, 0.0
     for kind, fields in SCHEMAS.items():
         required = [f for f in fields if f.required]
@@ -113,13 +125,40 @@ def detect_kind(columns: list[str]) -> str | None:
             best_kind, best = kind, score
     if best < 0.6:
         return None
-    if best_kind == "assay":
-        mapping = suggest_mapping("assay", columns)
-        mapped = set(mapping.values())
-        graded = any(component_symbol(c)[0] for c in columns if c not in mapped)
-        if "sample_id" not in mapping and not graded:
-            return "interval"  # from–to without a sample number or grades: lithology, alteration, RQD…
     return best_kind
+
+
+def kind_mismatch(detected: str, expected: Sequence[str], columns: list[str]) -> dict[str, Any]:
+    """The answer of «check» when the table found is not the one the section of the wizard takes: what was found
+    and why, what the section lacks, and the ways out (nothing is assigned until the person chooses)."""
+    mapping = suggest_mapping(detected, columns)
+    found = ", ".join(f"«{f.label}» ← «{mapping[f.key]}»" for f in SCHEMAS[detected] if f.required and f.key in mapping)
+    reason = f"Файл распознан как «{kind_label(detected)}»: {found}."
+    if detected in ("assay", "interval") and {"x", "y", "z"} <= suggest_mapping("collar", columns).keys():
+        reason += " Колонки X, Y, Z рядом с интервалом От–До — координаты середины интервала, а не устье скважины."
+    lacks = []
+    for kind in expected:
+        have = suggest_mapping(kind, columns)
+        missing = [f.label for f in SCHEMAS[kind] if f.required and f.key not in have]
+        if missing:
+            lacks.append(f"для «{kind_label(kind)}» нет колонок: {', '.join(missing)}")
+    if lacks:
+        reason += " Раздел принимает другой тип: " + "; ".join(lacks) + "."
+    options: list[dict[str, str]] = [
+        {"action": "import_as", "kind": k, "label": f"Импортировать как «{kind_label(k)}»"} for k in expected
+    ]
+    options.append({"action": "switch", "kind": detected, "label": f"Сменить тип на «{kind_label(detected)}»"})
+    options.append({"action": "cancel", "kind": "", "label": "Отменить"})
+    wanted = " или ".join(f"«{kind_label(k)}»" for k in expected)
+    return {
+        "code": "kind_mismatch",
+        "message": f"Раздел принимает {wanted}, а файл похож на «{kind_label(detected)}».",
+        "hint": "Выберите, как загрузить файл: по схеме раздела, по найденному типу или не загружать.",
+        "detected": detected,
+        "expected": list(expected),
+        "reason": reason,
+        "options": options,
+    }
 
 
 def kind_label(kind: str) -> str:

@@ -75,3 +75,33 @@ def test_component_unit_from_the_name(tmp_path: Path) -> None:
     t = read_table(_csv(tmp_path, "Hole_ID,From_m,To_m,Au_ppm,Cu_pct,Comments\nA,0,1,0.5,0.1,x\n", "utf-8"))
     comps = suggest_components(t, suggest_mapping("assay", t.names))
     assert comps == [{"column": "Au_ppm", "unit": "ppm"}, {"column": "Cu_pct", "unit": "%"}]
+
+
+def test_interval_table_with_xyz_is_not_a_collar() -> None:
+    """Д-41 А2: From–To wins over X/Y/Z (the coordinates of the middle of the sample)."""
+    cols = ["Hole-ID", "Sample", "From", "To", "Length", "Cu_%", "Ag_G/T", "X", "Y", "Z"]
+    assert detect_kind(cols) == "assay"
+    assert detect_kind(["BHID", "FROM", "TO", "X", "Y", "Z", "Литология"]) == "interval"
+    assert detect_kind(["Скважина", "От", "До", "Au, г/т", "восток", "север", "отметка"]) == "assay"
+
+
+def test_kinds_by_field_sets() -> None:
+    assert detect_kind(["Hole-ID", "X", "Y", "Z", "Length"]) == "collar"  # TD by Length, no From/To
+    assert detect_kind(["HoleID", "East", "North", "RL", "Depth"]) == "collar"
+    assert detect_kind(["HoleID", "From", "To", "Lith"]) == "interval"
+    assert detect_kind(["HoleID", "From", "To", "Sample"]) == "assay"
+    assert detect_kind(["HoleID", "Depth", "Event"]) == "event"
+    assert detect_kind(["HoleID", "Depth", "Azimuth", "Dip"]) == "survey"
+    assert detect_kind(["foo", "bar"]) is None
+
+
+def test_assay_with_xyz_imports_without_duplicate_holes(tmp_path: Path) -> None:
+    text = "Hole-ID,Sample,From,To,Length,Cu_%,Ag_G/T,X,Y,Z\n" + "".join(
+        f"H1,S{i},{i},{i + 1},1,0.{i},{i},10,20,30\n" for i in range(5)
+    )
+    t = read_table(_csv(tmp_path, text, "utf-8"))
+    kind = detect_kind(t.names)
+    assert kind == "assay"
+    m = suggest_mapping(kind, t.names)
+    _, issues = normalize(t, kind, m, suggest_components(t, m))
+    assert not [i for i in issues if i.code == "duplicate_hole_id"]
