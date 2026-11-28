@@ -179,7 +179,7 @@ def _main(conn: Connection, queue_name: str) -> None:
         except JobCancelled as exc:
             send(("cancelled", job["id"], exc.events))
         except JobError as exc:
-            err: dict[str, Any] = {"code": exc.code, "message": exc.message, "hint": exc.hint}
+            err: dict[str, Any] = {**exc.extra, "code": exc.code, "message": exc.message, "hint": exc.hint}
             if exc.events:
                 err["events"] = exc.events  # the scheduler takes them out before it stores the error
             send(("error", job["id"], err, exc.retry))

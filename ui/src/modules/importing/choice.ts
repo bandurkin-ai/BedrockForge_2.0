@@ -25,9 +25,11 @@ export interface ChoiceFailure {
 const text = (v: unknown): string => (typeof v === "string" ? v : "");
 
 /** The failed files of a job `import.objects` that carry `choices`; [] — none (or not such a job). */
-export function choiceFailures(job: Pick<Job, "kind" | "result">): ChoiceFailure[] {
+export function choiceFailures(job: Pick<Job, "kind" | "result"> & { error?: Job["error"] }): ChoiceFailure[] {
   if (job.kind !== IMPORT_OBJECTS) return [];
-  const failed = job.result?.failed;
+  // a job with some files done keeps the refused ones in `result.failed`; a job where none was done fails, and the
+  // core keeps them in `error.failed` (Э27 27.12)
+  const failed = job.result?.failed ?? (job.error as { failed?: unknown } | null | undefined)?.failed;
   if (!Array.isArray(failed)) return [];
   const out: ChoiceFailure[] = [];
   for (const raw of failed as unknown[]) {
