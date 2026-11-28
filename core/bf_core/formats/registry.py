@@ -93,7 +93,7 @@ def looks_like_text(head: bytes) -> bool:
 def detect(path: str | Path, filename: str | None = None) -> str:
     """Table format of a file: "dat", "csv", "xlsx", "xls" or "unknown" (see the module docstring)."""
     from bf_core.formats.excel import BIFF_BOF, OLE_MAGIC, ZIP_MAGIC
-    from bf_core.formats.micromine_header import _STANDARD_RE, MAGIC
+    from bf_core.formats.micromine_header import header_start
 
     path = Path(path)
     suffix = Path(filename or path.name).suffix.lower()
@@ -103,7 +103,7 @@ def detect(path: str | Path, filename: str | None = None) -> str:
         return UNKNOWN
     if not head:
         return _BY_SUFFIX.get(suffix, UNKNOWN)
-    if head.startswith(MAGIC) or _STANDARD_RE.match(head):
+    if header_start(head) is not None:
         return DAT
     if head.startswith(ZIP_MAGIC):
         return XLSX if _is_workbook_archive(path) or suffix in (".xlsx", ".xlsm") else UNKNOWN
@@ -118,6 +118,45 @@ def detect(path: str | Path, filename: str | None = None) -> str:
     if suffix in TABLE_SUFFIXES and looks_like_text(head):
         return CSV
     return UNKNOWN
+
+
+def _shown_bytes(head: bytes) -> str:
+    """The first bytes of a file as hex and as text (a code page is guessed: Windows-1251) for an error message."""
+    text = "".join(c if c.isprintable() else "·" for c in head.decode("cp1251", errors="replace"))
+    return f"{head.hex(' ')} (как текст: «{text}»)"
+
+
+def unsupported_error(path: str | Path, filename: str | None = None) -> FormatError:
+    """Why a file is not read as a table: the first bytes, what was looked for and was not found, what to send."""
+    path = Path(path)
+    suffix = Path(filename or path.name).suffix.lower()
+    with path.open("rb") as f:
+        head = f.read(32)
+    if not head:
+        return FormatError("empty_file", "Файл пуст.", "Проверьте, что файл скопирован полностью.")
+    shown = _shown_bytes(head)
+    if suffix not in TABLE_SUFFIXES:
+        return FormatError(
+            "unsupported",
+            f"Формат файла «{suffix or 'без расширения'}» не поддерживается как таблица. Начало файла: {shown}.",
+            "Подходят: Micromine .DAT, текст .csv / .txt, Excel .xlsx / .xlsm / .xls.",
+        )
+    if suffix == ".dat":
+        looked = (
+            "Искали в начале файла (после возможных пробелов и BOM): строку «THIS IS MICROMINE EXTENDED DATA FILE» "
+            "или строку «<число> VARIABLES» — не найдены; на текстовую таблицу содержимое тоже не похоже "
+            "(есть нулевые или управляющие байты)."
+        )
+    elif suffix in EXCEL_SUFFIXES:
+        looked = "Искали книгу Excel (архив ZIP с xl/workbook.xml или файл OLE2 с листом) или текст — не найдены."
+    else:
+        looked = "Содержимое не похоже на текстовую таблицу (разметка HTML / XML, нулевые или управляющие байты)."
+    return FormatError(
+        "unsupported",
+        f"Файл «{suffix}» не распознан как таблица. Начало файла (32 байта): {shown}. {looked}",
+        "Пришлите первые 8 КБ файла разработчикам, сохраните таблицу в Micromine заново "
+        "(Файл → Сохранить как → .DAT) или экспортируйте её в CSV и выберите CSV.",
+    )
 
 
 def read_table(
@@ -142,12 +181,7 @@ def read_table(
         from bf_core.formats.excel import read_excel
 
         return read_excel(path, options, progress)
-    suffix = Path(filename or path.name).suffix.lower()
-    raise FormatError(
-        "unsupported",
-        f"Формат файла «{suffix or 'без расширения'}» не поддерживается или содержимое не похоже на таблицу.",
-        "Подходят: Micromine .DAT, текст .csv / .txt, Excel .xlsx / .xlsm / .xls.",
-    )
+    raise unsupported_error(path, filename)
 
 
 # ---------------------------------------------------------------- objects: lines, points, rasters, wireframes
@@ -316,12 +350,12 @@ def detect_object(path: str | Path, filename: str | None = None) -> ObjectFormat
     path = Path(path)
     suffix = Path(filename or path.name).suffix.lower()
     if suffix == ".str":
-        from bf_core.formats.micromine_header import _STANDARD_RE, MAGIC
+        from bf_core.formats.micromine_header import header_start
         from bf_core.formats.str_surpac import binary_error, is_surpac, is_surpac_binary
 
         with path.open("rb") as f:
             head = f.read(1 << 16)
-        if head.startswith(MAGIC) or _STANDARD_RE.match(head):
+        if header_start(head) is not None:
             return OBJECT_FORMATS[MICROMINE_STR]
         if is_surpac(head):
             return OBJECT_FORMATS[SURPAC_STR]
