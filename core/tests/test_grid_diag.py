@@ -248,7 +248,8 @@ def test_the_job_refusal_carries_diag_and_choices_into_the_failure(
         obf.import_model(obf.open_source(path, opts), opts, engine=project.engine, store=project.store,
                          workdir=project.tmp / "work", name="М", label=path.name, tick=lambda f, m: None)  # fmt: skip
     assert e.value.code == "blocks_unaligned" and e.value.extra["diag"]["causes"] == ["off_lattice"]
-    assert e.value.extra["diag"]["rows"] == 3000 and [c["id"] for c in e.value.extra["choices"]] == ["grid", "list", "cancel"]
+    assert e.value.extra["diag"]["rows"] == 3000
+    assert [c["id"] for c in e.value.extra["choices"]] == ["grid", "list", "cancel"]
     failure = _failure(path, FormatError(e.value.code, e.value.message, e.value.hint, e.value.extra))
     assert failure["code"] == "blocks_unaligned" and failure["file"] == "hard.dat" and "diag" in failure
     assert FormatError("broken", "m").extra == {} and FormatError("broken", "m").as_dict()["code"] == "broken"

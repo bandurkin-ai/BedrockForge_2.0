@@ -572,5 +572,5 @@ def test_a_single_refused_block_file_keeps_its_choices_in_the_error(project, tmp
     assert err.value.code == "blocks_unaligned"
     (failed,) = err.value.extra["failed"]
     assert failed["file"] == "hard.dat" and failed["diag"]
-    assert [c["id"] for c in failed["choices"]] == ["grid", "cancel"]
+    assert [c["id"] for c in failed["choices"]] == ["grid", "list", "cancel"]
     assert Err("c", "m").extra == {}
