@@ -8,4 +8,4 @@
 .chev > span { display: flex; transition: transform 0.1s; }
 .collapsed { transform: rotate(-90deg); }
 .check { margin: 0 3px 0 0; flex: none; accent-color: var(--accent); }
-.name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; padding: 2px 2px; }
+.name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; padding: 2px 2px; user-select: none; }

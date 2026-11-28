@@ -1,0 +1,6 @@
+/* «Свойства» of several objects (Д-44 А5): brand tokens only (ADR 0006). */
+.mixed { padding: 1px 8px; border: 1px dashed var(--border-strong); border-radius: var(--radius); color: var(--text-dim); font-style: italic; white-space: nowrap; }
+.plaque { margin: 0; padding: 8px 10px; border: 1px solid var(--warn); border-radius: var(--radius); background: var(--bg-hover); color: var(--text); line-height: 1.4; }
+.label { min-width: 120px; color: var(--text-dim); }
+.number { width: 96px; flex: none; }
+.undo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 4px 8px; border-radius: var(--radius); background: var(--bg-hover); }
