@@ -60,6 +60,32 @@ export interface Issue {
   count?: number;
 }
 
+/** One way out of a file that does not fit the section it was added to (the core builds the list). */
+export interface MismatchOption {
+  action: "import_as" | "switch" | "cancel";
+  kind: TableKind | "";
+  label: string;
+}
+
+/** The answer of the core when the kind of the file is not the one the section takes: nothing is assigned until the person chooses. */
+export interface KindMismatch {
+  code: "kind_mismatch";
+  message: string;
+  hint: string;
+  detected: TableKind;
+  expected: TableKind[];
+  reason: string;
+  options: MismatchOption[];
+}
+
+/** The kinds a section (step) of the wizard takes; null — any (files opened with the window, no section). */
+export function expectedOf(mode: WizardMode, step: StepId): TableKind[] | null {
+  if (step === "collar") return mode === "holes" ? ["collar"] : null;
+  if (step === "survey") return mode === "holes" ? ["survey"] : null;
+  if (step === "tables") return mode === "holes" ? ["assay", "interval", "event"] : ["assay", "interval"];
+  return null;
+}
+
 export interface CheckResult {
   rows: number;
   columns: { name: string; kind: "number" | "text"; sample: unknown[] }[];
@@ -72,6 +98,8 @@ export interface CheckResult {
   preview: Record<string, unknown>[];
   counts?: Record<string, number>;
   can_force?: boolean;
+  /** the file does not fit the section it was added to */
+  mismatch?: KindMismatch | null;
   fields: { key: string; label: string; required: boolean }[];
 }
 
@@ -100,6 +128,9 @@ export interface FileEntry {
   tableName: string;
   busy: boolean;
   error: string | null;
+  /** the section the file was added to and the kinds it takes (absent — no section: the kind is taken as detected) */
+  home?: StepId;
+  expected?: TableKind[];
 }
 
 export interface WizardState {
@@ -142,7 +173,10 @@ const stem = (p: string) => baseName(p).replace(/\.[^.]+$/, "");
 
 export function filesOf(s: WizardState, step: StepId): FileEntry[] {
   if (s.mode === "trenches") return step === "tables" ? s.files : []; // one step of tables: the samples
-  return s.files.filter((f) => stepOf(f.kind) === step || (f.kind === null && step === s.step && f.check === null));
+  return s.files.filter((f) =>
+    // waiting for the choice of the person: stays where it was added, not on the step of the kind found
+    f.check?.mismatch ? step === (f.home ?? s.step) : stepOf(f.kind) === step || (f.kind === null && step === s.step && f.check === null),
+  );
 }
 
 /** Blocking problems of a file: errors that «Загрузить с ошибками» does not cover. */
@@ -355,12 +389,16 @@ export class Wizard {
     }
   }
 
-  /** Adds files; each is read and placed on the step of its kind. */
-  async add(paths: string[]): Promise<void> {
+  /** Adds files; each is read. Added to a section (`home`) a file must fit it, otherwise the person chooses what to do
+   * with it; added without one it is placed on the step of its detected kind. */
+  async add(paths: string[], home?: StepId): Promise<void> {
+    const mode = this.store.get().mode;
+    const expected = home ? (expectedOf(mode, home) ?? undefined) : undefined;
     for (const path of paths) {
       const entry: FileEntry = {
         id: nextId++, path, name: baseName(path), options: { header_row: 1 }, inspect: null, check: null, kind: null,
         mapping: {}, components: [], attributes: [], force: false, tableName: stem(path), busy: true, error: null,
+        ...(expected ? { home, expected } : {}),
       };
       this.store.set((s) => ({ files: [...s.files, entry] }));
       logStep(this.log, `Файл: ${path}`);
@@ -404,10 +442,12 @@ export class Wizard {
       force: change.force ?? f.force,
       table_name: f.tableName,
     };
+    if (f.expected) body.expected = f.expected;
     if (body.kind === null) body.mapping = null;
     try {
       const r = await api.post<CheckResult>("/drillholes/import/check", body);
-      logStep(this.log, `${f.name}: строк ${r.rows}, тип ${r.kind ?? "не распознан"}, колонки ${JSON.stringify(r.mapping)}; замечаний ${r.issues.length}`);
+      if (r.mismatch) logStep(this.log, `${f.name}: ${r.mismatch.message} ${r.mismatch.reason}`);
+      logStep(this.log, `${f.name}: строк ${r.rows}, тип ${r.kind ?? (r.mismatch ? "ждёт выбора" : "не распознан")}, колонки ${JSON.stringify(r.mapping)}; замечаний ${r.issues.length}`);
       for (const i of r.issues) logStep(this.log, `  ${i.severity === "error" ? "ошибка" : "замечание"}: ${i.message}${i.count ? ` (${i.count})` : ""}`);
       this.patch(id, {
         check: r, kind: r.kind, mapping: r.mapping, components: r.components, attributes: r.attributes,
@@ -416,6 +456,25 @@ export class Wizard {
     } catch (e) {
       this.fail(id, e);
     }
+  }
+
+  /** The ways out of a file that does not fit its section; «Сменить тип» only where the step of that kind exists in the mode. */
+  mismatchOptions(f: FileEntry): MismatchOption[] {
+    const m = f.check?.mismatch;
+    if (!m) return [];
+    const steps = stepsOf(this.store.get().mode).map((x) => x.id);
+    return m.options.filter((o) => o.action !== "switch" || steps.includes(stepOf(o.kind === "" ? null : o.kind)));
+  }
+
+  /** The choice of the person: import by the schema of the section, change the kind to the one found, or drop the file. */
+  async resolveMismatch(id: number, option: MismatchOption): Promise<void> {
+    if (option.action === "cancel" || option.kind === "") {
+      this.remove(id);
+      return;
+    }
+    logStep(this.log, `${this.file(id)?.name ?? ""}: выбрано «${option.label}»`);
+    await this.check(id, { kind: option.kind, mapping: null });
+    if (option.action === "switch" && this.file(id)?.kind === option.kind) this.go(stepOf(option.kind)); // the file is now on its own step
   }
 
   setTableName(id: number, name: string): void {

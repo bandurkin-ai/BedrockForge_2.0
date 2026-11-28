@@ -60,3 +60,5 @@
 .swatch { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border: 1px solid var(--border-strong); border-radius: 2px; vertical-align: middle; }
 .tag { margin-left: 6px; padding: 0 6px; border-radius: 8px; border: 1px solid var(--warn); color: var(--warn); font-size: 11px; }
 .layers td.num { text-align: right; }
+.mismatch { border: 1px solid var(--warn); border-radius: var(--radius); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.choices { display: flex; gap: 8px; flex-wrap: wrap; }
