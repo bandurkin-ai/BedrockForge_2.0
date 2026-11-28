@@ -90,9 +90,14 @@ export function DataTree() {
         className={css.tree}
         role="tree"
         aria-label="Разделы и объекты проекта"
+        aria-multiselectable="true"
         tabIndex={0}
         onKeyDown={onTreeKeyDown}
         onMouseDown={onTreeMouseDown}
+        onClick={(e) => {
+          // a click on the empty place of the tree drops the choice (Д-44 А5)
+          if (!(e.target as HTMLElement).closest("[data-tree-row], button, input, a") && app.store.get().selected) void app.registry.execute("selection.clear", {});
+        }}
         onFocus={(e) => {
           // the container is a Tab stop only while no row has the focus: Shift+Tab from a row leaves the tree
           if (e.target === e.currentTarget) e.currentTarget.querySelector<HTMLElement>("[data-tree-row]")?.focus();
@@ -116,7 +121,7 @@ export function DataTree() {
           const plus = sectionPlus(s);
           const Content = CONTENT[s];
           return (
-            <div key={s} className={`${css.section} ${over === s ? css.dragOver : ""}`}>
+            <div key={s} data-tree-section={s} className={`${css.section} ${over === s ? css.dragOver : ""}`}>
               <TreeRow
                 label={TREE_SECTIONS[s]}
                 level={1}
