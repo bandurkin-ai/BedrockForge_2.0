@@ -57,6 +57,8 @@ import { toggleAbout } from "./aboutInfo";
 import { focusWindow, openWindow, updateWindow, windowStore } from "./windows";
 import { BOTTOM_TITLES, setPanel, type BottomTab, type PanelId } from "./workspace";
 import { bindAssistant } from "../modules/assistant/bind";
+import { bindGroupClear } from "./multiSelect";
+import { bindPropsUndo } from "./propsUndo";
 
 export interface App {
   registry: CommandRegistry;
@@ -212,6 +214,8 @@ export function createApp(opts: { persist?: boolean } = {}): App {
   bindPlanned(app);
   bindSimulation(app);
   bindLineage(app);
+  bindGroupClear(app); // after the modules: «Снять выбор» also drops the group of rows of the tree
+  bindPropsUndo(app);
   bindAssistant(app, {
     openWindow: (id, props) => {
       // The history of dialogs (23.16) is a part of the chat panel; only the connection has a window of its own.

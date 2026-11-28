@@ -19,7 +19,7 @@ import { itemExists } from "../modules/wireframes/named";
 import { WireframeProps } from "../modules/wireframes/WireframeProps";
 import { useApp } from "./AppContext";
 import { MultiProps } from "./MultiProps";
-import { itemKey, multiStore, selectedItems } from "./selection";
+import { groupItems, groupStore, itemKey, multiStore, selectedItems } from "./selection";
 import { useStore } from "./useStore";
 import css from "./PropsParts.module.css";
 
@@ -27,9 +27,13 @@ export function PropertiesPanel() {
   const app = useApp();
   const selected = useStore(app.store, (s) => s.selected);
   const multi = useStore(multiStore, (m) => m);
+  const group = useStore(groupStore, (g) => g);
   const hole = useStore(tablesStore, (s) => s.hole !== null);
   useStore(sceneObjects, (o) => o); // the lists of the project: the deleted objects drop out of the set
   useStore(blocksStore, (b) => b.list);
+  // several rows of a section without `object.select` (sets, trends, views, filters…): the fields they share, or the plaque
+  const rows = groupItems(group);
+  if (rows.length > 1) return <MultiProps key={rows.map(itemKey).join(",")} items={rows} />;
   if (!selected) return <HoleCard />;
   // several objects chosen in the tree (Ctrl/Shift, Д-44 А5): the fields they share, or the plaque of mixed kinds
   // an object that was deleted stays in the set until the tree is redrawn: it is not shown and not changed

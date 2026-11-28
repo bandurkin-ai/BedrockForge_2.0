@@ -13,6 +13,46 @@ export interface Selected {
   id: number;
 }
 
+/**
+ * The rows of the tree that are not chosen by `object.select`: sets of holes, views, trends, filters, estimation rows… and the
+ * models, scenarios and reports that choose themselves (`selectScenarioRow`, `selectReport`). Several of them are chosen
+ * as a group (`groupStore`, Д-44 А5 for every section); the four kinds of `OBJECT_MULTI` have the set next to
+ * `AppState.selected` (`multiStore`).
+ */
+export type TreeKind =
+  | "set"
+  | "view"
+  | "series"
+  | "filter"
+  | "trend"
+  | "vario"
+  | "est_row"
+  | "est_plan"
+  | "sim_row"
+  | "planned"
+  | "swath"
+  | "qaqc_data"
+  | "qaqc_report"
+  | "display"
+  | "chart"
+  | "result"
+  | "implicit"
+  | "pit_scenario"
+  | "resource_report";
+
+/** A row of the tree that can be chosen with Ctrl and Shift. */
+export type PickKind = "wireframe" | "lines" | "raster" | "blocks" | TreeKind;
+
+export interface RowRef {
+  kind: PickKind;
+  id: number;
+}
+
+/** The kinds whose main object is `AppState.selected` (`object.select`); every other kind is chosen as a group. */
+export type MultiObjectKind = "wireframe" | "lines" | "raster" | "blocks";
+const OBJECT_MULTI: readonly PickKind[] = ["wireframe", "lines", "raster", "blocks"];
+export const isObjectMulti = (k: PickKind): k is MultiObjectKind => OBJECT_MULTI.includes(k);
+
 export const sameObject = (a: Selected | null, b: Selected | null): boolean => a?.kind === b?.kind && a?.id === b?.id;
 
 /** Is the row of the object marked: it is the main one, or it belongs to the chosen set (A5, Д-44). */
@@ -39,9 +79,9 @@ export interface Multi {
 export const NO_MULTI: Multi = { items: [], primary: null, anchor: null };
 export const multiStore = new Store<Multi>(NO_MULTI);
 
-export const itemKey = (s: Selected): string => `${s.kind}:${s.id}`;
+export const itemKey = (s: RowRef): string => `${s.kind}:${s.id}`;
 
-export const sameItem = (a: Selected, b: Selected): boolean => a.kind === b.kind && a.id === b.id;
+export const sameItem = (a: RowRef, b: RowRef): boolean => a.kind === b.kind && a.id === b.id;
 
 /** The chosen objects: the whole set while it is valid, else the main object alone (or nothing). */
 export function selectedItems(selected: Selected | null, multi: Multi = multiStore.get()): readonly Selected[] {
@@ -61,11 +101,11 @@ export interface Mods {
   shift: boolean;
 }
 
-export interface Picked {
-  items: Selected[];
+export interface Picked<T extends RowRef = Selected> {
+  items: T[];
   /** the main object after the click; null — nothing is chosen any more */
-  primary: Selected | null;
-  anchor: Selected | null;
+  primary: T | null;
+  anchor: T | null;
 }
 
 /**
@@ -73,15 +113,15 @@ export interface Picked {
  * Shift takes the rows between the anchor and the clicked one (`visible` — the rows of one section in their order;
  * Ctrl+Shift adds the range to the set). A Shift click without an anchor in these rows is a plain click.
  */
-export function pickSelection(current: readonly Selected[], anchor: Selected | null, clicked: Selected, mods: Mods, visible: readonly Selected[]): Picked {
-  const one: Picked = { items: [clicked], primary: clicked, anchor: clicked };
+export function pickSelection<T extends RowRef>(current: readonly T[], anchor: T | null, clicked: T, mods: Mods, visible: readonly T[]): Picked<T> {
+  const one: Picked<T> = { items: [clicked], primary: clicked, anchor: clicked };
   if (mods.shift) {
     const from = anchor ? visible.findIndex((x) => sameItem(x, anchor)) : -1;
     const to = visible.findIndex((x) => sameItem(x, clicked));
     if (from < 0 || to < 0) return one;
     const range = visible.slice(Math.min(from, to), Math.max(from, to) + 1);
     const items = mods.ctrl ? [...current.filter((c) => !range.some((r) => sameItem(r, c))), ...range] : [...range];
-    return { items, primary: clicked, anchor: anchor as Selected };
+    return { items, primary: clicked, anchor: anchor as T };
   }
   if (mods.ctrl) {
     if (current.some((c) => sameItem(c, clicked))) {
@@ -110,18 +150,68 @@ export function keepSelected(s: Selected | null, exists: (kind: ObjectKind, id: 
 }
 
 // the rows of these sections name their object in the test id; a row can also pass `pick` itself (TreeRow)
-const TEST_ID_KINDS: readonly [RegExp, ObjectKind][] = [
+const TEST_ID_KINDS: readonly [RegExp, PickKind][] = [
   [/^tree-(?:wireframe|dtm)-(\d+)$/, "wireframe"],
   [/^tree-layer-(\d+)$/, "lines"],
   [/^tree-block-(\d+)$/, "blocks"],
   [/^tree-raster-(\d+)$/, "raster"],
+  [/^tree-set-(\d+)$/, "set"],
+  [/^view-(\d+)$/, "view"],
+  [/^series-tree-(\d+)$/, "series"],
+  [/^tree-filter-(\d+)$/, "filter"],
+  [/^tree-trend-(\d+)$/, "trend"],
+  [/^tree-vario-model-(\d+)$/, "vario"],
+  [/^tree-est-row-(\d+)$/, "est_row"],
+  [/^tree-est-plan-(\d+)$/, "est_plan"],
+  [/^tree-sim-row-(\d+)$/, "sim_row"],
+  [/^tree-planned-(\d+)$/, "planned"],
+  [/^tree-swath-(\d+)$/, "swath"],
+  [/^tree-qaqc-data-(\d+)$/, "qaqc_data"],
+  [/^tree-qaqc-report-(\d+)$/, "qaqc_report"],
+  [/^tree-display-(\d+)$/, "display"],
+  [/^tree-chart-(\d+)$/, "chart"],
+  [/^tree-result-(\d+)$/, "result"],
+  [/^tree-implicit-(\d+)$/, "implicit"],
+  [/^tree-pit-scenario-(\d+)$/, "pit_scenario"],
+  [/^tree-resource-report-(\d+)$/, "resource_report"],
 ];
 
 /** The object of a row of the tree by its test id (`tree-layer-12` → a layer of lines №12). */
-export function pickOfTestId(testId: string | undefined): Selected | undefined {
+export function pickOfTestId(testId: string | undefined): RowRef | undefined {
   for (const [re, kind] of TEST_ID_KINDS) {
     const m = testId ? re.exec(testId) : null;
     if (m) return { kind, id: Number(m[1]) };
   }
   return undefined;
 }
+
+// ---- the rows that `object.select` does not choose: a group of one kind (every section of the tree, Д-44 А5) ----------------
+
+/**
+ * The chosen rows of the sections whose objects are not chosen by `object.select` (sets, trends, views…). `kind` is the kind
+ * the group was begun with; from two rows the rows of this kind are marked by the group alone and not by the old choice of
+ * their section (`groupMark`). The group counts as a set from two rows; the plain click and the click
+ * in the 3D window drop it (`multiSelect.ts`), the rows that are not drawn any more leave it (`TreeRow`).
+ */
+export interface Group {
+  items: readonly RowRef[];
+  anchor: RowRef | null;
+  kind: PickKind | null;
+}
+
+export const NO_GROUP: Group = { items: [], anchor: null, kind: null };
+export const groupStore = new Store<Group>(NO_GROUP);
+
+/**
+ * How the group marks a row: 1 — it is one of the chosen rows; 2 — it is not, and the group of two or more rows of its kind
+ * takes over the marking (the row the section marked before is not marked); 0 — the group says nothing (a single chosen
+ * row is marked next to what the section marks itself: the active set, the view applied last).
+ */
+export function groupMark(g: Group, row: RowRef): 0 | 1 | 2 {
+  if (g.kind !== row.kind || !g.items.length) return 0;
+  if (g.items.some((x) => sameItem(x, row))) return 1;
+  return g.items.length > 1 ? 2 : 0;
+}
+
+/** The rows of the group: more than one of them make a set. */
+export const groupItems = (g: Group = groupStore.get()): readonly RowRef[] => (g.items.length > 1 ? g.items : []);

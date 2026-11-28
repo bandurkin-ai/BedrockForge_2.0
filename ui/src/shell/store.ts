@@ -30,6 +30,10 @@ export interface AppState {
   holeId: string | null;
   /** The object chosen by `object.select` (a layer of lines, a raster, a wireframe or a DTM), or null. */
   selected: Selected | null;
+  /** How many rows of the tree are chosen as a group (`groupStore`): the sections without `object.select` (Д-44 А5). */
+  groupSize: number;
+  /** How many changes of properties «Отменить» can take back (`propsUndo.ts`). */
+  undoDepth: number;
   hasSection: boolean;
   editing: boolean;
   /** A passing notice of the view (settings not saved, «упрощено»…). */
@@ -55,6 +59,8 @@ export const INITIAL_STATE: AppState = {
   setHoles: 0,
   holeId: null,
   selected: null,
+  groupSize: 0,
+  undoDepth: 0,
   hasSection: false,
   editing: false,
   statusNote: null,
@@ -85,6 +91,8 @@ export function commandContext(s: AppState): CommandContext {
     hasSet: s.setName !== null,
     hasHole: s.holeId !== null,
     hasObject: s.selected !== null,
+    hasGroup: s.groupSize > 1,
+    canUndo: s.undoDepth > 0,
     hasSection: s.hasSection,
     editing: s.editing,
     coreOnline: s.core === "online",
