@@ -26,6 +26,8 @@ export interface CommandContext {
   hasSection: boolean;
   editing: boolean;
   coreOnline: boolean;
+  /** The selected object is a block model kept as a list of blocks (ADR 0030): no grid of parents. */
+  listModel?: boolean;
 }
 
 export const EMPTY_CONTEXT: CommandContext = {
@@ -36,7 +38,32 @@ export const EMPTY_CONTEXT: CommandContext = {
   hasSection: false,
   editing: false,
   coreOnline: false,
+  listModel: false,
 };
+
+/** The commands that need the grid of parents and sub-blocks: with a list of blocks selected they are unavailable and
+ * say what to do (the core refuses them too: 422 `block_list_unsupported`). Command → the operation in the reason. */
+export const NEEDS_GRID: Readonly<Record<string, string>> = {
+  "blocks.slice": "Срез",
+  "blocks.fill": "Заполнение каркасами",
+  "blocks.code": "Кодирование каркасами",
+  "estimate.open": "Оценка",
+  "estimate.plan": "Оценка",
+  "estimate.run": "Оценка",
+  "resources.report": "Подсчёт ресурсов",
+  "resources.curve": "Подсчёт ресурсов",
+  "resources.drill": "Подсчёт ресурсов",
+  "pit.new": "Оптимизация карьера",
+  "pit.run": "Оптимизация карьера",
+  "estimate.compare": "Сравнение оценок",
+  "omf.export": "Экспорт OMF",
+};
+
+/** Why a command cannot run on a list of blocks, or null. */
+export function listReason(command: Pick<Command, "id">, ctx: CommandContext): string | null {
+  const what = ctx.listModel ? NEEDS_GRID[command.id] : undefined;
+  return what ? `«${what}» недоступна для модели-списка блоков. Регуляризуйте модель: Блочные модели → Регуляризация.` : null;
+}
 
 export type CommandSource = "user" | "claude";
 
@@ -66,7 +93,7 @@ export interface Command {
 /** Why the command cannot run now, or null. */
 export function unavailableReason(command: Command, ctx: CommandContext): string | null {
   if (command.stage || !command.run) return `Функция появится на этапе ${command.stage ?? "разработки"}`;
-  return command.unavailable?.(ctx) ?? null;
+  return listReason(command, ctx) ?? command.unavailable?.(ctx) ?? null;
 }
 
 /** Tool definition in the shape of the Claude Messages API (ТЗ 6.9: generated from the registry). */

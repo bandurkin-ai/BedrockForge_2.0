@@ -11,6 +11,8 @@ import { blockMenu, blockRow, blockSummary } from "../../src/modules/blocks/tree
 import { viewStore } from "../../src/modules/scene/bind";
 import { setCoreTarget } from "../../src/shell/api";
 import { createApp, type App } from "../../src/shell/app";
+import { EMPTY_CONTEXT, NEEDS_GRID, listReason, unavailableReason, type Command } from "../../src/shell/commands";
+import { bindBlocks } from "../../src/modules/blocks/bind";
 
 const info = (over: Partial<BlockModelInfo> = {}): BlockModelInfo => ({
   id: 7, name: "Геомет", folder: null, version: 1, extent: [1000, 2000, 100, 1200, 2400, 160], crs: null,
@@ -70,5 +72,41 @@ describe("the slice refuses a list", () => {
     const ok = await app.registry.execute("blocks.slice", { model_id: 8, plane: "z", at: 120 });
     expect(ok.ok).toBe(true);
     expect((await app.registry.execute("blocks.slice", { model_id: 7, on: false })).ok).toBe(true);
+  });
+});
+
+describe("the commands that need the grid are unavailable while a list of blocks is selected", () => {
+  const ctx = { ...EMPTY_CONTEXT, hasProject: true, hasObject: true, coreOnline: true };
+  const cmd = (id: string): Command => ({ id, title: id, description: id, run: () => undefined });
+
+  it("the slice, the estimation, the resources, the pit, the filling, the coding, the comparison and OMF say why", () => {
+    for (const id of ["blocks.slice", "estimate.run", "resources.report", "pit.run", "blocks.fill", "blocks.code", "estimate.compare", "omf.export"]) {
+      expect(NEEDS_GRID[id], id).toBeTruthy();
+      expect(unavailableReason(cmd(id), { ...ctx, listModel: true }), id).toMatch(/недоступна для модели-списка блоков\. Регуляризуйте модель/);
+      expect(unavailableReason(cmd(id), ctx), id).toBeNull(); // a grid model: as before
+    }
+    expect(listReason(cmd("blocks.slice"), { ...ctx, listModel: true })).toContain("«Срез»");
+    expect(unavailableReason(cmd("blocks.show"), { ...ctx, listModel: true })).toBeNull(); // the display, the filters, the report, the export stay
+    expect(unavailableReason(cmd("blocks.export"), { ...ctx, listModel: true })).toBeNull();
+  });
+
+  it("the module follows the selection: a list selected — `listModel`; another model or nothing — not", () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } })));
+    setCoreTarget({ baseUrl: "http://127.0.0.1:1", token: "t" });
+    const app = createApp({ persist: false });
+    app.store.set({ projectName: "Проект", selected: null, listModel: false });
+    blocksStore.set({ list: [LIST, info({ id: 8, name: "Сетка" })], loaded: true, error: null, details: {}, detailErrors: {} });
+    const off = (bindBlocks(app), () => undefined);
+    app.store.set({ selected: { kind: "blocks", id: 7 } });
+    expect(app.store.get().listModel).toBe(true);
+    expect(unavailableReason(app.registry.get("blocks.slice")!, { ...ctx, listModel: app.store.get().listModel })).toContain("Регуляризуйте модель");
+    app.store.set({ selected: { kind: "blocks", id: 8 } });
+    expect(app.store.get().listModel).toBe(false);
+    app.store.set({ selected: { kind: "blocks", id: 7 } });
+    app.store.set({ selected: null });
+    expect(app.store.get().listModel).toBe(false);
+    off();
+    vi.unstubAllGlobals();
+    setCoreTarget(null);
   });
 });
