@@ -10,6 +10,7 @@ import { useState, type DragEvent } from "react";
 import { useApp } from "./AppContext";
 import { openMenu, type MenuItem } from "./ContextMenu";
 import { Icon } from "./Icon";
+import { groupItems } from "./selection";
 import { onTreeKeyDown, onTreeMouseDown, TreeRow } from "./TreeRow";
 import { DtmTree } from "../modules/dtm/DtmTree";
 import { LinesTree } from "../modules/lines/LinesTree";
@@ -96,7 +97,7 @@ export function DataTree() {
         onMouseDown={onTreeMouseDown}
         onClick={(e) => {
           // a click on the empty place of the tree drops the choice (Д-44 А5)
-          if (!(e.target as HTMLElement).closest("[data-tree-row], button, input, a") && app.store.get().selected) void app.registry.execute("selection.clear", {});
+          if (!(e.target as HTMLElement).closest("[data-tree-row], button, input, a") && (app.store.get().selected || groupItems().length)) void app.registry.execute("selection.clear", {});
         }}
         onFocus={(e) => {
           // the container is a Tab stop only while no row has the focus: Shift+Tab from a row leaves the tree

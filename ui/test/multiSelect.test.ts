@@ -182,7 +182,7 @@ describe("the fields the chosen objects share", () => {
   it("which fields a kind has", () => {
     expect(fieldsOf("lines").map((f) => f.key)).toEqual(["visible", "color"]);
     expect(fieldsOf("raster").map((f) => f.key)).toEqual(["visible", "opacity"]);
-    expect(fieldsOf("blocks").map((f) => f.key)).toEqual(["visible"]);
+    expect(fieldsOf("blocks").map((f) => f.key)).toEqual(["visible", "opacity"]);
     expect(fieldsOf("implicit")).toEqual([]);
   });
 

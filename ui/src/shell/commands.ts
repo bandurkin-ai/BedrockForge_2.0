@@ -19,6 +19,10 @@ export interface CommandContext {
   hasHole: boolean;
   /** An object of the project is selected (`object.select`). */
   hasObject: boolean;
+  /** Several rows of the tree are chosen as a group (sets, trends, views… — Д-44 А5). */
+  hasGroup?: boolean;
+  /** A change of properties can be taken back (`props.undo`). */
+  canUndo?: boolean;
   hasSection: boolean;
   editing: boolean;
   coreOnline: boolean;

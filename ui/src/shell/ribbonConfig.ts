@@ -55,7 +55,7 @@ export interface RibbonTab {
 const NO_SECTION = (c: CommandContext) => (c.hasSection ? null : "Сначала проведите линию разреза");
 const NO_SET = (c: CommandContext) => (c.hasSet ? null : "Нет активного набора скважин");
 const NO_HOLE = (c: CommandContext) => (c.hasHole ? null : "Скважина не выбрана");
-const NOTHING_SELECTED = (c: CommandContext) => (c.hasHole || c.hasObject ? null : "Ничего не выбрано");
+const NOTHING_SELECTED = (c: CommandContext) => (c.hasHole || c.hasObject || c.hasGroup ? null : "Ничего не выбрано");
 const NO_OBJECT = (c: CommandContext) => (c.hasObject ? null : "Объект не выбран: щёлкните слой линий, растр, каркас или ЦТМ в дереве или в 3D-окне");
 
 export const QUICK_PROMPTS: { label: string; prompt: string; needsHole?: boolean }[] = [
@@ -123,6 +123,7 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState, series: Partial
           items: [
             { command: "palette.open", args: { query: "скв " }, label: "Найти скважину", icon: "search", small: true },
             { command: "selection.clear", label: "Снять выбор", icon: "clear", hint: "Снять выбор скважины и объекта: линии, растра, каркаса, ЦТМ", shortcut: "escape", small: true, unavailable: NOTHING_SELECTED },
+            { command: "props.undo", label: "Отменить", icon: "edUndo", hint: "Отменить последнее изменение свойств нескольких выбранных объектов (Ctrl+Z)", small: true },
             { command: "object.rename", label: "Переименовать объект", icon: "edit", hint: "Новое название выбранного слоя линий, растра, каркаса или ЦТМ", small: true, unavailable: NO_OBJECT },
             { command: "object.color", label: "Цвет объекта", icon: "palette", hint: "Цвет выбранного слоя линий, каркаса или ЦТМ — в панели «Свойства»", small: true, unavailable: NO_OBJECT },
             { command: "object.delete", label: "Удалить объект", icon: "trash", hint: "Удалить выбранный растр, каркас или ЦТМ из проекта", small: true, unavailable: NO_OBJECT },
