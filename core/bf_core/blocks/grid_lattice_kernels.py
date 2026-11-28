@@ -4,7 +4,8 @@ that importing `grid_lattice` (and the import chain of every importer) does not 
 from __future__ import annotations
 
 import numpy as np
-from numba import njit
+
+from bf_core.jit import njit
 
 
 @njit(cache=True)
