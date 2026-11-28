@@ -4,6 +4,7 @@
  * from the page: the panel draws again when a store changes. No React: the panel passes the stores' states.
  */
 import { styleIn } from "../modules/blocks/display";
+import { pointsShown, type ViewState as ImplicitView } from "../modules/implicit/viewState";
 import type { PlannedRow } from "../modules/drillholes/plannedApi";
 import { isShown as plannedShown, type PlannedView } from "../modules/drillholes/plannedState";
 import { setStyle } from "../modules/scene/SetStyleWindow";
@@ -15,7 +16,7 @@ import type { Trend } from "../modules/trends/api";
 import type { ViewRow } from "../modules/views/state";
 import { itemExists } from "../modules/wireframes/named";
 import type { FieldValue, Lookup, MultiField } from "./multiPropsModel";
-import { isObjectMulti, type PickKind } from "./selection";
+import { isObjectMulti, unpair, type PickKind } from "./selection";
 
 /** The lists of the sections without `object.select` that have a field (the stores of their modules). */
 export interface Lists {
@@ -24,9 +25,11 @@ export interface Lists {
   planned: readonly PlannedRow[];
   swaths: readonly { id: number }[];
   views: readonly ViewRow[];
+  /** the models of the section «Неявные модели» with the groups of their data */
+  implicit: readonly { id: number; group_list: readonly { id: number | null }[] }[];
 }
 
-export const NO_LISTS: Lists = { sets: [], trends: [], planned: [], swaths: [], views: [] };
+export const NO_LISTS: Lists = { sets: [], trends: [], planned: [], swaths: [], views: [], implicit: [] };
 
 /** What the lookup reads: the states of the stores the panel is subscribed to. */
 export interface LookupEnv {
@@ -35,6 +38,8 @@ export interface LookupEnv {
   /** the keys of the project view (`viewStore`) */
   view: Record<string, unknown>;
   planned: PlannedView;
+  /** the points of implicit models shown in 3D */
+  implicit?: ImplicitView;
   lists: Lists;
 }
 
@@ -51,6 +56,10 @@ export function rowExists(lists: Lists, kind: PickKind, id: number): boolean {
       return lists.swaths.some((x) => x.id === id);
     case "view":
       return lists.views.some((x) => x.id === id);
+    case "implicit_group": {
+      const [model, group] = unpair(id);
+      return lists.implicit.some((m) => m.id === model && m.group_list.some((g) => g.id === group));
+    }
     default:
       return true;
   }
@@ -69,6 +78,10 @@ function otherValue(env: LookupEnv, lists: Lists, kind: PickKind, id: number, ke
     if (kind === "trend") return shownObjects(env.view[ELLIPSOIDS_KEY]).includes(id);
     if (kind === "planned") return plannedShown(env.planned, id);
     if (kind === "swath") return shownSwaths(env.view[SWATHS_KEY]).includes(id);
+  }
+  if (kind === "implicit_group" && key === "visible") {
+    const [model, group] = unpair(id);
+    return env.implicit ? pointsShown(env.implicit, model, group) : false;
   }
   if (kind === "view" && key === "folder") return lists.views.find((x) => x.id === id)?.folder ?? "";
   return undefined;

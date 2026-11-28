@@ -9,7 +9,7 @@
  */
 import { normalizeColor } from "./props";
 import { plural } from "./treeActions";
-import { isObjectMulti, type PickKind, type RowRef, type Selected } from "./selection";
+import { isObjectMulti, unpair, type PickKind, type RowRef, type Selected } from "./selection";
 
 /** A value of a field: a flag, a colour or a text (null — none of its own) or a number. */
 export type FieldValue = boolean | string | number | null;
@@ -45,9 +45,14 @@ const SHOW: Partial<Record<PickKind, (id: number, visible: boolean) => Step>> = 
   trend: (id, visible) => ({ command: "trend.show", args: { trend_id: id, visible } }),
   planned: (id, visible) => ({ command: "planned.show", args: { id, visible } }),
   swath: (id, visible) => ({ command: "stats.swath_3d", args: { swath_id: id, visible } }),
+  // a group of data of a model is named by two numbers (`pairId`): the points of the group are what the check box shows
+  implicit_group: (id, visible) => {
+    const [model, group] = unpair(id);
+    return { command: "implicit.show", args: { model_id: model, group_id: group, what: "points", visible } };
+  },
 };
 
-const SHOW_COMMAND: Partial<Record<PickKind, string>> = { blocks: "blocks.show", trend: "trend.show", planned: "planned.show", swath: "stats.swath_3d" };
+const SHOW_COMMAND: Partial<Record<PickKind, string>> = { blocks: "blocks.show", trend: "trend.show", planned: "planned.show", swath: "stats.swath_3d", implicit_group: "implicit.show" };
 
 export const OPACITY_RANGE = { min: 0.05, max: 1 } as const;
 export const TRACE_WIDTH_RANGE = { min: 0.5, max: 12 } as const;
@@ -61,7 +66,7 @@ export const FIELDS: readonly MultiField[] = [
     key: "visible",
     label: "Показан в 3D",
     type: "check",
-    kinds: ["lines", "raster", "wireframe", "blocks", "set", "trend", "planned", "swath"],
+    kinds: ["lines", "raster", "wireframe", "blocks", "set", "trend", "planned", "swath", "implicit_group"],
     command: (k) => SHOW_COMMAND[k] ?? "layer.show",
     steps: (kind, id, value) => {
       const visible = value === true;
@@ -144,6 +149,10 @@ const WHY: Partial<Record<PickKind, string>> = {
   implicit: "Показ неявной модели задаётся по группам данных, а не для модели целиком: откройте модель.",
   pit_scenario: "Оболочку карьера показывает команда с номером оболочки для каждого сценария отдельно.",
   resource_report: "Отчёт по ресурсам только читается.",
+  line_file: "Видимость файла — это видимость его слоёв: выберите слои линий файла, у них есть общие поля.",
+  implicit_fault: "Разлом — результат построения, только чтение: его окно открывает двойной щелчок.",
+  implicit_stack: "Порядок и отношения доменов правит окно «Стек отношений».",
+  series_section: "Разрез серии — переход по щелчку: у него нет свойств, параметры задаёт окно серии.",
 };
 
 export const whyNoFields = (kind: PickKind): string => WHY[kind] || "У этих объектов нет общих свойств для изменения: откройте каждый по отдельности.";
@@ -273,6 +282,11 @@ const KIND_PLURALS: Record<PickKind, [string, string, string]> = {
   display: ["отображение по стволу", "отображения по стволу", "отображений по стволу"],
   chart: ["график", "графика", "графиков"],
   result: ["результат обработки проб", "результата обработки проб", "результатов обработки проб"],
+  line_file: ["файл линий", "файла линий", "файлов линий"],
+  implicit_group: ["группа данных модели", "группы данных модели", "групп данных модели"],
+  implicit_fault: ["разлом", "разлома", "разломов"],
+  implicit_stack: ["домен стека", "домена стека", "доменов стека"],
+  series_section: ["разрез серии", "разреза серии", "разрезов серии"],
 };
 
 /** «3 слоя линий» */

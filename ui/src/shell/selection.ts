@@ -38,7 +38,12 @@ export type TreeKind =
   | "result"
   | "implicit"
   | "pit_scenario"
-  | "resource_report";
+  | "resource_report"
+  | "line_file"
+  | "implicit_group"
+  | "implicit_fault"
+  | "implicit_stack"
+  | "series_section";
 
 /** A row of the tree that can be chosen with Ctrl and Shift. */
 export type PickKind = "wireframe" | "lines" | "raster" | "blocks" | TreeKind;
@@ -149,38 +154,53 @@ export function keepSelected(s: Selected | null, exists: (kind: ObjectKind, id: 
   return s && exists(s.kind, s.id) ? s : null;
 }
 
+/** A row named by two numbers (a group of a model, a section of a series) has one id: `pairId(model, group)`. */
+export const PAIR = 1_000_000;
+export const pairId = (a: number, b: number): number => a * PAIR + b;
+export const unpair = (id: number): [number, number] => [Math.floor(id / PAIR), id % PAIR];
+
 // the rows of these sections name their object in the test id; a row can also pass `pick` itself (TreeRow)
-const TEST_ID_KINDS: readonly [RegExp, PickKind][] = [
-  [/^tree-(?:wireframe|dtm)-(\d+)$/, "wireframe"],
-  [/^tree-layer-(\d+)$/, "lines"],
-  [/^tree-block-(\d+)$/, "blocks"],
-  [/^tree-raster-(\d+)$/, "raster"],
-  [/^tree-set-(\d+)$/, "set"],
-  [/^view-(\d+)$/, "view"],
-  [/^series-tree-(\d+)$/, "series"],
-  [/^tree-filter-(\d+)$/, "filter"],
-  [/^tree-trend-(\d+)$/, "trend"],
-  [/^tree-vario-model-(\d+)$/, "vario"],
-  [/^tree-est-row-(\d+)$/, "est_row"],
-  [/^tree-est-plan-(\d+)$/, "est_plan"],
-  [/^tree-sim-row-(\d+)$/, "sim_row"],
-  [/^tree-planned-(\d+)$/, "planned"],
-  [/^tree-swath-(\d+)$/, "swath"],
-  [/^tree-qaqc-data-(\d+)$/, "qaqc_data"],
-  [/^tree-qaqc-report-(\d+)$/, "qaqc_report"],
-  [/^tree-display-(\d+)$/, "display"],
-  [/^tree-chart-(\d+)$/, "chart"],
-  [/^tree-result-(\d+)$/, "result"],
-  [/^tree-implicit-(\d+)$/, "implicit"],
-  [/^tree-pit-scenario-(\d+)$/, "pit_scenario"],
-  [/^tree-resource-report-(\d+)$/, "resource_report"],
+const first = (m: RegExpExecArray): number => Number(m[1]);
+const TEST_ID_KINDS: readonly [RegExp, PickKind, (m: RegExpExecArray) => number][] = [
+  [/^tree-(?:wireframe|dtm)-(\d+)$/, "wireframe", first],
+  [/^tree-layer-(\d+)$/, "lines", first],
+  [/^tree-block-(\d+)$/, "blocks", first],
+  [/^tree-raster-(\d+)$/, "raster", first],
+  [/^tree-set-(\d+)$/, "set", first],
+  [/^view-(\d+)$/, "view", first],
+  [/^series-tree-(\d+)$/, "series", first],
+  [/^series-tree-(\d+)-(\d+)$/, "series_section", (m) => pairId(Number(m[1]), Number(m[2]))],
+  [/^tree-filter-(\d+)$/, "filter", first],
+  [/^tree-trend-(\d+)$/, "trend", first],
+  [/^tree-vario-model-(\d+)$/, "vario", first],
+  [/^tree-est-row-(\d+)$/, "est_row", first],
+  [/^tree-est-plan-(\d+)$/, "est_plan", first],
+  [/^tree-sim-row-(\d+)$/, "sim_row", first],
+  [/^tree-planned-(\d+)$/, "planned", first],
+  [/^tree-swath-(\d+)$/, "swath", first],
+  [/^tree-qaqc-data-(\d+)$/, "qaqc_data", first],
+  [/^tree-qaqc-report-(\d+)$/, "qaqc_report", first],
+  [/^tree-display-(\d+)$/, "display", first],
+  [/^tree-chart-(\d+)$/, "chart", first],
+  [/^tree-result-(\d+)$/, "result", first],
+  [/^tree-implicit-(\d+)$/, "implicit", first],
+  [/^tree-implicit-(\d+)-group-(\d+)$/, "implicit_group", (m) => pairId(Number(m[1]), Number(m[2]))],
+  [/^tree-implicit-(\d+)-fault-(\d+)$/, "implicit_fault", (m) => pairId(Number(m[1]), Number(m[2]))],
+  [/^tree-implicit-(\d+)-stack-(\d+)$/, "implicit_stack", (m) => pairId(Number(m[1]), Number(m[2]))],
+  // the wireframes and the layers under a scenario of the pit and a model are the ordinary ones of the project
+  [/^tree-pit-\d+-wireframe-(\d+)$/, "wireframe", first],
+  [/^tree-implicit-out-(\d+)$/, "wireframe", first],
+  [/^tree-implicit-line-(\d+)$/, "lines", first],
+  [/^tree-linefile-(\d+)$/, "line_file", first],
+  [/^tree-pit-scenario-(\d+)$/, "pit_scenario", first],
+  [/^tree-resource-report-(\d+)$/, "resource_report", first],
 ];
 
 /** The object of a row of the tree by its test id (`tree-layer-12` → a layer of lines №12). */
 export function pickOfTestId(testId: string | undefined): RowRef | undefined {
-  for (const [re, kind] of TEST_ID_KINDS) {
+  for (const [re, kind, id] of TEST_ID_KINDS) {
     const m = testId ? re.exec(testId) : null;
-    if (m) return { kind, id: Number(m[1]) };
+    if (m) return { kind, id: id(m) };
   }
   return undefined;
 }
@@ -189,7 +209,7 @@ export function pickOfTestId(testId: string | undefined): RowRef | undefined {
 
 /**
  * The chosen rows of the sections whose objects are not chosen by `object.select` (sets, trends, views…). `kind` is the kind
- * the group was begun with; from two rows the rows of this kind are marked by the group alone and not by the old choice of
+ * the group was begun with; the rows of this kind are marked by the group alone and not by the old choice of
  * their section (`groupMark`). The group counts as a set from two rows; the plain click and the click
  * in the 3D window drop it (`multiSelect.ts`), the rows that are not drawn any more leave it (`TreeRow`).
  */
@@ -203,14 +223,13 @@ export const NO_GROUP: Group = { items: [], anchor: null, kind: null };
 export const groupStore = new Store<Group>(NO_GROUP);
 
 /**
- * How the group marks a row: 1 — it is one of the chosen rows; 2 — it is not, and the group of two or more rows of its kind
- * takes over the marking (the row the section marked before is not marked); 0 — the group says nothing (a single chosen
- * row is marked next to what the section marks itself: the active set, the view applied last).
+ * How the group marks a row: 1 — it is one of the chosen rows; 2 — it is not, and the group works on its kind: only the rows
+ * of the group are marked «выбран», the mark the section keeps itself (the active set, the view applied last) is shown as
+ * «активный» (`TreeRow`), so taking a row away never leaves two rows marked alike; 0 — no group of this kind.
  */
 export function groupMark(g: Group, row: RowRef): 0 | 1 | 2 {
-  if (g.kind !== row.kind || !g.items.length) return 0;
-  if (g.items.some((x) => sameItem(x, row))) return 1;
-  return g.items.length > 1 ? 2 : 0;
+  if (g.kind !== row.kind) return 0;
+  return g.items.some((x) => sameItem(x, row)) ? 1 : 2;
 }
 
 /** The rows of the group: more than one of them make a set. */
