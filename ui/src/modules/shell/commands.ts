@@ -1,5 +1,7 @@
 import type { Command } from "../../shell/commands";
 
+const OBJECT_KIND = { type: "string", enum: ["wireframe", "lines", "raster", "blocks", "implicit", "resource_report", "pit_scenario"] } as const;
+
 /** Panels, themes, palette, settings: implemented on Э1 (handlers are bound by the shell). */
 export const commands: Command[] = [
   {
@@ -25,6 +27,20 @@ export const commands: Command[] = [
   },
   { id: "workspace.state", title: "Что на экране", description: "Короткая сводка состояния окна: открытые панели, тема, вид, проект, набор, выбор.", silent: true },
   { id: "selection.clear", title: "Снять выбор", description: "Снять выбор скважины и объекта проекта (слоя линий, растра, каркаса, ЦТМ); пока рисуется линия разреза — отменить рисование.", stage: "Э7" },
+  {
+    id: "tree.select_range",
+    title: "Выбрать диапазон",
+    description: "Выбрать подряд объекты раздела дерева данных от последнего выбранного до указанного (Shift+щелчок, Shift+↑/↓ в дереве); add — добавить диапазон к уже выбранным (Ctrl+Shift+щелчок). Главным становится указанный объект: «Свойства» показывают общие поля выбранных объектов одного вида.",
+    params: { kind: OBJECT_KIND, id: { type: "integer" }, add: { type: "boolean" } },
+    required: ["kind", "id"],
+  },
+  {
+    id: "tree.select_toggle",
+    title: "Добавить или убрать из выбора",
+    description: "Добавить объект дерева данных к выбранным или убрать его из них (Ctrl+щелчок, Ctrl+Пробел в дереве). Если убран последний объект — выбор снимается.",
+    params: { kind: OBJECT_KIND, id: { type: "integer" } },
+    required: ["kind", "id"],
+  },
   { id: "app.about", title: "О производителе", description: "Плашка «О производителе»: название, слоган, производитель, версии программы и ядра.", uiOnly: true, stage: "Э6.1" },
   { id: "license.open", title: "Лицензия", description: "Окно «Лицензия»: код ПК, пробный период, файл лицензии.", uiOnly: true },
   { id: "logs.open", title: "Журналы", description: "Журналы импорта и экспорта этого сеанса.", uiOnly: true, stage: "Э3" },

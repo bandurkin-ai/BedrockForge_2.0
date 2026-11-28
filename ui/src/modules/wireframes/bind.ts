@@ -6,6 +6,7 @@
  * wireframe — `checkCommands.ts`; the export of wireframes — `exportCommands.ts`.
  */
 import type { App } from "../../shell/app";
+import { bindTreeSelection } from "../../shell/multiSelect";
 import { needProject, noted } from "../../shell/objectRun";
 import { KIND_TITLES, keepSelected, sameObject, type ObjectKind, type Selected } from "../../shell/selection";
 import { selectWithProperties } from "../../shell/treeRun";
@@ -69,6 +70,8 @@ export function bindObjects(app: App): void {
     },
     needProject,
   );
+
+  bindTreeSelection(app);
 
   r.bind("selection.clear", async (_a, source) => {
     if (cancelSectionDraw()) return "Рисование разреза отменено";

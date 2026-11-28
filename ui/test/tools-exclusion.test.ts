@@ -6,6 +6,10 @@ import { emptyLayer } from "../src/edit/model";
 import { EditSession } from "../src/edit/session";
 import type { EditPointer } from "../src/edit/tools";
 import { attachSession } from "../src/modules/lines/editScene";
+import { projectStore, type ProjectInfo } from "../src/modules/projects/state";
+import { setCurrentScene } from "../src/modules/scene/sceneHost";
+import { sectionStore } from "../src/modules/section/state";
+import { createApp } from "../src/shell/app";
 import type { Scene } from "../src/viz/Scene";
 import type { ToolHandler, ToolPointer } from "../src/viz/core/toolInput";
 import { DRAW_OFF, startDraw } from "../src/viz/section/draw";
@@ -148,5 +152,29 @@ describe("the editor under the section line", () => {
     detach();
     expect(s.layer).toBe(edits);
     expect(s.tool).toBe("line");
+  });
+});
+
+describe("closing the project while a section line is drawn (Э27, 27.10)", () => {
+  it("calls the drawing off in the scene too: the pointer hold is let go and the editor's tool gets the pointer again", () => {
+    createApp({ persist: false });
+    const scene = fakeScene();
+    const seen: string[] = [];
+    scene.chain.tool = { pointer: (e) => (seen.push(e.type), true) };
+    setCurrentScene(scene);
+    projectStore.set({ current: { uid: "p1" } as ProjectInfo });
+    const draw = startDraw();
+    sectionStore.set({ draw });
+    scene.setDrawing(draw);
+    expect(scene.chain.suspended).toBe(true);
+    expect(scene.chain.pointer(ptr("down"))).toBe(false);
+
+    projectStore.set({ current: null, version: 0 });
+
+    expect(sectionStore.get().draw).toEqual(DRAW_OFF);
+    expect(scene.chain.suspended).toBe(false);
+    expect(scene.chain.pointer(ptr("down"))).toBe(true);
+    expect(seen).toEqual(["down"]);
+    setCurrentScene(null);
   });
 });

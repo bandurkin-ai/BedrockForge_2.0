@@ -177,6 +177,22 @@ def test_extended_header_with_lf_and_lower_case_tag(tmp_path: Path) -> None:
     assert read_table(path).column("BHID").to_pylist() == ["A-1"]
 
 
+def test_word_variables_in_the_xml_is_not_the_start_of_the_block(tmp_path: Path) -> None:
+    """The XML is longer than a page and a line of it ends with «variables»: the exact `VARIABLES\\r\\n` still wins."""
+    head = bytearray(header(CP, pages=2))
+    note = b"<!-- the list of variables\r\n-->"
+    at = head.index(b"</metadata>")
+    assert at > 4096  # the note is beyond the first page, where the search for the block starts
+    head[at:at] = note
+    del head[-len(note) :]  # the header stays two pages long
+    assert head.endswith(b"\x00") and len(head) == 8192
+    line = b"BHID".ljust(10) + b"C  6  0"
+    data = bytes(head) + b"1   VARIABLES\r\n" + line + b"\r\n" + b"A-1".ljust(6) + b"\r\n"
+    path = _write(tmp_path, data)
+    assert [f.name for f in parse_header(data).fields] == ["BHID"]
+    assert read_table(path).column("BHID").to_pylist() == ["A-1"]
+
+
 def test_text_dat_goes_the_csv_way(tmp_path: Path) -> None:
     path = _write(tmp_path, "BHID;X\nС-1;1,5\nС-2;2,5\n".encode("cp1251"), "DH_collars.DAT")
     assert detect(path) == "csv"

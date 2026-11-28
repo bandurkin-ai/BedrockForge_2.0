@@ -10,7 +10,7 @@ import { AppContext } from "../src/shell/AppContext";
 import { createApp, type App } from "../src/shell/app";
 import { MultiProps } from "../src/shell/MultiProps";
 import { applyAll, applyPlan, commonKind, commonValue, fieldsOf, parseOpacity, readField, revertPlan, type Lookup } from "../src/shell/multiProps";
-import { pickMulti, pickPlain } from "../src/shell/multiSelect";
+import { bindTreeSelection, pickMulti, pickPlain } from "../src/shell/multiSelect";
 import { isSelected, multiStore, NO_MULTI, pickOfTestId, pickSelection, selectedIds, selectedItems, type Mods, type Selected } from "../src/shell/selection";
 
 // `useSyncExternalStore` of the shell hooks has no server snapshot: the string renderer reads the stores once instead
@@ -105,15 +105,24 @@ function fakeApp(): { app: App; calls: string[] } {
   const app = {
     ...real,
     registry: {
-      ...real.registry,
+      get: (id: string) => real.registry.get(id),
+      bind: (id: string, run: never, un?: never) => real.registry.bind(id, run, un),
       execute: async (id: string, args: Record<string, unknown> = {}) => {
         calls.push(`${id} ${JSON.stringify(args)}`);
+        if (id.startsWith("tree.")) {
+          try {
+            return { ok: true, result: String(await real.registry.get(id)!.run!(args, "user")) };
+          } catch (e) {
+            return { ok: false, result: (e as Error).message };
+          }
+        }
         if (id === "object.select") real.store.set({ selected: { kind: args.kind as Selected["kind"], id: Number(args.id) } });
         if (id === "selection.clear") real.store.set({ selected: null });
         return { ok: true, result: "" };
       },
     },
   } as unknown as App;
+  bindTreeSelection(app);
   return { app, calls };
 }
 
@@ -124,7 +133,7 @@ describe("a click with Ctrl and Shift on the rows (pickMulti, pickPlain)", () =>
     const { app, calls } = fakeApp();
     pickPlain(app, L(2), () => app.store.set({ selected: L(2) }));
     await pickMulti(app, L(4), { ctrl: true, shift: false }, rows);
-    expect(calls).toEqual(['object.select {"kind":"lines","id":4}']);
+    expect(calls).toEqual(['tree.select_toggle {"kind":"lines","id":4}', 'object.select {"kind":"lines","id":4}']);
     const s = app.store.get().selected;
     expect(s).toEqual(L(4)); // the main object: what every reader of a single selection sees
     expect(ids(selectedItems(s))).toEqual([2, 4]);
@@ -149,7 +158,7 @@ describe("a click with Ctrl and Shift on the rows (pickMulti, pickPlain)", () =>
     const { app, calls } = fakeApp();
     pickPlain(app, L(1), () => app.store.set({ selected: L(1) }));
     await pickMulti(app, L(1), { ctrl: true, shift: false }, rows);
-    expect(calls).toEqual(["selection.clear {}"]);
+    expect(calls).toEqual(['tree.select_toggle {"kind":"lines","id":1}', "selection.clear {}"]);
     expect(app.store.get().selected).toBeNull();
 
     pickPlain(app, L(1), () => app.store.set({ selected: L(1) }));
@@ -161,6 +170,7 @@ describe("a click with Ctrl and Shift on the rows (pickMulti, pickPlain)", () =>
 
 describe("the fields the chosen objects share", () => {
   const lookup = (p: Partial<Lookup> = {}): Lookup => ({
+    exists: () => true,
     hidden: [],
     blockShown: () => false,
     layerColor: () => null,
@@ -220,6 +230,40 @@ describe("the fields the chosen objects share", () => {
     const part = await applyAll(async () => ++n < 2, color, "lines", [1, 2, 3], lk, "#1f6bff");
     expect([part.done, part.total]).toEqual([1, 3]);
     expect(part.undo.map((s) => s.args.id)).toEqual([1]); // only what was changed is brought back
+  });
+
+  it("an object that was deleted is not read and not changed; «не найден» does not stop the others", async () => {
+    const [visible] = fieldsOf("lines");
+    const gone = new Set([2]);
+    const lk = lookup({ exists: (_k, id) => !gone.has(id) });
+    // the deleted layer has no value, though «Показан в 3D» is a flag that a missing object would answer too
+    expect(readField(visible, "lines", [1, 2, 3], lk).map((r) => r.id)).toEqual([1, 3]);
+    const sent: number[] = [];
+    const r = await applyAll(async (_c, a) => (sent.push(Number(a.id)), true), visible, "lines", [1, 2, 3], lk, false);
+    expect(sent).toEqual([1, 3]);
+    expect([r.done, r.total, r.skipped]).toEqual([2, 2, 1]);
+    expect(r.undo.map((s) => s.args.id)).toEqual([1, 3]);
+
+    // deleted while the run is going: its step fails, the run goes on with the rest
+    const live = new Set([1, 2, 3]);
+    const during = await applyAll(
+      async (_c, a) => {
+        if (a.id === 2) {
+          live.delete(2);
+          return false;
+        }
+        return true;
+      },
+      visible,
+      "lines",
+      [1, 2, 3],
+      lookup({ exists: (_k, id) => live.has(id) }),
+      false,
+    );
+    expect([during.done, during.total, during.skipped]).toEqual([2, 2, 1]);
+    // a real failure of an object that is still there stops the run
+    const stop = await applyAll(async (_c, a) => a.id !== 2, visible, "lines", [1, 2, 3], lookup(), false);
+    expect([stop.done, stop.total]).toEqual([1, 3]);
   });
 
   it("the opacity is a number from 0,05 to 1 with a comma or a point", () => {

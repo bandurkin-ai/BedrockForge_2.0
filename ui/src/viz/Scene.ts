@@ -345,6 +345,8 @@ export class Scene extends HoleScene {
   /** A tool of the string editor gets the pointer first; null — the scene alone, as before. */
   setTool(tool: ToolHandler | null): void {
     this.tools.install(tool);
+    // no tool of the editor: the pointer is held only while a section line is really being drawn
+    if (!tool) this.tools.suspend(this.sec.drawing.stage !== "off");
     this.input.setTool(this.tools);
     this.renderer.canvas.style.cursor = tool || this.sec.drawing.stage !== "off" ? "crosshair" : "";
   }

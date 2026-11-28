@@ -8,7 +8,7 @@ export interface CoreInfo {
 
 /** The kinds of files of the open dialog (`pickFiles`). */
 export type PickKind = "tables" | "prj" | "objects" | "lines" | "rasters" | "wireframes" | "trenches" | "program" | "las" | "xyz" | "omf" | "blocks" | "variogram";
-export type SaveKind ="dat" | "csv" | "xlsx" | "str" | "dxf" | "las" | "jpg" | "png" | "tif" | "bmp" | "tridb" | "dwg" | "obj" | "stl" | "dtm" | "omf" | "parquet" | "any";
+export type SaveKind = "dat" | "csv" | "xlsx" | "str" | "dxf" | "las" | "jpg" | "png" | "tif" | "bmp" | "tridb" | "dwg" | "obj" | "stl" | "dtm" | "omf" | "parquet" | "any";
 
 /** Assistant «Claude» (ADR 0029): the key is encrypted by the main process (safeStorage), never by the window. */
 export interface ClaudeSealResult {

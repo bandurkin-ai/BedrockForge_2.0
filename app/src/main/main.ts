@@ -407,8 +407,12 @@ function registerIpc(): void {
   });
   ipcMain.handle("bf:pick-open", async (e) => {
     if (!mainWin || !fromMain(e.sender)) return null;
-    const r = await dialog.showOpenDialog(mainWin, { properties: ["openFile"], filters: bfggis });
-    return r.canceled || !r.filePaths.length ? null : r.filePaths[0];
+    // the next open opens in the folder of the last opened file (Э27, 27.5), like the save dialog
+    const folder = lastFolders.get("open");
+    const r = await dialog.showOpenDialog(mainWin, { properties: ["openFile"], filters: bfggis, ...(folder ? { defaultPath: folder } : {}) });
+    if (r.canceled || !r.filePaths.length) return null;
+    lastFolders.rememberFile("open", r.filePaths[0]);
+    return r.filePaths[0];
   });
   // Table files of the import wizards (ТЗ 7.7) and .prj of a coordinate system: several files at once.
   const lineFiles = ["str", "pit", "dxf", "shp", "dbf", "shx", "prj", "cpg", "mif", "mid", "xyz"];

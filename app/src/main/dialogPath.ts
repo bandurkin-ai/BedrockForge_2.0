@@ -16,12 +16,22 @@ const fsIsDir: IsDir = (p) => {
   }
 };
 
-/** `defaultPath` of a dialog: an absolute path of an existing folder with no control characters; otherwise `undefined`
- * (the dialog opens where the system chooses — no error, nothing to tell the user). */
-export function safeDefaultPath(raw: unknown, isDir: IsDir = fsIsDir): string | undefined {
+/**
+ * A path with a drive letter (Windows) or a root slash (POSIX) and nothing else: a network path (`\\host\share`, `//host`)
+ * or a device path (`\\?\`, `\\.\`) is not one — `fs.statSync` on it would reach out to the network or open a device.
+ */
+export function isLocalAbsolute(raw: string, platform: NodeJS.Platform = process.platform): boolean {
+  if (platform === "win32") return /^[A-Za-z]:[\\/]/.test(raw);
+  return raw.startsWith("/") && !raw.startsWith("//");
+}
+
+/** `defaultPath` of a dialog: an absolute local path of an existing folder with no control characters; otherwise
+ * `undefined` (the dialog opens where the system chooses — no error, nothing to tell the user). The shape of the path is
+ * checked before the disk is touched. */
+export function safeDefaultPath(raw: unknown, isDir: IsDir = fsIsDir, platform: NodeJS.Platform = process.platform): string | undefined {
   if (typeof raw !== "string" || !raw || raw.length > DIALOG_PATH_MAX) return undefined;
   if (/[\u0000-\u001f\u007f]/.test(raw)) return undefined;
-  if (!path.isAbsolute(raw)) return undefined;
+  if (!isLocalAbsolute(raw, platform)) return undefined;
   return isDir(raw) ? raw : undefined;
 }
 

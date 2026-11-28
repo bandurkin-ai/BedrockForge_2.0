@@ -23,6 +23,21 @@ describe("defaultPath of a dialog (Э27, 27.5)", () => {
     expect(safeDefaultPath(dir + "\nx")).toBeUndefined();
     expect(safeDefaultPath("/" + "a".repeat(1100))).toBeUndefined();
   });
+  it("a network path or a device is dropped before the disk is touched (Windows and POSIX)", () => {
+    let touched = 0;
+    const isDir = () => (touched++, true);
+    for (const raw of ["\\\\server\\share", "//server/share", "\\\\?\\C:\\x", "\\\\.\\PhysicalDrive0", "//?/C:/x", "\\x", "C:", "C:x", "relative\\dir"]) {
+      expect(safeDefaultPath(raw, isDir, "win32"), raw).toBeUndefined();
+    }
+    expect(safeDefaultPath("//server/share", isDir, "linux")).toBeUndefined();
+    expect(safeDefaultPath("\\\\server\\share", isDir, "linux")).toBeUndefined();
+    expect(touched).toBe(0);
+    expect(safeDefaultPath("C:\\Data\\Проект", isDir, "win32")).toBe("C:\\Data\\Проект");
+    expect(safeDefaultPath("d:/data", isDir, "win32")).toBe("d:/data");
+    expect(safeDefaultPath("/home/u", isDir, "linux")).toBe("/home/u");
+    expect(touched).toBe(3);
+    expect(safeDefaultPath("/home/u", isDir, "win32")).toBeUndefined(); // a root slash is not a path of Windows here
+  });
   it("the check of the folder can be replaced", () => {
     expect(safeDefaultPath("/x/y", () => true)).toBe("/x/y");
     expect(safeDefaultPath("/x/y", () => false)).toBeUndefined();

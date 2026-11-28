@@ -5,7 +5,7 @@
 import type { App } from "../../shell/app";
 import { refusal } from "../../shell/objectRun";
 import { KIND_TITLES, type ObjectKind } from "../../shell/selection";
-import { blockById } from "../blocks/state";
+import { blockById, blocksStore } from "../blocks/state";
 import { modelById } from "../implicit/state";
 import { lineLayers, sceneObjects } from "../scene/objects";
 import { wireframeById, type WireframeInfo } from "./state";
@@ -18,6 +18,16 @@ export function objectName(kind: ObjectKind, id: number): string | null {
   if (kind === "blocks") return blockById(id)?.name ?? null;
   if (kind === "implicit") return modelById(id)?.name ?? null;
   return null;
+}
+
+/**
+ * Whether the object is still in the lists of the project. A kind without a list here (implicit models,
+ * reports, scenarios have their own) and a list that is not read yet say nothing against the object.
+ */
+export function itemExists(kind: ObjectKind, id: number): boolean {
+  if (kind === "blocks") return !blocksStore.get().loaded || blockById(id) !== undefined;
+  if (kind === "implicit" || kind === "resource_report" || kind === "pit_scenario") return true;
+  return !sceneObjects.get().loaded || objectName(kind, id) !== null;
 }
 
 /** «слой линий», «растр», «каркас» — or «ЦТМ» (feminine: «переименована», «удалена»). */

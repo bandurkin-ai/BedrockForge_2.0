@@ -1,11 +1,13 @@
 /** Quick choice of a colour (Э27, 27.6, Д-43 А4): ten standard colours, the five colours of the user chosen last (the
  * same for all windows, newest first, without repeats), the palette drawn from them. */
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ColorPalette } from "../src/shell/ColorPalette";
 import {
-  colorTitle, normalizeHex, normalizeRecent, pushRecent, recentColors, rememberColor, resetRecentColors, standardOf, STANDARD_COLORS, subscribeRecent,
+  BRAND, colorTitle, normalizeHex, normalizeRecent, pushRecent, recentColors, rememberColor, resetRecentColors, standardOf, STANDARD_COLORS, subscribeRecent,
 } from "../src/shell/quickColors";
 
 beforeEach(() => resetRecentColors());
@@ -21,6 +23,17 @@ describe("the standard colours", () => {
     expect(hex("blue")).toBe("#1F6BFF"); // Cobalt
     expect(hex("gray")).toBe("#8A99A8"); // Slate
     expect(hex("black")).toBe("#1B222B"); // Anthracite
+  });
+
+  it("the brand colours are not copied by hand: they are the ones of the brand book and of the tokens of the interface", () => {
+    const book = readFileSync(resolve(__dirname, "../../docs/brand/README.md"), "utf-8");
+    const tokens = readFileSync(resolve(__dirname, "../src/styles/tokens.css"), "utf-8").toLowerCase();
+    const inBook = (name: string) => new RegExp(`\\|\\s*${name}\\s*\\|\\s*\`(#[0-9A-Fa-f]{6})\``).exec(book)?.[1];
+    expect(BRAND.copper).toBe(inBook("Copper Orange"));
+    expect(BRAND.cobalt).toBe(inBook("Cobalt"));
+    expect(BRAND.slate).toBe(inBook("Slate"));
+    expect(BRAND.anthracite).toBe(inBook("Anthracite"));
+    for (const hex of Object.values(BRAND)) expect(tokens, hex).toContain(hex.toLowerCase());
   });
 
   it("the hint of a swatch carries the name and the code", () => {
