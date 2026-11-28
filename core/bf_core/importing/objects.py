@@ -445,7 +445,9 @@ def import_objects(ctx: JobContext) -> dict[str, Any]:
             del read  # keep the memory for the next file
         if not done:
             first = failed[0]
-            raise JobError(first["code"], f"«{first['file']}»: {first['message']}", first["hint"])
+            # every refused file with its `diag`/`choices` stays in the error: the window of the job offers the choice
+            message = f"«{first['file']}»: {first['message']}"
+            raise JobError(first["code"], message, first["hint"], extra={"failed": failed})
 
         # The source files — the last step before the final transaction (ТЗ 6.7); still cancellable.
         total = sum(_size(item.path) for item in done) or 1

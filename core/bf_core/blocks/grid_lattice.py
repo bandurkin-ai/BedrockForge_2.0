@@ -28,7 +28,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 import numpy as np
-from numba import njit
 
 __all__ = [
     "FLOOR",
@@ -60,49 +59,6 @@ _SCALE = 1.0 / UNIT
 # --- the table of (low edge, size) pairs -----------------------------------------------------------------------
 
 
-@njit(cache=True)
-def _put(ka, kb, cnt, mask, a, b, w, used, limit):  # type: ignore[no-untyped-def]
-    """One pair into the open-addressing table: (full?, used). A pair of the table is counted `w` times more."""
-    h = (np.uint64(a) * np.uint64(11400714819323198485)) ^ (np.uint64(b) * np.uint64(14029467366897019727))
-    h ^= h >> np.uint64(31)
-    slot = h & mask
-    while True:
-        c = cnt[slot]
-        if c == 0:
-            if used >= limit:
-                return True, used
-            ka[slot] = a
-            kb[slot] = b
-            cnt[slot] = w
-            return False, used + 1
-        if ka[slot] == a and kb[slot] == b:
-            cnt[slot] = c + w
-            return False, used
-        slot = (slot + np.uint64(1)) & mask
-
-
-@njit(cache=True)
-def _add_edges(ka, kb, cnt, mask, lo, size, start, used, limit, scale):  # type: ignore[no-untyped-def]
-    n = lo.shape[0]
-    i = start
-    while i < n:
-        full, used = _put(ka, kb, cnt, mask, np.int64(np.rint(lo[i] * scale)), np.int64(np.rint(size[i] * scale)),
-                          np.int64(1), used, limit)  # fmt: skip
-        if full:
-            return i, used
-        i += 1
-    return n, used
-
-
-@njit(cache=True)
-def _add_keys(ka, kb, cnt, mask, a, b, w, used, limit):  # type: ignore[no-untyped-def]
-    for i in range(a.shape[0]):
-        full, used = _put(ka, kb, cnt, mask, a[i], b[i], w[i], used, limit)
-        if full:
-            return False, used
-    return True, used
-
-
 class PairSet:
     """The distinct (low edge, size) pairs of one axis and how many blocks have each (units of 1e-9 m). The table
     grows by doubling up to `max_pairs` pairs; past that `overflow` is set and nothing more is added."""
@@ -128,7 +84,9 @@ class PairSet:
         at = n > 0
         a, b, w = ka[at], kb[at], n[at]
         self._new(min(self._cap * 2, 1 << 22))
-        _add_keys(self._ka, self._kb, self._n, self._mask, a, b, w, 0, self._limit())
+        from . import grid_lattice_kernels as glk  # numba is loaded on first use, not with the import chain
+
+        glk._add_keys(self._ka, self._kb, self._n, self._mask, a, b, w, 0, self._limit())
         return True
 
     def _limit(self) -> int:
@@ -138,10 +96,12 @@ class PairSet:
         """A chunk: the low edges and the sizes of its blocks along the axis (float64, same length)."""
         if self.overflow or not len(lo):
             return
+        from . import grid_lattice_kernels as glk  # numba is loaded on first use, not with the import chain
+
         lo, size = np.ascontiguousarray(lo, dtype=np.float64), np.ascontiguousarray(size, dtype=np.float64)
         at = 0
         while at < len(lo):
-            at, self.used = _add_edges(self._ka, self._kb, self._n, self._mask, lo, size, at, self.used,
+            at, self.used = glk._add_edges(self._ka, self._kb, self._n, self._mask, lo, size, at, self.used,
                                        self._limit(), _SCALE)  # fmt: skip
             if at < len(lo) and not self._grow():
                 self.overflow = True

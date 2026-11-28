@@ -22,10 +22,12 @@ class JobError(Exception):
     """A user-facing failure: {code, message, hint} in Russian; `retry=False` — another attempt will not help."""
 
     def __init__(self, code: str, message: str, hint: str = "", retry: bool = False,
-                 events: list[list[Any]] | None = None) -> None:  # fmt: skip
+                 events: list[list[Any]] | None = None, extra: dict[str, Any] | None = None) -> None:  # fmt: skip
         super().__init__(message)
         self.code, self.message, self.hint, self.retry = code, message, hint, retry
         self.events = events  # [[event, data], …] of what was done before the failure: the scheduler publishes them
+        # More keys of the stored error the user's window reads (e.g. `failed` of an import with `choices`, Э27 27.12)
+        self.extra = extra or {}
 
 
 class JobContext:
