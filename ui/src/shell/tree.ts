@@ -97,13 +97,28 @@ export type TreeAction =
   | { kind: "expand"; index: number }
   | { kind: "collapse"; index: number }
   | { kind: "select"; index: number }
-  | { kind: "check"; index: number };
+  | { kind: "check"; index: number }
+  /** Shift+↑/↓: move to the row and take the range from the anchor to it (`tree.select_range`) */
+  | { kind: "extend"; index: number }
+  /** Ctrl+Space: add the row to the chosen objects or take it away (`tree.select_toggle`) */
+  | { kind: "toggle"; index: number };
+
+export interface KeyMods {
+  ctrl?: boolean;
+  shift?: boolean;
+}
 
 /** What a key does on row `i`: ↑/↓ move, → expands or enters, ← collapses or goes to the parent,
- * Enter selects, Space switches the check box, Home/End — the first and the last row. */
-export function treeKey(key: string, rows: readonly KeyRow[], i: number): TreeAction | null {
+ * Enter selects, Space switches the check box, Home/End — the first and the last row; Shift+↑/↓ extend the chosen
+ * range and Ctrl+Space adds the row to the chosen objects or takes it away (Д-44 А5). */
+export function treeKey(key: string, rows: readonly KeyRow[], i: number, mods: KeyMods = {}): TreeAction | null {
   const row = rows[i];
   if (!row) return null;
+  if (mods.shift && !mods.ctrl && (key === "ArrowDown" || key === "ArrowUp")) {
+    const index = key === "ArrowDown" ? i + 1 : i - 1;
+    return index >= 0 && index < rows.length ? { kind: "extend", index } : null;
+  }
+  if (mods.ctrl && key === " ") return { kind: "toggle", index: i };
   switch (key) {
     case "ArrowDown":
       return i + 1 < rows.length ? { kind: "focus", index: i + 1 } : null;

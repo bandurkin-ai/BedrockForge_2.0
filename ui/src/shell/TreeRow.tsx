@@ -126,13 +126,21 @@ export function onTreeKeyDown(e: KeyboardEvent<HTMLElement>): void {
     level: Number(r.getAttribute("aria-level") ?? 1),
     expanded: r.dataset.expanded === undefined ? undefined : r.dataset.expanded === "true",
   }));
-  const action = treeKey(e.key, keyRows, i);
+  const action = treeKey(e.key, keyRows, i, { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey });
   if (!action) return;
   e.preventDefault();
   const row = rows[action.index];
   if (action.kind === "focus") row.focus();
   else if (action.kind === "expand" || action.kind === "collapse") row.querySelector<HTMLElement>("[data-tree-toggle]")?.click();
   else if (action.kind === "select") row.querySelector<HTMLElement>("[data-tree-name]")?.click();
+  else if (action.kind === "extend" || action.kind === "toggle") {
+    // the same path as a click with the key held: `pickMulti` → `tree.select_range` / `tree.select_toggle`;
+    // a row that is not an object of the project (no `pick`) only takes the focus
+    row.focus();
+    if (!row.hasAttribute(PICK_KIND)) return;
+    const mods = action.kind === "extend" ? { shiftKey: true } : { ctrlKey: true };
+    row.querySelector<HTMLElement>("[data-tree-name]")?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ...mods }));
+  }
   else row.querySelector<HTMLElement>("[data-tree-check]")?.click();
 }
 

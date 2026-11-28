@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { styleIn } from "../modules/blocks/display";
 import { sceneObjects, lineLayers } from "../modules/scene/objects";
 import { viewStore } from "../modules/scene/bind";
+import { itemExists } from "../modules/wireframes/named";
 import { useApp } from "./AppContext";
 import { applyAll, commonKind, commonValue, fieldsOf, kindCount, parseOpacity, readField, type FieldValue, type Lookup, type MultiField, type Step } from "./multiProps";
 import { NO_COLOR, normalizeColor } from "./props";
@@ -82,6 +83,7 @@ export function MultiProps({ items }: { items: readonly Selected[] }) {
   const lookup = useMemo<Lookup>(() => {
     const layers = new Map(lineLayers(objects).map((l) => [l.id, l]));
     return {
+      exists: itemExists,
       hidden,
       blockShown: (id) => styleIn(view, id).visible,
       layerColor: (id) => layers.get(id)?.color,
@@ -110,7 +112,7 @@ export function MultiProps({ items }: { items: readonly Selected[] }) {
     setUndo(null);
     const r = await applyAll(run, f, kind, ids, lookup, value);
     setBusy(false);
-    if (r.done > 0) setUndo({ text: `«${f.label}»: изменено ${kindCount(kind, r.done)}${r.done < r.total ? ` из ${r.total}` : ""}`, steps: r.undo });
+    if (r.done > 0) setUndo({ text: `«${f.label}»: изменено ${kindCount(kind, r.done)}${r.done < r.total ? ` из ${r.total}` : ""}${r.skipped ? `; пропущено удалённых: ${r.skipped}` : ""}`, steps: r.undo });
     return r.done === r.total;
   };
 

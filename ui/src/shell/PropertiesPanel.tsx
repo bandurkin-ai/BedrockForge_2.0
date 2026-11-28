@@ -4,15 +4,18 @@
  * settings at the top, Д-07), a block model. The card of the selected hole stays below it; without an object it is alone.
  */
 import { BlockProps } from "../modules/blocks/BlockProps";
+import { blocksStore } from "../modules/blocks/state";
 import { ImplicitProps } from "../modules/implicit/ImplicitProps";
 import { LayerProps } from "../modules/lines/LayerProps";
 import { LineageProps } from "../modules/lineage/LineageProps";
 import { ScenarioProps } from "../modules/pit/ScenarioProps";
 import { nodeOfSelected } from "../modules/lineage/state";
+import { sceneObjects } from "../modules/scene/objects";
 import { RasterProps } from "../modules/rasters/RasterProps";
 import { ReportProps } from "../modules/resources/ReportProps";
 import { HoleCard } from "../modules/tables/HoleCard";
 import { tablesStore } from "../modules/tables/state";
+import { itemExists } from "../modules/wireframes/named";
 import { WireframeProps } from "../modules/wireframes/WireframeProps";
 import { useApp } from "./AppContext";
 import { MultiProps } from "./MultiProps";
@@ -25,9 +28,12 @@ export function PropertiesPanel() {
   const selected = useStore(app.store, (s) => s.selected);
   const multi = useStore(multiStore, (m) => m);
   const hole = useStore(tablesStore, (s) => s.hole !== null);
+  useStore(sceneObjects, (o) => o); // the lists of the project: the deleted objects drop out of the set
+  useStore(blocksStore, (b) => b.list);
   if (!selected) return <HoleCard />;
   // several objects chosen in the tree (Ctrl/Shift, Д-44 А5): the fields they share, or the plaque of mixed kinds
-  const items = selectedItems(selected, multi);
+  // an object that was deleted stays in the set until the tree is redrawn: it is not shown and not changed
+  const items = selectedItems(selected, multi).filter((x) => itemExists(x.kind, x.id));
   if (items.length > 1) return <MultiProps key={items.map(itemKey).join(",")} items={items} />;
   const key = `${selected.kind}:${selected.id}`; // a new object starts with clean fields
   const node = nodeOfSelected(selected); // the origin and the dependents of a computed object (Д-35, ADR 0025)

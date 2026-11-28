@@ -14,7 +14,7 @@ import { addPoint, DRAW_OFF, startDraw } from "../../viz/section/draw";
 import { collarsXY, defaultSection, DEFAULT_WINDOW, lineThroughHole, nextProfile, type SectionLine } from "../../viz/section/math";
 import { projectStore } from "../projects/state";
 import { updateView, viewStore } from "../scene/bind";
-import { currentScene, requireScene } from "../scene/sceneHost";
+import { currentScene, onScene, requireScene } from "../scene/sceneHost";
 import { patchFields } from "../scene/viewSync";
 import { tablesStore } from "../tables/state";
 import { bindSeries } from "./seriesBind";
@@ -100,8 +100,14 @@ export function bindSection(app: App): void {
     if (app.store.get().hasSection !== has) app.store.set({ hasSection: has });
   };
   viewStore.subscribe(sync);
+  // the project is closed: the line being drawn is called off in the scene too — its pointer hold (`ToolChain.held`)
+  // would stay and the editor of lines would get nothing
   projectStore.subscribe(() => {
-    if (!projectStore.get().current && sectionStore.get().draw.stage !== "off") sectionStore.set({ draw: DRAW_OFF });
+    if (!projectStore.get().current && !cancelSectionDraw()) currentScene()?.setDrawing(DRAW_OFF);
+  });
+  // a new scene (the window is remade, the context is restored) starts with the state of the drawing, not with its own
+  onScene((scene) => {
+    if (scene && sectionStore.get().draw.stage !== "off") scene.setDrawing(sectionStore.get().draw);
   });
 
   r.bind(

@@ -67,6 +67,16 @@ _LEAD = b"\xef\xbb\xbf \t\r\n\x00"
 # `N VARIABLES` at the start of a Standard header: any letter case, LF or CRLF, blanks before the line end.
 _STANDARD_RE = re.compile(rb"[ \t]*(\d+)[ \t]*VARIABLES[ \t]*\r?\n", re.IGNORECASE)
 _VARIABLES_RE = re.compile(rb"VARIABLES[ \t]*\r?\n", re.IGNORECASE)
+_EXACT_VARIABLES_RE = re.compile(re.escape(VARIABLES_TAG))
+
+
+def _find_variables(data: bytes) -> re.Match[bytes] | None:
+    """The `VARIABLES` line of an extended header, after the first page. The exact tag Micromine writes
+    (`VARIABLES\\r\\n`, upper case) comes first: the XML before it may be longer than a page and may hold the word
+    «variables» in a title or a description. Only a file without it is looked at again, tolerantly."""
+    return _EXACT_VARIABLES_RE.search(data, PAGE) or _VARIABLES_RE.search(data, PAGE)
+
+
 # The first line of an extended file; Micromine versions differ in the words and the case.
 _MAGIC_RE = re.compile(rb"THIS IS MICROMINE[A-Z ]*DATA FILE", re.IGNORECASE)
 # A field line is `NAME(10 bytes)` + `TYPE` + `WIDTH` + `DECIMALS`: the width follows the type directly
@@ -221,7 +231,7 @@ def parse_header(data: bytes, encoding: str | None = None, complete: bool = True
         if not data.startswith(MAGIC_LINE) and len(data) >= len(MAGIC_LINE):
             odd = data[len(MAGIC) : len(MAGIC_LINE)].hex(" ")
             warnings.append(f"Неизвестный вариант заголовка Micromine (байты {odd}): файл прочитан как расширенный DAT")
-        tag = _VARIABLES_RE.search(data, PAGE)
+        tag = _find_variables(data)
         if tag is None:
             if not complete:
                 raise _NeedMore

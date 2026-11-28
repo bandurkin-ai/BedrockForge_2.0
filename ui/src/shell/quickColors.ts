@@ -13,8 +13,9 @@ export interface StandardColor {
   hex: string;
 }
 
-/** Brand palette (docs/brand/README.md). */
-const BRAND = { copper: "#F46A1A", cobalt: "#1F6BFF", slate: "#8A99A8", anthracite: "#1B222B" } as const;
+/** Brand palette (docs/brand/README.md; the dark theme of `styles/tokens.css`). CSS cannot be imported as values:
+ * `ui/test/quickColors.test.ts` reads the table of the brand book and the tokens and holds these four to them. */
+export const BRAND = { copper: "#F46A1A", cobalt: "#1F6BFF", slate: "#8A99A8", anthracite: "#1B222B" } as const;
 
 export const STANDARD_COLORS: readonly StandardColor[] = [
   { id: "red", name: "Красный", hex: "#D32F2F" },

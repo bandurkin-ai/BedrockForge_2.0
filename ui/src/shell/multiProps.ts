@@ -65,6 +65,8 @@ export const fieldsOf = (kind: ObjectKind): MultiField[] => FIELDS.filter((f) =>
 
 /** What the panel reads the current values from: `undefined` — the object is not in the lists (it is gone). */
 export interface Lookup {
+  /** the object is in the lists of the project: a deleted one stays in the set of the chosen until the tree is redrawn */
+  exists: (kind: ObjectKind, id: number) => boolean;
   hidden: readonly string[];
   blockShown: (id: number) => boolean;
   layerColor: (id: number) => string | null | undefined;
@@ -76,6 +78,7 @@ const HIDDEN_KEY: Partial<Record<ObjectKind, string>> = { lines: "ln", raster: "
 
 /** The value of a field of one object. */
 export function fieldValue(f: MultiField, kind: ObjectKind, id: number, lk: Lookup): FieldValue | undefined {
+  if (!lk.exists(kind, id)) return undefined;
   if (f.key === "visible") return kind === "blocks" ? lk.blockShown(id) : !lk.hidden.includes(`${HIDDEN_KEY[kind]}:${id}`);
   if (f.key === "color") return kind === "lines" ? lk.layerColor(id) : lk.wireframeColor(id);
   return lk.rasterOpacity(id);
@@ -115,17 +118,30 @@ export function revertPlan(f: MultiField, kind: ObjectKind, before: readonly { i
 
 export type RunStep = (command: string, args: Record<string, unknown>) => Promise<boolean>;
 
-/** Sets `value` on every chosen object one after another and stops at the first failure; `undo` brings the
- * objects that were changed back — the one step of «Отменить» of the whole change. */
-export async function applyAll(run: RunStep, f: MultiField, kind: ObjectKind, ids: readonly number[], lk: Lookup, value: FieldValue): Promise<{ done: number; total: number; undo: Step[] }> {
+/** Sets `value` on every chosen object one after another. An object that is gone (before or during the run) is
+ * skipped — «объект не найден» does not stop the others; any other failure stops the run. `undo` brings the objects
+ * that were changed back — the one step of «Отменить» of the whole change. */
+export async function applyAll(run: RunStep, f: MultiField, kind: ObjectKind, ids: readonly number[], lk: Lookup, value: FieldValue): Promise<{ done: number; total: number; skipped: number; undo: Step[] }> {
   const before = readField(f, kind, ids, lk);
-  const plan = applyPlan(f, kind, before.map((b) => b.id), value);
-  let done = 0;
-  for (const step of plan) {
-    if (!(await run(step.command, step.args))) break;
-    done++;
+  const changed: { id: number; value: FieldValue }[] = [];
+  let gone = 0;
+  for (const b of before) {
+    if (!lk.exists(kind, b.id)) {
+      gone++;
+      continue;
+    }
+    let ok = true;
+    for (const step of f.steps(kind, b.id, value)) {
+      if (!(await run(step.command, step.args))) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) changed.push(b);
+    else if (lk.exists(kind, b.id)) break; // a real failure: stop, the rest stays as it was
+    else gone++; // deleted while the run was going
   }
-  return { done, total: plan.length, undo: revertPlan(f, kind, before.slice(0, done)) };
+  return { done: changed.length, total: before.length - gone, skipped: ids.length - before.length + gone, undo: revertPlan(f, kind, changed) };
 }
 
 /** The text of a number field → the opacity, or the reason it is not one («0,5», «0.5»). */
