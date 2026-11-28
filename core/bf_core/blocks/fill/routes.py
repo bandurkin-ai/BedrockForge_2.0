@@ -61,6 +61,14 @@ def _model(conn: sa.Connection, model_id: int) -> Any:
     return row
 
 
+def _no_list(row: Any, what: str) -> None:
+    """422 `block_list_unsupported` for a list of blocks (ADR 0030): the filling and the coding need the parents."""
+    if bmeta.layout_of(bmeta.upgrade(row.meta)) == "list":
+        from bf_core.blocks.model import list_unsupported
+
+        raise list_unsupported(row.name, what)
+
+
 def _submit(s: Scheduler, kind: str, params: dict[str, Any], title: str) -> dict[str, Any]:
     from bf_core.jobs.registry import KINDS
 
@@ -84,6 +92,7 @@ def fill(svc: Svc, s: Sched, body: Payload) -> dict[str, Any]:
     project = svc.require_current(writable=True)
     with dialect.read_tx(project.engine) as conn:
         row = _model(conn, spec.source_id)
+        _no_list(row, "Заполнение каркасами")
         info = prototype_info(row.meta)
         if info is None:
             raise commit.not_prototype()
@@ -102,6 +111,7 @@ def code(svc: Svc, s: Sched, bm_id: int, body: Payload) -> dict[str, Any]:
     project = svc.require_current(writable=True)
     with dialect.read_tx(project.engine) as conn:
         row = _model(conn, bm_id)
+        _no_list(row, "Кодирование каркасами")
         if int(row.version) != spec.expected_version:
             raise version_conflict(int(row.version))
         meta = bmeta.upgrade(row.meta)

@@ -64,6 +64,8 @@ export interface BlockModelInfo {
   grid: BlockGrid;
   /** occupied cells (rows of the file of cells) */
   cells: number;
+  /** `list` — a list of blocks (ADR 0030): no grid of parents; absent — a grid */
+  layout?: "grid" | "list";
   fields: BlockField[];
   source: BlockSource | null;
   warnings: string[];

@@ -19,6 +19,7 @@ from __future__ import annotations
 import threading
 from collections import OrderedDict
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -82,6 +83,14 @@ class ListRows(Rows):
 # --- the faces ---------------------------------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class ListView(View):
+    """`lod.View` with the extent of the boxes the faces belong to (the answer takes its `origin` from it: no pass over
+    millions of faces); None — the extent of the faces (the coarse shell)."""
+
+    extent: tuple[np.ndarray, np.ndarray] | None = None
+
+
 def hidden(c: np.ndarray, d: np.ndarray) -> np.ndarray:
     """uint8 [n]: the bits (2·axis + side) of the faces a neighbour shares, for the blocks (centres `c`, sizes `d`)."""
     n = len(c)
@@ -90,12 +99,7 @@ def hidden(c: np.ndarray, d: np.ndarray) -> np.ndarray:
         return hide
     hl, hh = np.empty(3 * n, dtype=np.int64), np.empty(3 * n, dtype=np.int64)
     lk.face_hashes(c, d, hl, hh)
-    order = np.argsort(hl, kind="stable")
-    ls = hl[order]
-    pos = np.searchsorted(ls, hh)
-    pos[pos >= len(ls)] = 0
-    hit = ls[pos] == hh
-    lk.hide_faces(c, d, np.flatnonzero(hit).astype(np.int64), order[pos[hit]].astype(np.int64), hide)
+    lk.hide_faces(c, d, hl, hh, hide)
     return hide
 
 
@@ -108,7 +112,7 @@ def _sorted(fc: np.ndarray, fh: np.ndarray, fa: np.ndarray, fk: np.ndarray, fp: 
         span = float(q.max() - q.min())
         if span < float(1 << 40):
             key = (fa.astype(np.int64) << 40) | (q - q.min()).astype(np.int64)
-            pos = np.argsort(key, kind="stable")
+            pos = np.argsort(key)  # the order inside a plane does not matter
         else:
             pos = np.lexsort((fp, fa))
         fc, fh, fa, fk, row = fc[pos], fh[pos], fa[pos], fk[pos], row[pos]
@@ -155,7 +159,8 @@ def view(grid: GridV2, idx: np.ndarray, lc: np.ndarray, ld: np.ndarray, passed: 
     starts = np.empty(len(sel) + 1, dtype=np.int64)
     raw = int(lk.face_starts(hide, starts))
     if raw <= limit:
-        return View(faces(c, d, k, hide, starts), raw, raw, 0, False, limit)
+        box = (np.min(c - d / 2, axis=0), np.max(c + d / 2, axis=0)) if len(c) else None
+        return ListView(faces(c, d, k, hide, starts), raw, raw, 0, False, limit, box)
     vol = (d[:, 0] * d[:, 1]) * d[:, 2]
     ii = np.ascontiguousarray(idx[sel])
     vv = None if values is None else np.asarray(values, dtype=np.float64)[sel]

@@ -34,7 +34,6 @@ import numpy as np
 from bf_core.api.errors import ApiError
 
 from . import geometry as geo
-from . import list_kernels as lk
 from . import schema as bs
 from .checks import ERROR, INFO, WARNING, CheckReport, _Field, empty_mask, ru_num
 from .fields_store import GroupSink
@@ -46,6 +45,14 @@ if TYPE_CHECKING:
     from bf_core.storage.blobs import BlobStore
 
     from .model import Chunk
+
+
+def _kernels() -> Any:
+    """The numba kernels, imported when a list is imported or checked (a module that only reads boxes has no numba)."""
+    from . import list_kernels
+
+    return list_kernels
+
 
 MAX_PAIRS = 4096  # overlapping pairs kept for the examples
 METHOD = "boxes"
@@ -175,7 +182,7 @@ def cells_of(grid: GridV2, lc: np.ndarray) -> np.ndarray:
     origin = np.zeros(3)
     size = np.asarray(grid.regular(), dtype=np.float64)
     counts = np.asarray(grid.counts, dtype=np.int64)
-    return lk.cell_index(np.ascontiguousarray(lc, dtype=np.float64), origin, size, counts)  # type: ignore[no-any-return]
+    return _kernels().cell_index(np.ascontiguousarray(lc, dtype=np.float64), origin, size, counts)  # type: ignore[no-any-return]
 
 
 # --- the order, the repeated rows -------------------------------------------------------------------------------------
@@ -197,7 +204,9 @@ def arrange(grid: GridV2, lc: np.ndarray, ld: np.ndarray) -> Arranged:
     (the same centre AND size) left out, the first stays."""
     idx = cells_of(grid, lc)
     order = np.lexsort((lc[:, 0], lc[:, 1], lc[:, 2], idx))
-    dup, first = lk.mark_duplicates(idx[order], np.ascontiguousarray(lc[order]), np.ascontiguousarray(ld[order]))
+    dup, first = _kernels().mark_duplicates(
+        idx[order], np.ascontiguousarray(lc[order]), np.ascontiguousarray(ld[order])
+    )
     examples: list[dict[str, Any]] = []
     if dup.any():
         for at in np.flatnonzero(dup)[:MAX_EXAMPLES]:
@@ -224,17 +233,17 @@ def overlaps(lc: np.ndarray, ld: np.ndarray) -> tuple[np.ndarray, int, np.ndarra
     step = np.maximum(2.0 * np.median(ld, axis=0), extent / MAX_TEST_CELLS)
     step = np.maximum(step, 1e-9)
     while True:  # a giant block entered into the tiny cells would make millions of entries: coarser cells then
-        total = int(lk.count_entries(lo, hi, gmin, step))
+        total = int(_kernels().count_entries(lo, hi, gmin, step))
         if total <= 8 * n + 1024:
             break
         step = step * 2.0
     keys = np.empty(total, dtype=np.int64)
     boxes = np.empty(total, dtype=np.int64)
-    lk.fill_entries(lo, hi, gmin, step, keys, boxes)
+    _kernels().fill_entries(lo, hi, gmin, step, keys, boxes)
     at = np.argsort(keys, kind="stable")
     keys, boxes = keys[at], boxes[at]
     pairs = np.empty((MAX_PAIRS, 2), dtype=np.int64)
-    found, kept = lk.overlap_pairs(lo, hi, gmin, step, keys, boxes, flag, pairs, MAX_PAIRS)
+    found, kept = _kernels().overlap_pairs(lo, hi, gmin, step, keys, boxes, flag, pairs, MAX_PAIRS)
     got = pairs[:kept]
     return flag, int(found), got[np.lexsort((got[:, 1], got[:, 0]))] if kept else got
 
@@ -425,7 +434,7 @@ def check_cells(store: BlobStore, shas: Mapping[str, str] | str, meta: Mapping[s
         chk.feed(d, cols)
     if tick is not None:
         tick(0.9, "Проверка перекрытий")
-    dup, first_of = lk.mark_duplicates(idx, lc, ld)
+    dup, first_of = _kernels().mark_duplicates(idx, lc, ld)
     examples = [{"check": "duplicate", "row": int(r), "p": int(idx[r]), "sub": None, "other_row": int(first_of[r])}
                 for r in np.flatnonzero(dup)[:limit]]  # fmt: skip
     keep = ~dup
@@ -472,3 +481,22 @@ def volumes(grid: GridV2, ch: Chunk, frac: np.ndarray | None = None) -> np.ndarr
         return geo.row_volumes(grid, ch.p, ch.s, ch.w, frac)
     vol = (ch.ld[:, 0] * ch.ld[:, 1]) * ch.ld[:, 2]
     return vol if frac is None else vol * np.asarray(frac, dtype=np.float64).reshape(-1)
+
+
+def warm() -> dict[str, float]:
+    """Compiles (or loads from the cache) the kernels of a list of blocks on a few boxes: the order, the repeats, the
+    overlaps, the shared faces (`blocks/warm.py`, the step `list`)."""
+    import time
+
+    from . import list_shell
+
+    t0 = time.perf_counter()
+    grid = GridV2.of({"corner": [0.0, 0.0, 0.0], "counts": [2, 2, 2], "size": [2.0, 2.0, 2.0], "div": [1, 1, 1]})
+    lc = np.array([[0.5, 0.5, 0.5], [1.5, 0.5, 0.5], [1.5, 0.5, 0.5], [3.0, 3.0, 3.0]])
+    ld = np.array([[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [2.0, 2.0, 2.0]])
+    arr = arrange(grid, lc, ld)
+    overlaps(lc[arr.order], ld[arr.order])
+    ok = np.ones(len(arr.order), dtype=bool)
+    list_shell.view(grid, arr.idx, lc[arr.order], ld[arr.order], ok, limit=1)
+    list_shell.view(grid, arr.idx, lc[arr.order], ld[arr.order], ok, limit=1000)
+    return {"list": time.perf_counter() - t0}

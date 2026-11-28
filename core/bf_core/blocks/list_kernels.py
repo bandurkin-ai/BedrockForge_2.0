@@ -206,19 +206,41 @@ def _same(c, d, r1, r2, a):  # type: ignore[no-untyped-def]
 
 
 @njit(cache=True, nogil=True)
-def hide_faces(c, d, hi_face, lo_face, hide):  # type: ignore[no-untyped-def]
-    """The pairs (a high face, the low face whose key was equal; both are 3·row + axis): when the faces really are one
-    (no collision of the hash), both are hidden — bit 2·axis + 1 and 2·axis of `hide[row]`. Returns the pairs."""
-    n = 0
-    for k in range(hi_face.shape[0]):
-        f1, f2 = hi_face[k], lo_face[k]
+def hide_faces(c, d, hl, hh, hide):  # type: ignore[no-untyped-def]
+    """Matches the high faces `hh[3r + a]` with the low faces `hl[3r + a]` of equal key (a table of the low faces, open
+    addressing); when two faces really are one (no collision of the hash) both are hidden — bit 2·axis + 1 and
+    2·axis of `hide[row]`. Returns the pairs."""
+    n = hl.shape[0]
+    size = 1
+    while size < 2 * n + 2:
+        size <<= 1
+    mask = size - 1
+    keys = np.zeros(size, dtype=np.int64)
+    vals = np.full(size, -1, dtype=np.int64)
+    for f in range(n):  # the first low face of a key keeps the slot
+        k = hl[f]
+        at = (k ^ (k >> 32)) & mask
+        while vals[at] >= 0 and keys[at] != k:
+            at = (at + 1) & mask
+        if vals[at] < 0:
+            keys[at] = k
+            vals[at] = f
+    pairs = 0
+    for f1 in range(n):
+        k = hh[f1]
+        at = (k ^ (k >> 32)) & mask
+        while vals[at] >= 0 and keys[at] != k:
+            at = (at + 1) & mask
+        if vals[at] < 0:
+            continue
+        f2 = vals[at]
         a = f1 % 3
         r1, r2 = f1 // 3, f2 // 3
         if f2 % 3 == a and r1 != r2 and _same(c, d, r1, r2, a):
             hide[r1] |= np.uint8(1 << (2 * a + 1))
             hide[r2] |= np.uint8(1 << (2 * a))
-            n += 1
-    return n
+            pairs += 1
+    return pairs
 
 
 @njit(cache=True, nogil=True)

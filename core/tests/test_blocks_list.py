@@ -591,4 +591,9 @@ def test_the_operations_that_need_the_grid_say_to_regularize(vc) -> None:  # typ
             assert exc.value.code == "block_list_unsupported" and f"«{what}»" in exc.value.message
         with pytest.raises(ApiError) as exc2:  # the statistics read the grid of parents
             bc.model_of(conn, mid)
-    assert exc2.value.code == "block_list_unsupported"
+        from bf_core.blocks.fill import routes as fill_routes
+
+        with pytest.raises(ApiError) as exc3:  # the filling and the coding are refused before the job starts
+            fill_routes._no_list(fill_routes._model(conn, mid), "Кодирование каркасами")  # noqa: SLF001
+    assert exc2.value.code == "block_list_unsupported" and exc3.value.code == "block_list_unsupported"
+    assert "«Кодирование каркасами»" in exc3.value.message

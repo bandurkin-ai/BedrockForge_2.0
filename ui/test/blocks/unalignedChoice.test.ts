@@ -12,11 +12,15 @@ import { UnalignedChoice } from "../../src/modules/blocks/import/UnalignedChoice
 import {
   axisRows,
   blocksWire,
+  check3Text,
   candidateGrid,
   candidateRows,
   draftErrors,
   emptyDraft,
   gridPatch,
+  headline,
+  listText,
+  mismatchText,
   parseTol,
   patchDraft,
   percent,
@@ -53,6 +57,21 @@ const A6: BlocksError = {
   },
   choices: [
     { id: "grid", label: "Задать сетку вручную", grid: { corner: [23436265.92, 5000.5, 100], size: [10, 10, 20], div: [5, 5, 20], tol: 0.05, rotation: 0 }, aligned: 0.62 },
+    { id: "list", label: "Импортировать списком блоков", note: "показ, фильтры, калькулятор, отчёт, экспорт; оценка и карьер — после регуляризации" },
+    { id: "cancel", label: "Не импортировать этот файл" },
+  ],
+};
+
+/** The refusal of a turned model: the core names the rows of the three centres and the distance, offers the same ways out. */
+const TURNED: BlocksError = {
+  code: "rotation_mismatch",
+  message: "Центры блоков (строки 1, 6, 10) не совпадают с вычисленными: расстояние 0.37 м при допуске 1e-6 м.",
+  hint: "Проверьте угол поворота вокруг Z, начало модели и оси, в которых записаны центры (проекта или модели), в мастере импорта.",
+  rows: [0, 5, 9],
+  dist: 0.37,
+  choices: [
+    { id: "grid", label: "Задать сетку вручную", grid: { corner: [100, 200, 50], size: [10, 10, 5], div: [2, 2, 2], tol: 1e-6, rotation: 20 }, aligned: null },
+    { id: "list", label: "Импортировать списком блоков", note: "показ, фильтры, калькулятор, отчёт, экспорт; оценка и карьер — после регуляризации" },
     { id: "cancel", label: "Не импортировать этот файл" },
   ],
 };
@@ -66,7 +85,10 @@ describe("the diagnosis of a refusal in the words of the window", () => {
     expect(un.lead).toContain("По Z 412 различных высот");
     expect(unalignedOf(null)).toBeNull();
     expect(unalignedOf({ ...A6, diag: undefined })).toBeNull();
-    expect(unalignedOf({ ...A6, code: "rotation_mismatch" })).toBeNull();
+    expect(unalignedOf({ ...A6, code: "no_column" })).toBeNull();
+    expect(unalignedOf({ ...TURNED, choices: undefined })).toBeNull(); // a turn with no way out is a plain error
+    expect(un.detailed).toBe(true);
+    expect(un.list?.label).toBe("Импортировать списком блоков");
     expect(unalignedOf({ ...A6, choices: undefined })?.cancel.id).toBe("cancel"); // never without a way out
   });
 
@@ -208,7 +230,7 @@ describe("the panel «Модель не ложится в сетку»", () => {
   });
 
   it("with no grid to offer the button of the grid is off, the way out stays", () => {
-    const bare: BlocksError = { ...A6, choices: [{ id: "grid", label: "Задать сетку вручную", grid: null, aligned: 0 }, A6.choices![1]], diag: { ...A6.diag!, candidates: [] } };
+    const bare: BlocksError = { ...A6, choices: [{ id: "grid", label: "Задать сетку вручную", grid: null, aligned: 0 }, A6.choices![2]], diag: { ...A6.diag!, candidates: [] } };
     const wizard = { setOptions: vi.fn(), remove: vi.fn() };
     const tree = UnalignedChoice({ wizard: wizard as unknown as ObjectsWizard, file, options: {}, un: unalignedOf(bare)! });
     expect(find(tree, "unaligned-grid")!.props.disabled).toBe(true);
@@ -230,5 +252,105 @@ describe("the real answer of the core (the golden of the wizard)", () => {
     expect(un.grid?.grid?.size).toEqual([10, 20, 5]);
     expect(JSON.stringify(err).length).toBeLessThan(16 * 1024);
     expect(axisRows(un.diag)[0].axis).toBe("X");
+  });
+});
+
+describe("«Импортировать списком блоков» (ADR 0030 решение 14; требование А6)", () => {
+  it("the panel offers it between the grid by hand and «Не импортировать»; it sets `blocks.layout` and keeps the answers", () => {
+    const { wizard, tree, markup } = panel({ blocks: patchDraft(emptyDraft(), { columns: { AU: "grade" } }) });
+    const text = markup.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+    expect(text.indexOf("Задать сетку вручную")).toBeLessThan(text.indexOf("Импортировать списком блоков"));
+    expect(text.indexOf("Импортировать списком блоков")).toBeLessThan(text.indexOf("Не импортировать этот файл"));
+    find(tree, "unaligned-list")!.props.onClick!();
+    expect(wizard.setOptions).toHaveBeenCalledTimes(1);
+    const [path, patch] = wizard.setOptions.mock.calls[0] as unknown as [string, { blocks: { layout: string; columns: Record<string, string> } }];
+    expect(path).toBe("/tmp/Геомет.DAT");
+    expect(patch.blocks.layout).toBe("list");
+    expect(patch.blocks.columns).toEqual({ AU: "grade" });
+    expect(wizard.remove).not.toHaveBeenCalled();
+  });
+
+  it("without the choice from the core there is no button (the old core, nothing is invented)", () => {
+    const old: BlocksError = { ...A6, choices: A6.choices!.filter((c) => c.id !== "list") };
+    const wizard = { setOptions: vi.fn(), remove: vi.fn() };
+    const tree = UnalignedChoice({ wizard: wizard as unknown as ObjectsWizard, file, options: {}, un: unalignedOf(old)! });
+    expect(find(tree, "unaligned-list")).toBeNull();
+  });
+
+  it("the body of the answers: `layout: list` goes to the core, the grid fields stay as they were", () => {
+    expect(blocksWire(patchDraft(emptyDraft(), { layout: "list" }), null)).toEqual({ layout: "list" });
+    expect(blocksWire(patchDraft(emptyDraft(), { layout: "grid" }), null)).toEqual({});
+    expect(blocksWire(patchDraft(emptyDraft(), { layout: "list", rotation: "30" }), null)).toEqual({ layout: "list", grid: { rotation: 30 } });
+  });
+
+  it("the summary «Список блоков: N, охват …» and the headline of a list; no check of three centres", () => {
+    const listed = {
+      format: "dat",
+      label: "Micromine DAT",
+      rows: 1012620,
+      rows_exact: true,
+      layout: "list",
+      list: { rows: 1012620, extent: [1000, 2000, 100, 1200.5, 2400, 160], size_min: [2, 2, 0.5], size_max: [10, 10, 10], cells: [20, 40, 6], cell: [10, 10, 10], parents: 4800, whole: true },
+      check3: { ok: true, dist: 0, rows: [0, 1, 2] },
+      parents: 4800,
+      sub: false,
+      error: null,
+    } as unknown as BlocksInfo;
+    const plain = (t: string) => t.replace(/[\u00a0\u202f]/g, " "); // the thousands of ru-RU are a no-break space
+    const text = plain(listText(listed)!);
+    expect(text).toContain("Список блоков: 1 012 620");
+    expect(text).toContain("охват X 1 000…1 200,5, Y 2 000…2 400, Z 100…160 м");
+    expect(text).toContain("размеры блоков от 2 × 2 × 0,5 до 10 × 10 × 10 м");
+    expect(text).toContain("охватывающая сетка 20 × 40 × 6 ячеек по 10 × 10 × 10 м, занято ячеек 4 800");
+    expect(plain(headline(listed))).toBe("Micromine DAT · блоков 1 012 620 · список блоков");
+    expect(check3Text(listed)).toBeNull();
+    expect(listText({ ...listed, layout: "grid" } as BlocksInfo)).toBeNull();
+    expect(listText({ ...listed, list: null } as BlocksInfo)).toBeNull();
+  });
+});
+
+describe("the panel for the refusal of a turned model (`rotation_mismatch` with the choices, no diagnosis)", () => {
+  const un = unalignedOf(TURNED)!;
+
+  it("is read from the choices; there is no table, the cause is the rows and the distance of the error", () => {
+    expect(un.detailed).toBe(false);
+    expect(un.grid?.grid?.rotation).toBe(20);
+    expect(un.list?.id).toBe("list");
+    expect(un.lead).toBe(TURNED.message);
+    expect(mismatchText(TURNED)).toBe("Центры блоков в строках 1, 6, 10 не совпали с вычисленными по сетке. Наибольшее расхождение: 0,37 м.");
+    expect(mismatchText({ ...TURNED, rows: [], dist: undefined })).toBe("");
+  });
+
+  function turned(options = {}) {
+    const wizard = { setOptions: vi.fn(async () => undefined), remove: vi.fn() };
+    const props = { wizard: wizard as unknown as ObjectsWizard, file, options, un };
+    return { wizard, tree: UnalignedChoice(props), markup: renderToStaticMarkup(createElement(UnalignedChoice, props)) };
+  }
+
+  it("shows the message, the rows, the distance and the three buttons, no tables, in the window of the step", () => {
+    const { markup } = turned();
+    const text = markup.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+    expect(text).toContain("Центры блоков не совпали с сеткой");
+    expect(text).toContain("расстояние 0.37 м");
+    expect(text).toContain("Центры блоков в строках 1, 6, 10");
+    expect(text).toContain("Наибольшее расхождение: 0,37 м");
+    expect(markup).toContain('data-code="rotation_mismatch"');
+    expect(markup).not.toContain('data-testid="unaligned-axes"');
+    expect(markup).not.toContain('data-testid="unaligned-candidates"');
+    for (const label of ["Задать сетку вручную", "Импортировать списком блоков", "Не импортировать этот файл"]) expect(text).toContain(label);
+    expect(markup).not.toContain("confirm(");
+  });
+
+  it("«Задать сетку вручную» fills the form with the grid of the core (the turn included); the list and the way out work", () => {
+    const { wizard, tree } = turned();
+    find(tree, "unaligned-grid")!.props.onClick!();
+    const [, patch] = wizard.setOptions.mock.calls[0] as unknown as [string, { blocks: { corner: string[]; rotation: string; div: string[] } }];
+    expect(patch.blocks.corner).toEqual(["100", "200", "50"]);
+    expect(patch.blocks.rotation).toBe("20");
+    expect(patch.blocks.div).toEqual(["2", "2", "2"]);
+    find(tree, "unaligned-list")!.props.onClick!();
+    expect((wizard.setOptions.mock.calls[1] as unknown as [string, { blocks: { layout: string } }])[1].blocks.layout).toBe("list");
+    find(tree, "unaligned-cancel")!.props.onClick!();
+    expect(wizard.remove).toHaveBeenCalledWith("/tmp/Геомет.DAT");
   });
 });

@@ -326,7 +326,7 @@ def encode_blocks(model: Model, v: View, spec: ViewSpec, cl: Classes, passed: in
     f = v.faces
     origin = np.zeros(3)
     if len(f):
-        lo, hi = local_extent(f)
+        lo, hi = getattr(v, "extent", None) or local_extent(f)  # a list of blocks gives its own (list_shell.ListView)
         origin = np.round((lo + hi) / 2)
     g = model.grid
     head = {"kind": "blocks", "format": 1, "model": model.id, "version": model.version, "mode": spec.mode,

@@ -138,6 +138,8 @@
          ]
         },
         "label": "Micromine DAT",
+        "layout": "grid",
+        "list": null,
         "parents": 103,
         "roles": {
          "dx": "_EAST",
@@ -286,6 +288,8 @@
          ]
         },
         "label": "Datamine DM",
+        "layout": "grid",
+        "list": null,
         "parents": 19,
         "roles": {
          "dx": "XINC",
@@ -599,6 +603,8 @@
          ]
         },
         "label": "CSV / TXT",
+        "layout": "grid",
+        "list": null,
         "parents": 103,
         "roles": {
          "dx": "_EAST",
@@ -802,6 +808,8 @@
          ]
         },
         "label": "CSV Micromine",
+        "layout": "grid",
+        "list": null,
         "parents": 103,
         "roles": {
          "dx": "_EAST",
@@ -1005,6 +1013,8 @@
          ]
         },
         "label": "Micromine DAT",
+        "layout": "grid",
+        "list": null,
         "parents": 103,
         "roles": {
          "dx": "_EAST",
@@ -1208,6 +1218,8 @@
          ]
         },
         "label": "Micromine DAT",
+        "layout": "grid",
+        "list": null,
         "parents": 103,
         "roles": {
          "dx": "_EAST",
@@ -1419,6 +1431,8 @@
          ]
         },
         "label": "Micromine DAT",
+        "layout": "grid",
+        "list": null,
         "parents": 103,
         "roles": {
          "dx": "_EAST",
@@ -1555,6 +1569,8 @@
         "format": "csv",
         "grid": null,
         "label": "CSV / TXT",
+        "layout": "grid",
+        "list": null,
         "parents": 0,
         "roles": {
          "dx": null,
@@ -1772,6 +1788,11 @@
            },
            "id": "grid",
            "label": "Задать сетку вручную"
+          },
+          {
+           "id": "list",
+           "label": "Импортировать списком блоков",
+           "note": "показ, фильтры, калькулятор, отчёт, экспорт; оценка и карьер — после регуляризации"
           },
           {
            "id": "cancel",
@@ -2004,6 +2025,8 @@
         "format": "csv",
         "grid": null,
         "label": "CSV / TXT",
+        "layout": "grid",
+        "list": null,
         "parents": 0,
         "roles": {
          "dx": "_EAST",
@@ -2205,6 +2228,8 @@
          ]
         },
         "label": "CSV / TXT",
+        "layout": "grid",
+        "list": null,
         "parents": 19,
         "roles": {
          "dx": "DX",
@@ -2406,6 +2431,8 @@
          ]
         },
         "label": "CSV / TXT",
+        "layout": "grid",
+        "list": null,
         "parents": 19,
         "roles": {
          "dx": "DX",
@@ -2740,6 +2767,8 @@
          ]
         },
         "label": "Micromine DAT",
+        "layout": "grid",
+        "list": null,
         "parents": 169070,
         "roles": {
          "dx": "_EAST",
@@ -2976,6 +3005,8 @@
          ]
         },
         "label": "Datamine DM",
+        "layout": "grid",
+        "list": null,
         "parents": 169070,
         "roles": {
          "dx": "XINC",
@@ -3212,6 +3243,8 @@
          ]
         },
         "label": "Datamine FBM",
+        "layout": "grid",
+        "list": null,
         "parents": 169070,
         "roles": {
          "dx": "XINC",
@@ -3381,6 +3414,8 @@
          ]
         },
         "label": "CSV / TXT",
+        "layout": "grid",
+        "list": null,
         "parents": 2,
         "roles": {
          "dx": null,
@@ -3573,6 +3608,8 @@
          ]
         },
         "label": "Datamine DM",
+        "layout": "grid",
+        "list": null,
         "parents": 19,
         "roles": {
          "dx": "XINC",
@@ -3761,6 +3798,8 @@
          ]
         },
         "label": "Datamine FBM",
+        "layout": "grid",
+        "list": null,
         "parents": 19,
         "roles": {
          "dx": "XINC",
@@ -3995,6 +4034,8 @@
          ]
         },
         "label": "CSV Micromine",
+        "layout": "grid",
+        "list": null,
         "parents": 19,
         "roles": {
          "dx": "_EAST",
@@ -4197,6 +4238,8 @@
          ]
         },
         "label": "Micromine DAT",
+        "layout": "grid",
+        "list": null,
         "parents": 19,
         "roles": {
          "dx": "_EAST",
@@ -4377,6 +4420,11 @@
            },
            "id": "grid",
            "label": "Задать сетку вручную"
+          },
+          {
+           "id": "list",
+           "label": "Импортировать списком блоков",
+           "note": "показ, фильтры, калькулятор, отчёт, экспорт; оценка и карьер — после регуляризации"
           },
           {
            "id": "cancel",
@@ -4851,6 +4899,8 @@
         "format": "csv_micromine",
         "grid": null,
         "label": "CSV Micromine",
+        "layout": "grid",
+        "list": null,
         "parents": 0,
         "roles": {
          "dx": "_EAST",
@@ -5020,6 +5070,11 @@
            },
            "id": "grid",
            "label": "Задать сетку вручную"
+          },
+          {
+           "id": "list",
+           "label": "Импортировать списком блоков",
+           "note": "показ, фильтры, калькулятор, отчёт, экспорт; оценка и карьер — после регуляризации"
           },
           {
            "id": "cancel",
@@ -5496,6 +5551,8 @@
         "format": "csv_micromine",
         "grid": null,
         "label": "CSV Micromine",
+        "layout": "grid",
+        "list": null,
         "parents": 0,
         "roles": {
          "dx": "_EAST",
