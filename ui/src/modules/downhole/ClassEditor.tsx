@@ -90,7 +90,7 @@ export function ClassEditor({ values, classes, onChange, log: logDefault, noData
               onChange={(e) => setPicked(e.target.checked ? [...picked, i] : picked.filter((x) => x !== i))} />
             <button type="button" className="icon dh-eye" aria-pressed={!c.hidden} title={c.hidden ? "Класс скрыт в сцене: показать" : "Скрыть класс в сцене"} aria-label={`${c.hidden ? "Показать" : "Скрыть"} класс ${i + 1}`}
               onClick={() => onChange(classes.map((x, j) => (j === i ? { ...x, hidden: !x.hidden } : x)))}>{c.hidden ? "◌" : "👁"}</button>
-            <input type="color" value={c.color} aria-label={`Цвет класса ${i + 1}`} title="Цвет класса" onChange={(e) => onChange(classes.map((x, j) => (j === i ? { ...x, color: e.target.value } : x)), `color${i}`)} />
+            <ColorField value={c.color} label={`Цвет класса ${i + 1}`} onChange={(color) => onChange(classes.map((x, j) => (j === i ? { ...x, color } : x)), `color${i}`)} />
             {c.from === null ? <span className="muted small dh-from">ниже</span> : (
               <NumField className="dh-from" value={c.from} label={`Нижняя граница класса ${i + 1}`} title="Нижняя граница класса (входит в класс)"
                 onChange={(v) => v !== null && onChange(sortClasses(classes.map((x, j) => (j === i ? { ...x, from: v } : x))), `from${i}`)} />

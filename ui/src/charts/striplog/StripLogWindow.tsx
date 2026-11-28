@@ -6,6 +6,7 @@ import { logCsv, type CsvColumn } from "./csv";
 import { loadHoleNames, loadLog, loadTables, MAX_HOLES } from "./data";
 import { pngBytes, svgText } from "./export";
 import { StripLogChart } from "./StripLogChart";
+import { ColorField } from "../../shell/PropsParts";
 import {
   DEFAULT_STRIPLOG, defaultClasses, defaultTracks, fieldRange, LOG_COLORS, newTrack, sortClasses, TRACK_TITLES, type ColorClass, type StripLogSettings, type Track, type TrackType,
 } from "./model";
@@ -234,7 +235,7 @@ export function StripLogWindow({ setId, setName, initial, tableHint, holeHint }:
                     <div className={css.pair}>
                       <label className={css.check}><input type="checkbox" checked={t.log} onChange={(e) => updateTrack(t.id, { log: e.target.checked })} /> лог.</label>
                       {(t.type === "bars" || t.type === "line") && colorBy === "single" && (
-                        <label className={css.check}>Цвет<input type="color" value={t.color} onChange={(e) => updateTrack(t.id, { color: e.target.value })} aria-label={`Цвет: ${t.field}`} /></label>
+                        <label className={css.check}>Цвет<ColorField value={t.color} label={`Цвет: ${t.field}`} onCommit={(color) => updateTrack(t.id, { color })} /></label>
                       )}
                     </div>
                     {t.type !== "text" && t.type !== "line" && (
@@ -268,7 +269,7 @@ export function StripLogWindow({ setId, setName, initial, tableHint, holeHint }:
                     <label>Значок, px
                       <input type="number" min={4} max={40} value={t.size ?? 12} onChange={(e) => updateTrack(t.id, { size: Math.max(4, Math.min(40, Number(e.target.value) || 12)) })} aria-label={`Размер значка: ${t.field}`} />
                     </label>
-                    {numeric && <label className={css.check}>Цвет<input type="color" value={t.color} onChange={(e) => updateTrack(t.id, { color: e.target.value })} aria-label={`Цвет: ${t.field}`} /></label>}
+                    {numeric && <label className={css.check}>Цвет<ColorField value={t.color} label={`Цвет: ${t.field}`} onCommit={(color) => updateTrack(t.id, { color })} /></label>}
                   </div>
                 )}
                 {!event && <label className={css.check}><input type="checkbox" checked={t.boundaries} onChange={(e) => updateTrack(t.id, { boundaries: e.target.checked })} /> границы интервалов</label>}

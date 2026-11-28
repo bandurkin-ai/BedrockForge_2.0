@@ -18,6 +18,7 @@ import { selectInside, type AxisPolygon, type SelectTool } from "../core/lasso";
 import { fieldLabel, FieldSelect, TableSelect, useStatsFields } from "../core/Pickers";
 import { inlineRasters } from "../core/PointsCanvas";
 import { CutInput, WEIGHTS } from "../SampleFilterForm";
+import { ColorField } from "../../shell/PropsParts";
 import css from "../core/Chart.module.css";
 import { ScatterChart } from "./ScatterChart";
 import { axisKinds, FIT_TITLES, scatterCalculator, scatterCsv, scatterNotes, scatterRequest, scatterTable } from "./model";
@@ -135,7 +136,7 @@ export function ScatterWindow(props: ChartWindowProps<"scatter">) {
           <input type="checkbox" checked={s.view.diagonal} onChange={(e) => setView({ diagonal: e.target.checked })} /> Линия 1:1
         </label>
         <label className={css.check}>
-          <input type="color" value={s.view.color} aria-label="Цвет точек" onChange={(e) => setView({ color: e.target.value })} /> Цвет точек
+          <ColorField value={s.view.color} label="Цвет точек" onCommit={(color) => setView({ color })} /> Цвет точек
         </label>
       </fieldset>
       <fieldset>

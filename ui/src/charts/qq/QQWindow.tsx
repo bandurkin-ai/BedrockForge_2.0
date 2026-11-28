@@ -17,6 +17,7 @@ import { ChartToolbar } from "../core/ChartToolbar";
 import { fieldLabel, FieldSelect, ListInput, SetSelect, TableSelect, useStatsFields } from "../core/Pickers";
 import { NumberInput, SampleFilterForm } from "../SampleFilterForm";
 import css from "../core/Chart.module.css";
+import { ColorField } from "../../shell/PropsParts";
 import { countsNotes } from "../histogram/model";
 import { QQChart } from "./QQChart";
 import { axisTitles, qqCalculator, qqMarks, qqCsv, qqNotes, qqPoints, qqRequest, qqTable } from "./model";
@@ -166,7 +167,7 @@ export function QQWindow(props: ChartWindowProps<"qq">) {
           <input type="checkbox" checked={s.view.labels} onChange={(e) => setView({ labels: e.target.checked })} /> Отметки P10, P50, P90
         </label>
         <label className={css.check}>
-          <input type="color" value={s.view.color} aria-label="Цвет точек" onChange={(e) => setView({ color: e.target.value })} /> Цвет точек
+          <ColorField value={s.view.color} label="Цвет точек" onCommit={(color) => setView({ color })} /> Цвет точек
         </label>
       </fieldset>
     </>

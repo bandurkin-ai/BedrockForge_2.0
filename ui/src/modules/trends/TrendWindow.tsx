@@ -21,6 +21,7 @@ import { loadModel, loadModels } from "../variography/api";
 import { effectiveStructures, type Structure } from "../variography/model";
 import { chosenStructure, setModels, variographyStore, workOf } from "../variography/state";
 import { saveAsTrend, saveWindow } from "./bind";
+import { ColorField } from "../../shell/PropsParts";
 import { StructuralForm } from "./StructuralForm";
 import { checkSource } from "./structural";
 import { checkValues, discInfoText, editOf, ELLIPSOIDS_KEY, findTrend, originText, setEdit, shownObjects, trendArgsOfWork, trendsStore, valuesOfStructure, type TrendParam, type TrendValues } from "./state";
@@ -257,7 +258,7 @@ export function TrendWindow({ winId }: { winId: string }) {
           </label>
           <label className={css.check}>
             Цвет
-            <input type="color" className={css.color} value={/^#[0-9a-f]{6}$/i.test(edit.values.color) ? edit.values.color : "#f46a1a"} data-testid={`trend-color-${winId}`} onChange={(e) => change("color", e.target.value)} />
+            <ColorField value={/^#[0-9a-f]{6}$/i.test(edit.values.color) ? edit.values.color : "#f46a1a"} label="Цвет эллипсоида" testId={`trend-color-${winId}`} onCommit={(color) => void change("color", color)} />
           </label>
         </div>
       </fieldset>
@@ -266,7 +267,7 @@ export function TrendWindow({ winId }: { winId: string }) {
         <div className={css.row}>
           <label className={css.check}>
             Цвет дисков
-            <input type="color" className={css.color} value={/^#[0-9a-f]{6}$/i.test(edit.values.color) ? edit.values.color : "#f46a1a"} data-testid={`trend-color-${winId}`} onChange={(e) => change("color", e.target.value)} />
+            <ColorField value={/^#[0-9a-f]{6}$/i.test(edit.values.color) ? edit.values.color : "#f46a1a"} label="Цвет дисков" testId={`trend-color-${winId}`} onCommit={(color) => void change("color", color)} />
           </label>
         </div>
       )}

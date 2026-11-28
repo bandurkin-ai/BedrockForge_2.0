@@ -14,6 +14,7 @@ import { ChartWindow } from "../ChartWindow";
 import { ChartToolbar } from "../core/ChartToolbar";
 import { FieldSelect, keepField, TableSelect, useStatsFields } from "../core/Pickers";
 import { inlineRasters } from "../core/PointsCanvas";
+import { ColorField } from "../../shell/PropsParts";
 import css from "../core/Chart.module.css";
 import { TernaryChart } from "./TernaryChart";
 import { ternaryCalculator, ternaryCsv, ternaryNotes, ternaryRequest } from "./model";
@@ -72,7 +73,7 @@ export function TernaryWindow(props: ChartWindowProps<"ternary">) {
           </select>
         </label>
         <label className={css.check}>
-          <input type="color" value={s.view.color} aria-label="Цвет точек" onChange={(e) => setS((p) => ({ ...p, view: { ...p.view, color: e.target.value } }))} /> Цвет точек
+          <ColorField value={s.view.color} label="Цвет точек" onCommit={(color) => setS((p) => ({ ...p, view: { ...p.view, color } }))} /> Цвет точек
         </label>
       </fieldset>
     </>
